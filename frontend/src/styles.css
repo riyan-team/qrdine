@@ -1,0 +1,214 @@
+/* ============================================================
+   QrDine — professional light POS theme
+   Warm cream background · deep maroon/rose accent · white tiles
+   ============================================================ */
+:root {
+  --bg: #f5f2ef;          /* warm cream page */
+  --surface: #ffffff;     /* cards / tiles */
+  --panel: #ffffff;
+  --surface2: #f4f0ed;    /* inputs / secondary fills */
+  --panel2: #f4f0ed;
+
+  --text: #211c22;        /* near-black ink */
+  --ink: #211c22;
+  --muted: #786f7a;
+  --faint: #a9a0aa;
+
+  --line: #ece6e2;        /* soft warm hairline */
+  --line2: #ded5d0;
+
+  --accent: #a81d48;      /* maroon / rose — brand */
+  --accent-strong: #8b1740;
+  --accent-tint: #f9e6ec; /* soft chip / active fill */
+
+  --accent2: #17915a;     /* success green */
+  --green-tint: #e4f4ec;
+  --blue: #3667cc;        /* info */
+  --blue-tint: #e8effb;
+  --red: #d13a4e;
+  --amber: #b5751a;
+  --amber-tint: #fbeed7;
+
+  --shadow-sm: 0 1px 2px rgba(24, 16, 20, .05);
+  --shadow: 0 1px 2px rgba(24, 16, 20, .04), 0 10px 28px rgba(24, 16, 20, .06);
+  --radius: 16px;
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+
+/* ---------- buttons ---------- */
+button {
+  font: inherit; cursor: pointer; border-radius: 12px; padding: 10px 15px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  font-weight: 600; transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+button:hover { border-color: var(--line2); box-shadow: var(--shadow-sm); }
+button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+button.primary:hover { background: var(--accent-strong); box-shadow: 0 6px 16px rgba(168, 29, 72, .22); }
+button.green { background: var(--accent2); color: #fff; border-color: transparent; }
+button.green:hover { background: #147a4c; }
+button.blue { background: var(--blue); color: #fff; border-color: transparent; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 8px 10px; }
+button.ghost:hover { background: var(--surface2); color: var(--ink); box-shadow: none; }
+button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+input, select {
+  font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); outline: none;
+}
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex; gap: 4px; align-items: center; padding: 12px 18px; flex-wrap: wrap;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+}
+.topbar .brand { font-weight: 800; color: var(--accent); margin-right: 14px; font-size: 19px; letter-spacing: -.02em; }
+.topbar a { padding: 8px 14px; border-radius: 10px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.topbar a:hover { color: var(--ink); background: var(--surface2); }
+.topbar a.active { background: var(--accent-tint); color: var(--accent); }
+
+/* ---------- layout ---------- */
+.wrap { max-width: 1120px; margin: 0 auto; padding: 22px 18px 40px; }
+/* Operational screens (Reception, Kitchen, Waiter) run full-width, left-aligned
+   so live order cards fill the display instead of sitting in a centered column. */
+.wrap.ops { max-width: none; margin-left: 0; margin-right: 0; }
+.grid { display: grid; gap: 16px; }
+.cols { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px; box-shadow: var(--shadow);
+}
+.muted { color: var(--muted); }
+.row { display: flex; align-items: center; gap: 10px; }
+.between { justify-content: space-between; }
+.center { text-align: center; }
+.h { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 4px 0 14px; }
+.big { font-size: 27px; font-weight: 800; letter-spacing: -.01em; }
+.empty { text-align: center; color: var(--muted); padding: 46px 20px; }
+
+.cat-title { font-size: 15px; font-weight: 800; color: var(--ink); margin: 22px 0 8px;
+  text-transform: uppercase; letter-spacing: .05em; }
+
+/* ---------- badges / pills ---------- */
+.tag { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 3px 9px; border-radius: 7px; font-weight: 700; display: inline-block; }
+.t-core { color: var(--accent); background: var(--accent-tint); }
+.t-data { color: var(--accent2); background: var(--green-tint); }
+.t-later { color: var(--muted); background: var(--surface2); }
+
+.pill { padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.s-Placed   { background: var(--amber-tint); color: var(--amber); }
+.s-Approved { background: var(--blue-tint); color: var(--blue); }
+.s-Cooking  { background: var(--accent-tint); color: var(--accent); }
+.s-Ready    { background: var(--green-tint); color: var(--accent2); }
+.s-Served   { background: #f0edf0; color: var(--muted); }
+.s-Paid     { background: #efeaee; color: var(--faint); }
+.p-good  { background: var(--green-tint); color: var(--accent2); }
+.p-flow  { background: var(--accent-tint); color: var(--accent); }
+.p-placed{ background: var(--amber-tint); color: var(--amber); }
+
+/* ---------- stat tiles (dashboard) ---------- */
+.stat { position: relative; transition: transform .15s ease, box-shadow .15s ease; }
+.stat:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(24, 16, 20, .1); }
+.stat .chip {
+  width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+  font-size: 22px; background: var(--accent-tint); color: var(--accent); margin-bottom: 14px;
+}
+.stat .num { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+.stat .lbl { color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+/* ---------- clickable action tiles ---------- */
+.tile {
+  display: flex; flex-direction: column; gap: 8px; cursor: pointer; text-align: left;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.tile:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(24, 16, 20, .12); border-color: var(--accent); }
+.tile .chip { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center;
+  font-size: 21px; background: var(--accent-tint); color: var(--accent); }
+.tile .t-name { font-weight: 700; font-size: 15px; }
+.tile .t-sub { color: var(--muted); font-size: 12.5px; }
+.tile.warn .chip { background: var(--amber-tint); color: var(--amber); }
+.delta { position: absolute; top: 4px; right: 4px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.delta.up { background: var(--green-tint); color: var(--accent2); }
+.delta.flat { background: var(--accent-tint); color: var(--accent); }
+
+/* ---------- menu items ---------- */
+.item { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: none; }
+.item .emoji { font-size: 26px; width: 48px; height: 48px; border-radius: 14px; background: var(--surface2);
+  display: grid; place-items: center; flex-shrink: 0; }
+.item .name { font-weight: 700; }
+.qty { display: flex; align-items: center; gap: 10px; }
+.qty button { width: 36px; height: 36px; padding: 0; font-size: 18px; }
+
+/* ---------- cart ---------- */
+.cart { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(24, 16, 20, .06); padding: 14px 18px; }
+.tracker { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; margin: 12px 0; }
+.countdown { font-size: 26px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.kv { display: flex; justify-content: space-between; padding: 3px 0; }
+
+/* ---------- owner QR cards ---------- */
+.qrcard { text-align: center; }
+.qrcard .qbox { background: #fff; padding: 12px; border-radius: 14px; display: inline-block; border: 1px solid var(--line); }
+
+/* ---------- tables ---------- */
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl th, .tbl td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+.tbl th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+
+/* ---------- modal ---------- */
+.overlay { position: fixed; inset: 0; background: rgba(28, 18, 22, .45); display: flex;
+  align-items: flex-start; justify-content: center; padding: 30px 16px; overflow: auto; z-index: 50; }
+.modal { background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  width: 100%; max-width: 440px; padding: 20px; box-shadow: 0 24px 60px rgba(24, 16, 20, .22);
+  max-height: 90vh; overflow-y: auto; }
+
+/* ---------- printable receipt ---------- */
+.receipt { background: #fff; color: #111; border-radius: 12px; padding: 20px; }
+.receipt .r-h { text-align: center; border-bottom: 1px dashed #bbb; padding-bottom: 10px; margin-bottom: 10px; }
+.receipt .r-line { display: flex; justify-content: space-between; padding: 3px 0; font-size: 14px; }
+.receipt .r-tot { border-top: 1px dashed #bbb; margin-top: 8px; padding-top: 8px; }
+.receipt .r-grand { font-weight: 800; font-size: 18px; }
+.receipt .r-foot { text-align: center; margin-top: 12px; font-size: 12px; color: #666; }
+.receipt table { width: 100%; border-collapse: collapse; }
+
+@media print {
+  .topbar, .noprint { display: none !important; }
+  body { background: #fff; }
+  body * { visibility: hidden !important; }
+  .receipt, .receipt *, .print-area, .print-area * { visibility: visible !important; }
+  .overlay { position: static; background: none; padding: 0; }
+  .modal { max-width: none; border: none; padding: 0; box-shadow: none; }
+  .receipt, .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+}
+
+/* ---------- responsive: mobile / tablet / desktop ---------- */
+@media (max-width: 760px) {
+  .wrap { padding: 16px 14px 40px; }
+  .topbar { padding: 10px 14px; gap: 2px; }
+  .topbar .brand { font-size: 17px; margin-right: 8px; }
+  .topbar a { padding: 7px 10px; font-size: 13px; }
+  .h { font-size: 22px; }
+  .big { font-size: 23px; }
+  .stat .num { font-size: 25px; }
+  .grid { gap: 12px; }
+}
+@media (max-width: 460px) {
+  .topbar { flex-wrap: wrap; }
+  .modal { padding: 16px; border-radius: 14px; }
+  .stat .chip, .tile .chip { width: 40px; height: 40px; font-size: 19px; }
+}

@@ -1,0 +1,26 @@
+# Render Blueprint — deploys QrDine as one free Docker web service.
+# The Neon Postgres connection string and the admin password are secrets you enter
+# in the Render dashboard (sync: false), so they are never committed to git.
+services:
+  - type: web
+    name: qrdine
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: Database__Provider
+        value: Postgres
+      - key: ConnectionStrings__Default
+        sync: false          # ← paste your Neon .NET connection string here in Render
+      - key: Jwt__Secret
+        generateValue: true  # Render generates a strong secret automatically
+      - key: PlatformAdmin__Username
+        value: superadmin
+      - key: PlatformAdmin__Password
+        sync: false          # ← choose your platform-console password in Render
+      - key: Fiscal__Simulate
+        value: "true"        # keep FBR simulated for the demo
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production

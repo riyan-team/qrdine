@@ -1,0 +1,43 @@
+using Microsoft.EntityFrameworkCore;
+using QrDine.Application.Common;
+using QrDine.Domain.Common;
+
+namespace QrDine.Application.Auth;
+
+/// <summary>Staff login and guest table-session issuance.</summary>
+public class AuthService
+{
+    private readonly IAppDbContext _db;
+    private readonly ICurrentTenant _tenant;
+    private readonly ITokenService _tokens;
+    private readonly IPasswordHasher _hasher;
+    private readonly PermissionService _perms;
+
+    public AuthService(IAppDbContext db, ICurrentTenant tenant, ITokenService tokens, IPasswordHasher hasher, PermissionService perms)
+    {
+        _db = db; _tenant = tenant; _tokens = tokens; _hasher = hasher; _perms = perms;
+    }
+
+    private string Slug => _tenant.Slug ?? throw new DomainException("No restaurant in context.");
+    private int TenantId => _tenant.RestaurantId ?? throw new DomainException("No restaurant in context.");
+
+    public async Task<AuthResponse> Login(LoginRequest req, CancellationToken ct = default)
+    {
+        var user = await _db.Staff.FirstOrDefaultAsync(s => s.Username == req.Username, ct);
+        // Same error whether the user is missing or the password is wrong — no account probing.
+        if (user is null || !_hasher.Verify(req.Password, user.PasswordHash))
+            throw new DomainException("Invalid username or password.");
+
+        var perms = await _perms.GetForRole(user.Role, ct);
+        var token = _tokens.CreateStaffToken(user, Slug, perms);
+        return new AuthResponse(token, user.DisplayName, user.Role.ToString(), perms);
+    }
+
+    public async Task<GuestSessionResponse> IssueGuestSession(string tableCode, CancellationToken ct = default)
+    {
+        var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode, ct)
+            ?? throw new DomainException("Unknown table.");
+        var token = _tokens.CreateGuestToken(TenantId, Slug, table.Code);
+        return new GuestSessionResponse(token, table.Code);
+    }
+}

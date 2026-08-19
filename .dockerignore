@@ -1,0 +1,17 @@
+# Keep the build context small & the image clean.
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.log
+.git
+.vs
+.idea
+backend
+docs
+tools
+tests
+printouts

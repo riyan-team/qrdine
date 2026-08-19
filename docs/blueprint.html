@@ -1,0 +1,636 @@
+<title>QrDine Production Blueprint</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #eceff3; --grid: #dde3ea;
+    --surface: #ffffff; --surface2: #f5f7fa;
+    --ink: #15181d; --muted: #5b6570; --faint: #8b95a1;
+    --line: #d7dde4; --line2: #c4ccd6;
+    --accent: #d9601a; --accent-tint: #fbe7d8;
+    --flow: #0d7c86; --flow-tint: #d9eef0;
+    --good: #2f9e44; --warn: #c07d17; --crit: #cf4646;
+    --shadow: 0 1px 2px rgba(20,24,30,.06), 0 8px 24px rgba(20,24,30,.06);
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1114; --grid: #191e24;
+      --surface: #161b21; --surface2: #1b2128;
+      --ink: #e7ebf0; --muted: #9099a5; --faint: #6b7480;
+      --line: #262d35; --line2: #333c46;
+      --accent: #ff8a44; --accent-tint: #3a2415;
+      --flow: #37b7c2; --flow-tint: #10312f;
+      --good: #4cc264; --warn: #d79a34; --crit: #e26060;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1114; --grid: #191e24;
+    --surface: #161b21; --surface2: #1b2128;
+    --ink: #e7ebf0; --muted: #9099a5; --faint: #6b7480;
+    --line: #262d35; --line2: #333c46;
+    --accent: #ff8a44; --accent-tint: #3a2415;
+    --flow: #37b7c2; --flow-tint: #10312f;
+    --good: #4cc264; --warn: #d79a34; --crit: #e26060;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- top bar ---- */
+  .nav {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    padding: 10px 20px; background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+  }
+  .nav .logo { font-family: var(--mono); font-weight: 700; color: var(--accent); letter-spacing: -.02em; margin-right: 12px; }
+  .nav a { font-family: var(--mono); font-size: 12.5px; color: var(--muted); text-decoration: none; padding: 5px 9px; border-radius: 7px; }
+  .nav a:hover { color: var(--ink); background: var(--surface); }
+  .nav .spacer { margin-left: auto; }
+  .toggle { font-family: var(--mono); font-size: 12px; cursor: pointer; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; }
+  .toggle:hover { color: var(--ink); border-color: var(--line2); }
+
+  /* ---- layout ---- */
+  main { max-width: 1000px; margin: 0 auto; padding: 0 20px 120px; }
+  .wide { max-width: 1180px; }
+  section { padding: 60px 0 8px; border-top: 1px solid var(--line); }
+  section:first-of-type { border-top: none; }
+
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+  .eyebrow .num { color: var(--faint); }
+  h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.05; letter-spacing: -.03em; margin: 14px 0 12px; text-wrap: balance; }
+  h2 { font-size: clamp(23px, 3.4vw, 31px); line-height: 1.1; letter-spacing: -.02em; margin: 14px 0 10px; text-wrap: balance; }
+  h3 { font-size: 17px; letter-spacing: -.01em; margin: 26px 0 6px; }
+  p { color: var(--muted); max-width: 68ch; }
+  p strong, li strong { color: var(--ink); font-weight: 650; }
+  a { color: var(--accent); }
+  .lead { font-size: 18px; color: var(--muted); max-width: 66ch; }
+
+  /* ---- hero ---- */
+  .hero { padding: 68px 0 34px; position: relative; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40px -40px auto -40px; height: 320px; z-index: -1;
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 26px 26px; -webkit-mask-image: linear-gradient(180deg, #000, transparent);
+    mask-image: linear-gradient(180deg, #000, transparent);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .chip { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .chip b { color: var(--ink); font-weight: 650; }
+
+  /* ---- figure ---- */
+  figure { margin: 22px 0 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); overflow-x: auto; }
+  figure svg { display: block; width: 100%; height: auto; min-width: 620px; color: var(--ink); }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  figcaption b { color: var(--ink); }
+
+  /* ---- cards ---- */
+  .grid { display: grid; gap: 14px; margin: 20px 0 8px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+  .card h3 { margin-top: 0; }
+  .card p { font-size: 14.5px; margin: 6px 0 0; }
+  .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; display: inline-block; }
+  .t-core { color: var(--accent); background: var(--accent-tint); }
+  .t-data { color: var(--flow); background: var(--flow-tint); }
+  .t-later { color: var(--muted); background: var(--surface2); border: 1px solid var(--line); }
+
+  ul.clean { list-style: none; padding: 0; margin: 10px 0; }
+  ul.clean li { position: relative; padding: 5px 0 5px 24px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  ul.clean li:last-child { border-bottom: none; }
+  ul.clean li::before { content: "→"; position: absolute; left: 2px; color: var(--accent); font-family: var(--mono); }
+  ul.clean li b { color: var(--ink); font-weight: 650; }
+
+  /* ---- table ---- */
+  .tbl { width: 100%; border-collapse: collapse; margin: 18px 0 8px; font-size: 14px; overflow: hidden; border-radius: 12px; box-shadow: var(--shadow); }
+  .tbl-wrap { overflow-x: auto; }
+  .tbl th, .tbl td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .tbl th { font-family: var(--mono); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); background: var(--surface2); }
+  .tbl td.mono, .tbl th.mono { font-family: var(--mono); font-size: 12.5px; }
+  .tbl td b { color: var(--ink); }
+  .pill { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .p-placed { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+  .p-flow { color: var(--flow); background: var(--flow-tint); }
+  .p-good { color: var(--good); background: color-mix(in srgb, var(--good) 15%, transparent); }
+
+  /* ---- file tree ---- */
+  .tree { font-family: var(--mono); font-size: 13px; line-height: 1.75; background: var(--surface); border: 1px solid var(--line); border-radius: 13px; padding: 20px 22px; overflow-x: auto; box-shadow: var(--shadow); color: var(--muted); }
+  .tree .dir { color: var(--ink); font-weight: 650; }
+  .tree .root { color: var(--accent); font-weight: 700; }
+  .tree .c { color: var(--faint); }
+  .tree .note { color: var(--flow); }
+
+  /* ---- checklist ---- */
+  .check { display: grid; gap: 10px; margin: 18px 0; }
+  .check .row { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; box-shadow: var(--shadow); }
+  .check .mark { font-family: var(--mono); color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .check .row div b { color: var(--ink); }
+  .check .row div span { color: var(--muted); font-size: 14px; }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 12px 12px 0; padding: 14px 18px; margin: 20px 0; box-shadow: var(--shadow); }
+  .callout b { color: var(--ink); }
+  .callout p { margin: 4px 0 0; }
+
+  footer { max-width: 1000px; margin: 0 auto; padding: 40px 20px 80px; color: var(--faint); font-family: var(--mono); font-size: 12.5px; border-top: 1px solid var(--line); }
+
+  /* svg helpers */
+  .b-fill { fill: var(--surface2); }
+  .b-stroke { stroke: var(--line2); }
+  text { font-family: var(--sans); fill: var(--ink); }
+  .lbl { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  .lbl-a { fill: var(--accent); }
+  .title-t { font-weight: 650; font-size: 13px; }
+  .sub-t { font-size: 11px; fill: var(--muted); }
+</style>
+
+<nav class="nav">
+  <span class="logo">◱ QrDine</span>
+  <a href="#context">Context</a>
+  <a href="#arch">Architecture</a>
+  <a href="#state">Order&nbsp;states</a>
+  <a href="#flow">Flow</a>
+  <a href="#data">Data</a>
+  <a href="#modules">Modules</a>
+  <a href="#files">Files</a>
+  <a href="#migrate">Demo→Prod</a>
+  <a href="#roadmap">Roadmap</a>
+  <span class="spacer"></span>
+  <button class="toggle" id="themeBtn" aria-label="Toggle colour theme">◐ theme</button>
+</nav>
+
+<main>
+  <header class="hero">
+    <div class="eyebrow"><span>Production Blueprint</span></div>
+    <h1>QrDine — the build plan before the build</h1>
+    <p class="lead">A restaurant QR-ordering platform for the Pakistan market: scan a table, order, and watch it move through reception, kitchen timing, waiter service and billing — live. This document is the architecture, the flows, and the exact file layout, agreed before a line of production code is written.</p>
+    <div class="chips">
+      <span class="chip"><b>Backend</b> · ASP.NET Core 9 · Clean Architecture</span>
+      <span class="chip"><b>Realtime</b> · SignalR</span>
+      <span class="chip"><b>Data</b> · PostgreSQL · EF Core</span>
+      <span class="chip"><b>Frontend</b> · React (Vite) PWA</span>
+      <span class="chip"><b>Model</b> · Multi-tenant · feature-flag modules</span>
+    </div>
+  </header>
+
+  <!-- ============ 1 CONTEXT ============ -->
+  <section id="context">
+    <div class="eyebrow"><span class="num">01</span><span>System context</span></div>
+    <h2>Who talks to what</h2>
+    <p>Five surfaces share one backend. Customers use their own phones (no install); staff use cheap Android tablets or any browser. The API is the single source of truth; SignalR pushes every change out so no screen ever needs a manual refresh.</p>
+
+    <figure>
+      <svg viewBox="0 0 980 470" role="img" aria-label="System context: five clients connect over HTTPS and WebSockets to the ASP.NET Core API, which reads and writes PostgreSQL and Redis and calls external integrations.">
+        <defs>
+          <marker id="arro1" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="var(--flow)"/></marker>
+          <marker id="arro1a" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="var(--accent)"/></marker>
+        </defs>
+
+        <!-- clients -->
+        <text x="30" y="30" class="lbl lbl-a">CLIENTS</text>
+        <g>
+          <rect x="20" y="48" width="190" height="46" rx="9" class="b-fill b-stroke"/><text x="38" y="70" class="title-t">📱 Customer phone</text><text x="38" y="86" class="sub-t">scan · order · track</text>
+          <rect x="20" y="104" width="190" height="46" rx="9" class="b-fill b-stroke"/><text x="38" y="126" class="title-t">🧾 Reception / cashier</text><text x="38" y="142" class="sub-t">approve · bill</text>
+          <rect x="20" y="160" width="190" height="46" rx="9" class="b-fill b-stroke"/><text x="38" y="182" class="title-t">👨‍🍳 Kitchen (KDS)</text><text x="38" y="198" class="sub-t">set time · ready</text>
+          <rect x="20" y="216" width="190" height="46" rx="9" class="b-fill b-stroke"/><text x="38" y="238" class="title-t">🛎️ Waiter</text><text x="38" y="254" class="sub-t">ready alert · serve</text>
+          <rect x="20" y="272" width="190" height="46" rx="9" class="b-fill b-stroke"/><text x="38" y="294" class="title-t">🏪 Owner / admin</text><text x="38" y="310" class="sub-t">menu · QR · reports</text>
+        </g>
+
+        <!-- api -->
+        <rect x="360" y="120" width="230" height="150" rx="14" fill="var(--accent-tint)" stroke="var(--accent)"/>
+        <text x="475" y="150" text-anchor="middle" class="title-t" style="font-size:15px">ASP.NET Core API</text>
+        <text x="475" y="172" text-anchor="middle" class="sub-t">REST · JWT · tenancy</text>
+        <line x1="380" y1="188" x2="570" y2="188" stroke="var(--accent)" stroke-dasharray="3 3" opacity=".5"/>
+        <text x="475" y="212" text-anchor="middle" class="title-t" style="font-size:14px; fill:var(--accent)">SignalR hub</text>
+        <text x="475" y="230" text-anchor="middle" class="sub-t">live push to every screen</text>
+        <text x="475" y="252" text-anchor="middle" class="sub-t">Redis backplane (scale-out)</text>
+
+        <!-- client -> api -->
+        <line x1="212" y1="120" x2="356" y2="175" stroke="var(--flow)" marker-end="url(#arro1)"/>
+        <line x1="212" y1="230" x2="356" y2="205" stroke="var(--flow)" marker-end="url(#arro1)"/>
+        <text x="250" y="150" class="lbl">HTTPS</text>
+        <!-- api -> client (push) -->
+        <line x1="356" y1="240" x2="212" y2="300" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro1a)"/>
+        <text x="238" y="290" class="lbl lbl-a">WSS push</text>
+
+        <!-- data stores -->
+        <text x="720" y="30" class="lbl lbl-a">STATE</text>
+        <rect x="700" y="48" width="250" height="52" rx="10" fill="var(--flow-tint)" stroke="var(--flow)"/>
+        <text x="718" y="72" class="title-t">🐘 PostgreSQL</text><text x="718" y="90" class="sub-t">tenants · orders · menu · billing</text>
+        <rect x="700" y="110" width="250" height="46" rx="10" fill="var(--flow-tint)" stroke="var(--flow)"/>
+        <text x="718" y="132" class="title-t">⚡ Redis</text><text x="718" y="148" class="sub-t">cache · SignalR backplane</text>
+        <line x1="592" y1="170" x2="696" y2="110" stroke="var(--flow)" marker-end="url(#arro1)"/>
+        <text x="600" y="132" class="lbl">EF Core</text>
+
+        <!-- integrations -->
+        <text x="720" y="196" class="lbl lbl-a">INTEGRATIONS &nbsp;(pluggable)</text>
+        <rect x="700" y="210" width="250" height="46" rx="10" class="b-fill b-stroke"/>
+        <text x="718" y="232" class="title-t">🧾 FBR / PRA / SRB invoicing</text><text x="718" y="248" class="sub-t">fiscal QR + invoice number</text>
+        <rect x="700" y="266" width="250" height="46" rx="10" class="b-fill b-stroke"/>
+        <text x="718" y="288" class="title-t">💳 Payments</text><text x="718" y="304" class="sub-t">JazzCash · Easypaisa · Raast</text>
+        <rect x="700" y="322" width="250" height="46" rx="10" class="b-fill b-stroke"/>
+        <text x="718" y="344" class="title-t">💬 WhatsApp · 🐼 Foodpanda</text><text x="718" y="360" class="sub-t">receipts · aggregator orders</text>
+        <line x1="592" y1="230" x2="696" y2="233" stroke="var(--flow)" marker-end="url(#arro1)"/>
+        <line x1="592" y1="250" x2="696" y2="289" stroke="var(--flow)" marker-end="url(#arro1)"/>
+
+        <!-- print bridge -->
+        <rect x="360" y="320" width="230" height="48" rx="10" class="b-fill b-stroke"/>
+        <text x="378" y="342" class="title-t">🖨️ Print bridge (on-site)</text><text x="378" y="358" class="sub-t">LAN · ESC/POS tickets & bills</text>
+        <line x1="475" y1="272" x2="475" y2="316" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro1a)"/>
+        <text x="486" y="298" class="lbl lbl-a">SignalR</text>
+      </svg>
+      <figcaption><b>Solid teal</b> = request/response and data reads. <b>Dashed orange</b> = live pushes the server initiates. The print bridge is a tiny on-site app because the cloud cannot reach a printer sitting on the restaurant's LAN.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ 2 CLEAN ARCHITECTURE ============ -->
+  <section id="arch">
+    <div class="eyebrow"><span class="num">02</span><span>Clean architecture</span></div>
+    <h2>Four layers, one rule: dependencies point inward</h2>
+    <p>The demo put everything in <code>Program.cs</code> — fine to prove the idea, wrong to sell. Production splits into four projects. The <strong>Domain</strong> at the centre knows nothing about databases, HTTP or SignalR, so business rules are testable in isolation and survive any change of framework. Everything on the outside depends on the inside, never the reverse.</p>
+
+    <figure>
+      <svg viewBox="0 0 980 400" role="img" aria-label="Concentric clean architecture: Domain at the core, wrapped by Application, wrapped by Infrastructure and API, with all dependency arrows pointing inward toward the Domain.">
+        <defs>
+          <marker id="arro2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="var(--accent)"/></marker>
+        </defs>
+        <!-- rings -->
+        <rect x="40" y="40" width="470" height="320" rx="16" fill="none" stroke="var(--line2)"/>
+        <text x="60" y="66" class="lbl">QrDine.Api · presentation</text>
+        <rect x="80" y="86" width="390" height="248" rx="14" fill="var(--surface2)" stroke="var(--line2)"/>
+        <text x="100" y="110" class="lbl">QrDine.Infrastructure · adapters</text>
+        <rect x="120" y="130" width="310" height="160" rx="12" fill="var(--flow-tint)" stroke="var(--flow)"/>
+        <text x="140" y="154" class="lbl" style="fill:var(--flow)">QrDine.Application · use cases</text>
+        <rect x="170" y="176" width="210" height="90" rx="10" fill="var(--accent-tint)" stroke="var(--accent)"/>
+        <text x="275" y="212" text-anchor="middle" class="title-t" style="font-size:15px; fill:var(--accent)">Domain</text>
+        <text x="275" y="232" text-anchor="middle" class="sub-t">entities · aggregates</text>
+        <text x="275" y="248" text-anchor="middle" class="sub-t">rules · events</text>
+
+        <!-- inward arrows -->
+        <line x1="600" y1="90" x2="600" y2="300" stroke="var(--line)"/>
+        <line x1="900" y1="120" x2="640" y2="120" stroke="var(--accent)" marker-end="url(#arro2)"/>
+        <text x="660" y="112" class="lbl lbl-a">depends on →</text>
+        <text x="648" y="150" class="lbl">API → Application, Infrastructure, Domain</text>
+        <line x1="900" y1="180" x2="640" y2="180" stroke="var(--accent)" marker-end="url(#arro2)"/>
+        <text x="648" y="210" class="lbl">Infrastructure → Application, Domain</text>
+        <line x1="900" y1="240" x2="640" y2="240" stroke="var(--accent)" marker-end="url(#arro2)"/>
+        <text x="648" y="270" class="lbl">Application → Domain</text>
+        <line x1="900" y1="300" x2="640" y2="300" stroke="var(--line2)" marker-end="url(#arro2)"/>
+        <text x="648" y="330" class="lbl">Domain → <tspan style="fill:var(--accent)">nothing</tspan></text>
+      </svg>
+      <figcaption>The <b>Application</b> layer defines interfaces (<code>IOrderRepository</code>, <code>IOrderNotifier</code>, <code>ICurrentTenant</code>); <b>Infrastructure</b> implements them (EF Core, SignalR, payment SDKs). Swap PostgreSQL for anything, or SignalR for another transport, without touching a single business rule.</figcaption>
+    </figure>
+
+    <div class="grid g2">
+      <div class="card"><span class="tag t-core">Domain</span><h3>The rules, framework-free</h3><p>Entities and aggregates (<code>Order</code>, <code>TableSession</code>), enums, domain events, invariants. The <code>Order</code> aggregate owns its own transitions — an invalid <code>Placed → Served</code> throws here, not in a controller.</p></div>
+      <div class="card"><span class="tag t-core">Application</span><h3>The use cases</h3><p>One class per action — <code>PlaceOrderCommand</code>, <code>StartCookingCommand</code>, <code>GetStaffOrdersQuery</code> — with validation and orchestration. Depends only on Domain and its own interfaces.</p></div>
+      <div class="card"><span class="tag t-data">Infrastructure</span><h3>The outside world</h3><p>EF Core <code>DbContext</code> + migrations, repositories, the SignalR notifier, JWT, and the payment / FBR / WhatsApp / printer clients. All behind interfaces.</p></div>
+      <div class="card"><span class="tag t-data">Api</span><h3>The thin edge</h3><p>Endpoints, hubs, middleware (tenant resolution, auth, error handling), and DI wiring. Translates HTTP into a use-case call and returns the result. No business logic lives here.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 3 ORDER STATE MACHINE ============ -->
+  <section id="state">
+    <div class="eyebrow"><span class="num">03</span><span>Order lifecycle</span></div>
+    <h2>One order, six states, guarded transitions</h2>
+    <p>This state machine is the heart of the product. Each arrow is triggered by exactly one role and is only legal from the state before it — the <code>Order</code> aggregate rejects anything else. That is what stops a waiter marking food "served" before the kitchen ever cooked it.</p>
+
+    <figure>
+      <svg viewBox="0 0 980 250" role="img" aria-label="Order state machine: Placed to Approved to Cooking to Ready to Served to Paid, with a Cancelled state reachable from the early states.">
+        <defs>
+          <marker id="arro3" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="var(--accent)"/></marker>
+          <marker id="arro3b" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="var(--crit)"/></marker>
+        </defs>
+        <g>
+          <rect x="16" y="70" width="128" height="50" rx="10" fill="var(--surface2)" stroke="var(--warn)"/><text x="80" y="100" text-anchor="middle" class="title-t">Placed</text>
+          <rect x="186" y="70" width="128" height="50" rx="10" fill="var(--surface2)" stroke="var(--flow)"/><text x="250" y="100" text-anchor="middle" class="title-t">Approved</text>
+          <rect x="356" y="70" width="128" height="50" rx="10" fill="var(--accent-tint)" stroke="var(--accent)"/><text x="420" y="100" text-anchor="middle" class="title-t">Cooking</text>
+          <rect x="526" y="70" width="128" height="50" rx="10" fill="var(--surface2)" stroke="var(--flow)"/><text x="590" y="100" text-anchor="middle" class="title-t">Ready</text>
+          <rect x="696" y="70" width="128" height="50" rx="10" fill="var(--surface2)" stroke="var(--line2)"/><text x="760" y="100" text-anchor="middle" class="title-t">Served</text>
+          <rect x="852" y="70" width="112" height="50" rx="10" fill="color-mix(in srgb, var(--good) 14%, transparent)" stroke="var(--good)"/><text x="908" y="100" text-anchor="middle" class="title-t">Paid</text>
+        </g>
+        <!-- transitions -->
+        <g>
+          <line x1="146" y1="95" x2="182" y2="95" stroke="var(--accent)" marker-end="url(#arro3)"/>
+          <line x1="316" y1="95" x2="352" y2="95" stroke="var(--accent)" marker-end="url(#arro3)"/>
+          <line x1="486" y1="95" x2="522" y2="95" stroke="var(--accent)" marker-end="url(#arro3)"/>
+          <line x1="656" y1="95" x2="692" y2="95" stroke="var(--accent)" marker-end="url(#arro3)"/>
+          <line x1="826" y1="95" x2="848" y2="95" stroke="var(--accent)" marker-end="url(#arro3)"/>
+        </g>
+        <g class="lbl">
+          <text x="164" y="58" text-anchor="middle">Reception</text><text x="164" y="46" text-anchor="middle">approves</text>
+          <text x="334" y="58" text-anchor="middle">Kitchen</text><text x="334" y="46" text-anchor="middle">sets ETA</text>
+          <text x="504" y="58" text-anchor="middle">Kitchen</text><text x="504" y="46" text-anchor="middle">ready</text>
+          <text x="674" y="58" text-anchor="middle">Waiter</text><text x="674" y="46" text-anchor="middle">serves</text>
+          <text x="838" y="58" text-anchor="middle">Cashier</text><text x="838" y="46" text-anchor="middle">collects</text>
+        </g>
+        <!-- cancelled -->
+        <rect x="356" y="182" width="128" height="46" rx="10" fill="color-mix(in srgb, var(--crit) 12%, transparent)" stroke="var(--crit)"/><text x="420" y="210" text-anchor="middle" class="title-t" style="fill:var(--crit)">Cancelled</text>
+        <path d="M80,120 C80,170 380,180 380,182" fill="none" stroke="var(--crit)" stroke-dasharray="4 3" marker-end="url(#arro3b)"/>
+        <path d="M250,120 C250,165 400,178 405,182" fill="none" stroke="var(--crit)" stroke-dasharray="4 3" marker-end="url(#arro3b)"/>
+        <path d="M420,120 L430,180" fill="none" stroke="var(--crit)" stroke-dasharray="4 3" marker-end="url(#arro3b)"/>
+        <text x="150" y="165" class="lbl" style="fill:var(--crit)">void — staff only, reason logged</text>
+      </svg>
+      <figcaption>Cancellation is allowed only up to <b>Cooking</b>, is staff-only, and records a reason — that log is the owner's theft-and-waste control. Every transition also emits a domain event, which is what fans out to the live screens.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Transition</th><th>Endpoint</th><th>Role</th><th>Legal from</th><th>Side effect</th></tr></thead>
+      <tbody>
+        <tr><td><b>Place</b></td><td class="mono">POST /orders</td><td>Customer</td><td><span class="pill p-flow">—</span></td><td>creates order, opens/uses table session</td></tr>
+        <tr><td><b>Approve</b></td><td class="mono">/orders/{id}/approve</td><td>Reception</td><td><span class="pill p-placed">Placed</span></td><td>pushes to kitchen</td></tr>
+        <tr><td><b>Start cooking</b></td><td class="mono">/orders/{id}/cook</td><td>Kitchen</td><td><span class="pill p-flow">Approved</span></td><td>stamps ETA → customer countdown</td></tr>
+        <tr><td><b>Ready</b></td><td class="mono">/orders/{id}/ready</td><td>Kitchen</td><td><span class="pill p-flow">Cooking</span></td><td>alerts waiter</td></tr>
+        <tr><td><b>Serve</b></td><td class="mono">/orders/{id}/serve</td><td>Waiter</td><td><span class="pill p-flow">Ready</span></td><td>marks delivered</td></tr>
+        <tr><td><b>Pay</b></td><td class="mono">/orders/{id}/pay</td><td>Cashier</td><td><span class="pill p-flow">Served</span></td><td>issues invoice, closes session</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- ============ 4 FLOW ============ -->
+  <section id="flow" class="wide">
+    <div class="eyebrow"><span class="num">04</span><span>End-to-end flow</span></div>
+    <h2>The flows to pass</h2>
+    <p>Read top to bottom: this is one table's journey through the system. Each horizontal arrow is a real API call or a real live push. If every one of these passes, the core product works.</p>
+
+    <figure>
+      <svg viewBox="0 0 1120 620" role="img" aria-label="Swimlane sequence across Customer, API and database, Reception, Kitchen and Waiter lanes, from placing an order to payment.">
+        <defs>
+          <marker id="arro4" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="var(--flow)"/></marker>
+          <marker id="arro4a" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="var(--accent)"/></marker>
+        </defs>
+        <!-- lane headers -->
+        <g>
+          <rect x="20" y="16" width="180" height="44" rx="9" fill="var(--accent-tint)" stroke="var(--accent)"/><text x="110" y="43" text-anchor="middle" class="title-t">📱 Customer</text>
+          <rect x="250" y="16" width="180" height="44" rx="9" fill="var(--flow-tint)" stroke="var(--flow)"/><text x="340" y="43" text-anchor="middle" class="title-t">API + DB</text>
+          <rect x="480" y="16" width="180" height="44" rx="9" fill="var(--surface2)" stroke="var(--line2)"/><text x="570" y="43" text-anchor="middle" class="title-t">🧾 Reception</text>
+          <rect x="710" y="16" width="180" height="44" rx="9" fill="var(--surface2)" stroke="var(--line2)"/><text x="800" y="43" text-anchor="middle" class="title-t">👨‍🍳 Kitchen</text>
+          <rect x="920" y="16" width="180" height="44" rx="9" fill="var(--surface2)" stroke="var(--line2)"/><text x="1010" y="43" text-anchor="middle" class="title-t">🛎️ Waiter</text>
+        </g>
+        <!-- lifelines -->
+        <g stroke="var(--line)" stroke-dasharray="3 4">
+          <line x1="110" y1="60" x2="110" y2="600"/><line x1="340" y1="60" x2="340" y2="600"/>
+          <line x1="570" y1="60" x2="570" y2="600"/><line x1="800" y1="60" x2="800" y2="600"/>
+          <line x1="1010" y1="60" x2="1010" y2="600"/>
+        </g>
+        <!-- steps: helper circles + arrows -->
+        <!-- 1 place -->
+        <line x1="110" y1="95" x2="336" y2="95" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="110" cy="95" r="9" fill="var(--accent)"/><text x="110" y="99" text-anchor="middle" style="font-size:11px;fill:#fff">1</text>
+        <text x="120" y="86" class="lbl">POST order → status Placed, session opened</text>
+        <!-- 2 push reception -->
+        <line x1="340" y1="135" x2="566" y2="135" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="135" r="9" fill="var(--accent)"/><text x="340" y="139" text-anchor="middle" style="font-size:11px;fill:#fff">2</text>
+        <text x="350" y="126" class="lbl lbl-a">push: new order (SignalR)</text>
+        <!-- 3 approve -->
+        <line x1="570" y1="175" x2="344" y2="175" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="570" cy="175" r="9" fill="var(--accent)"/><text x="570" y="179" text-anchor="middle" style="font-size:11px;fill:#fff">3</text>
+        <text x="352" y="166" class="lbl">approve</text>
+        <!-- 4 push kitchen -->
+        <line x1="340" y1="215" x2="796" y2="215" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="215" r="9" fill="var(--accent)"/><text x="340" y="219" text-anchor="middle" style="font-size:11px;fill:#fff">4</text>
+        <text x="350" y="206" class="lbl lbl-a">push: approved → kitchen queue</text>
+        <!-- 5 cook -->
+        <line x1="800" y1="255" x2="344" y2="255" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="800" cy="255" r="9" fill="var(--accent)"/><text x="800" y="259" text-anchor="middle" style="font-size:11px;fill:#fff">5</text>
+        <text x="352" y="246" class="lbl">start cooking, ETA = 20 min</text>
+        <!-- 6 push countdown -->
+        <line x1="340" y1="295" x2="114" y2="295" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="295" r="9" fill="var(--accent)"/><text x="340" y="299" text-anchor="middle" style="font-size:11px;fill:#fff">6</text>
+        <text x="120" y="286" class="lbl lbl-a">push: live countdown starts on phone</text>
+        <!-- 7 ready -->
+        <line x1="800" y1="335" x2="344" y2="335" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="800" cy="335" r="9" fill="var(--accent)"/><text x="800" y="339" text-anchor="middle" style="font-size:11px;fill:#fff">7</text>
+        <text x="352" y="326" class="lbl">mark ready</text>
+        <!-- 8 push waiter -->
+        <line x1="340" y1="375" x2="1006" y2="375" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="375" r="9" fill="var(--accent)"/><text x="340" y="379" text-anchor="middle" style="font-size:11px;fill:#fff">8</text>
+        <text x="350" y="366" class="lbl lbl-a">push: ready alert → waiter</text>
+        <!-- 9 serve -->
+        <line x1="1010" y1="415" x2="344" y2="415" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="1010" cy="415" r="9" fill="var(--accent)"/><text x="1010" y="419" text-anchor="middle" style="font-size:11px;fill:#fff">9</text>
+        <text x="352" y="406" class="lbl">take table + mark served</text>
+        <!-- 10 push served -->
+        <line x1="340" y1="455" x2="114" y2="455" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="455" r="9" fill="var(--accent)"/><text x="340" y="459" text-anchor="middle" style="font-size:11px;fill:#fff">10</text>
+        <text x="120" y="446" class="lbl lbl-a">push: "served — enjoy"</text>
+        <!-- 11 more orders loop -->
+        <line x1="110" y1="495" x2="336" y2="495" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="110" cy="495" r="9" fill="var(--flow)"/><text x="110" y="499" text-anchor="middle" style="font-size:11px;fill:#fff">↻</text>
+        <text x="120" y="486" class="lbl">order more → same session, loops to step 2</text>
+        <!-- 12 pay -->
+        <line x1="570" y1="535" x2="344" y2="535" stroke="var(--flow)" marker-end="url(#arro4)"/>
+        <circle cx="570" cy="535" r="9" fill="var(--accent)"/><text x="570" y="539" text-anchor="middle" style="font-size:11px;fill:#fff">12</text>
+        <text x="352" y="526" class="lbl">collect payment → invoice + FBR</text>
+        <!-- 13 close -->
+        <line x1="340" y1="575" x2="114" y2="575" stroke="var(--accent)" stroke-dasharray="5 3" marker-end="url(#arro4a)"/>
+        <circle cx="340" cy="575" r="9" fill="var(--good)"/><text x="340" y="579" text-anchor="middle" style="font-size:11px;fill:#fff">✓</text>
+        <text x="120" y="566" class="lbl">push: session closed · table free for next guest</text>
+      </svg>
+      <figcaption><b>Teal</b> arrows are client-initiated calls; <b>orange dashed</b> arrows are server pushes over SignalR. Step ↻ is the "order more" loop — additional orders attach to the same open <b>table session</b>, so the bill accumulates and the next guest starts clean.</figcaption>
+    </figure>
+
+    <div class="grid g3">
+      <div class="card"><h3>Edge: out of stock</h3><p>Kitchen toggles an item unavailable → it greys out on every open phone instantly; in-cart items are flagged before checkout.</p></div>
+      <div class="card"><h3>Edge: guest can't scan</h3><p>Waiter places the identical order from the waiter app on behalf of the table — same pipeline, same kitchen ticket.</p></div>
+      <div class="card"><h3>Edge: connection drop</h3><p>Screens re-fetch open orders on reconnect and re-join their SignalR group, so a blip never loses an order.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 5 DATA ============ -->
+  <section id="data">
+    <div class="eyebrow"><span class="num">05</span><span>Data model</span></div>
+    <h2>Multi-tenant from row one</h2>
+    <p>Every tenant-owned row carries <code>RestaurantId</code>, and an EF Core global query filter scopes every query to the current tenant automatically — one database safely serves every restaurant. Below: the core aggregates shipping first, and what hangs off them later.</p>
+
+    <div class="grid g2">
+      <div class="card"><span class="tag t-core">Tenant &amp; access</span>
+        <ul class="clean">
+          <li><b>Restaurant</b> — tenant root, currency, <b>feature flags</b></li>
+          <li><b>Branch</b> — a location under a restaurant</li>
+          <li><b>StaffMember</b> — login + <b>Role</b> (owner/manager/cashier/kitchen/waiter)</li>
+          <li><b>DiningTable</b> — code + name, carries the QR</li>
+        </ul>
+      </div>
+      <div class="card"><span class="tag t-core">Menu</span>
+        <ul class="clean">
+          <li><b>MenuCategory</b> — ordered sections</li>
+          <li><b>MenuItem</b> — name (EN/UR), price, photo, prep-minutes, availability</li>
+          <li><b>MenuItemVariant</b> — half / full, small / large</li>
+          <li><b>ModifierGroup / Modifier</b> — spice level, add-ons, "no onion"</li>
+        </ul>
+      </div>
+      <div class="card"><span class="tag t-core">Ordering (the spine)</span>
+        <ul class="clean">
+          <li><b>TableSession</b> — opens on first scan, closes at payment</li>
+          <li><b>Order</b> — aggregate root; status, ETA, waiter, timestamps</li>
+          <li><b>OrderItem</b> — line, qty, note, chosen variant</li>
+          <li><b>OrderItemModifier</b> — the picked add-ons</li>
+        </ul>
+      </div>
+      <div class="card"><span class="tag t-data">Billing &amp; beyond (later)</span>
+        <ul class="clean">
+          <li><b>Payment</b> — method, amount, tip</li>
+          <li><b>Invoice</b> — tax lines, FBR/PRA number + fiscal QR</li>
+          <li><b>StockItem / RecipeLine</b> — inventory &amp; costing</li>
+          <li><b>AuditEvent</b> — voids, discounts, comps (theft control)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout"><b>Why TableSession matters.</b><p>Without it, a fresh customer scanning the QR sees the previous diner's orders and bill. The session is the boundary between one seating and the next — it is the single most important thing the demo is missing, and it goes in first.</p></div>
+  </section>
+
+  <!-- ============ 6 MODULES ============ -->
+  <section id="modules">
+    <div class="eyebrow"><span class="num">06</span><span>Modules &amp; pricing</span></div>
+    <h2>Sold as feature flags, not forks</h2>
+    <p>One codebase, one deployment. Each restaurant's <code>Restaurant.Features</code> switch turns modules on; the UI hides what isn't licensed. You start owners cheap on the QR menu and upsell the operations layer — the part they can't get elsewhere.</p>
+
+    <div class="grid g3">
+      <div class="card"><span class="tag t-core">M0 · QR Menu</span><h3>The cheap yes</h3><p>Table QR, digital menu (EN/UR), photos, availability, "call waiter". No ordering. Foot in the door.</p></div>
+      <div class="card"><span class="tag t-core">M1 · Ordering</span><h3>Self-order + tracking</h3><p>Table sessions, cart, order placement, live status + ETA countdown, "order more".</p></div>
+      <div class="card"><span class="tag t-core">M2 · Operations</span><h3>Where the money is</h3><p>Reception, KDS with timing, waiter app, table map, receipts. The time-saving system owners lack.</p></div>
+      <div class="card"><span class="tag t-data">M3 · Billing &amp; tax</span><h3>Compliance lever</h3><p>Full billing, split/merge, discounts, GST, and FBR/PRA/SRB fiscal invoicing.</p></div>
+      <div class="card"><span class="tag t-data">M4 · Business</span><h3>Owner cockpit</h3><p>Inventory, recipe costing, multi-branch, staff roles, sales/theft analytics.</p></div>
+      <div class="card"><span class="tag t-later">M5 · Integrations</span><h3>Reach</h3><p>Payments (JazzCash/Easypaisa/Raast), WhatsApp receipts, Foodpanda, loyalty, reservations.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 7 FILES ============ -->
+  <section id="files" class="wide">
+    <div class="eyebrow"><span class="num">07</span><span>File &amp; folder plan</span></div>
+    <h2>Every file, before we write them</h2>
+    <p>The solution splits along the four layers, with a mirrored feature structure on the React side. This is the tree we build into — new modules slot in as new folders, never as edits scattered across a monolith.</p>
+
+    <div class="tree">
+<span class="root">QrDine.sln</span>
+├─ <span class="dir">src/</span>
+│  ├─ <span class="dir">QrDine.Domain/</span><span class="c">            # no dependencies — pure business rules</span>
+│  │  ├─ <span class="dir">Common/</span> Entity.cs · AggregateRoot.cs · IDomainEvent.cs · ValueObject.cs
+│  │  ├─ <span class="dir">Restaurants/</span> Restaurant.cs · Branch.cs · Features.cs
+│  │  ├─ <span class="dir">Identity/</span> StaffMember.cs · Role.cs
+│  │  ├─ <span class="dir">Tables/</span> DiningTable.cs · TableSession.cs
+│  │  ├─ <span class="dir">Menu/</span> MenuCategory.cs · MenuItem.cs · MenuItemVariant.cs · Modifier.cs
+│  │  ├─ <span class="dir">Ordering/</span> Order.cs <span class="c">(aggregate)</span> · OrderItem.cs · OrderStatus.cs
+│  │  │  └─ <span class="dir">Events/</span> OrderPlaced.cs · OrderApproved.cs · CookingStarted.cs · OrderReady.cs …
+│  │  └─ <span class="dir">Billing/</span> Payment.cs · Invoice.cs · TaxLine.cs
+│  │
+│  ├─ <span class="dir">QrDine.Application/</span><span class="c">       # use cases — depends on Domain only</span>
+│  │  ├─ <span class="dir">Common/</span>
+│  │  │  ├─ <span class="dir">Interfaces/</span> IAppDbContext.cs · IOrderNotifier.cs · ICurrentTenant.cs · IUnitOfWork.cs
+│  │  │  ├─ <span class="dir">Behaviors/</span> ValidationBehavior.cs · LoggingBehavior.cs
+│  │  │  └─ <span class="dir">Mapping/</span> · Result.cs · PagedList.cs
+│  │  ├─ <span class="dir">Menu/</span> Queries/GetMenuQuery.cs · Commands/UpsertMenuItem.cs
+│  │  ├─ <span class="dir">Ordering/</span>
+│  │  │  ├─ <span class="dir">Commands/</span> PlaceOrder · ApproveOrder · StartCooking · MarkReady · ServeOrder · PayOrder · CancelOrder
+│  │  │  ├─ <span class="dir">Queries/</span> GetStaffOrders.cs · GetTableOrders.cs
+│  │  │  └─ <span class="dir">Dtos/</span> OrderDto.cs · OrderItemDto.cs
+│  │  └─ DependencyInjection.cs
+│  │
+│  ├─ <span class="dir">QrDine.Infrastructure/</span><span class="c">    # implements the interfaces</span>
+│  │  ├─ <span class="dir">Persistence/</span>
+│  │  │  ├─ AppDbContext.cs · UnitOfWork.cs
+│  │  │  ├─ <span class="dir">Configurations/</span> OrderConfig.cs · MenuItemConfig.cs …  <span class="c">(EF Fluent API)</span>
+│  │  │  ├─ <span class="dir">Migrations/</span> <span class="note">← dotnet ef migrations add</span>
+│  │  │  ├─ <span class="dir">Repositories/</span> OrderRepository.cs …
+│  │  │  └─ <span class="dir">Seed/</span> DemoSeeder.cs
+│  │  ├─ <span class="dir">MultiTenancy/</span> TenantResolver.cs · TenantQueryFilter.cs
+│  │  ├─ <span class="dir">Realtime/</span> OrderHub.cs · SignalROrderNotifier.cs
+│  │  ├─ <span class="dir">Identity/</span> JwtTokenService.cs · PasswordHasher.cs
+│  │  ├─ <span class="dir">Integrations/</span> Payments/ · Fbr/ · WhatsApp/ · Printing/
+│  │  └─ DependencyInjection.cs
+│  │
+│  └─ <span class="dir">QrDine.Api/</span><span class="c">               # thin HTTP edge</span>
+│     ├─ Program.cs
+│     ├─ <span class="dir">Endpoints/</span> MenuEndpoints.cs · OrderEndpoints.cs · StaffEndpoints.cs · AuthEndpoints.cs
+│     ├─ <span class="dir">Middleware/</span> ExceptionHandling.cs · TenantResolution.cs
+│     ├─ <span class="dir">Hubs/</span> <span class="c">(OrderHub mapped here)</span>
+│     └─ appsettings.json · appsettings.Development.json
+│
+├─ <span class="dir">tests/</span>
+│  ├─ <span class="dir">QrDine.Domain.UnitTests/</span> <span class="c">order state-machine rules</span>
+│  ├─ <span class="dir">QrDine.Application.UnitTests/</span> <span class="c">handlers + validators</span>
+│  └─ <span class="dir">QrDine.Api.IntegrationTests/</span> <span class="c">full flow, Testcontainers Postgres</span>
+│
+├─ <span class="dir">frontend/</span><span class="c">                  # React (Vite) — feature-sliced</span>
+│  └─ <span class="dir">src/</span>
+│     ├─ <span class="dir">app/</span> router.tsx · providers.tsx
+│     ├─ <span class="dir">features/</span>
+│     │  ├─ <span class="dir">menu/</span> · <span class="dir">ordering/</span> · <span class="dir">cashier/</span> · <span class="dir">kitchen/</span> · <span class="dir">waiter/</span> · <span class="dir">owner/</span>
+│     │  <span class="c">(each: api.ts · hooks.ts · components/ · Page.tsx)</span>
+│     └─ <span class="dir">shared/</span> api/client.ts · realtime/useHub.ts · ui/ · lib/money.ts · types.ts
+│
+└─ <span class="dir">deploy/</span> docker-compose.yml · Dockerfile.api · nginx/ · .github/workflows/ci.yml
+    </div>
+  </section>
+
+  <!-- ============ 8 MIGRATE ============ -->
+  <section id="migrate">
+    <div class="eyebrow"><span class="num">08</span><span>Demo → production</span></div>
+    <h2>The changes to make, in order</h2>
+    <p>The demo proves the flow; these are the concrete edits that turn it into software you can charge for. Each is independently shippable — we do them top-down.</p>
+
+    <div class="check">
+      <div class="row"><span class="mark">01</span><div><b>Split into four projects.</b> <span>Lift the demo's logic out of <code>Program.cs</code> into Domain / Application / Infrastructure / Api. The state machine moves into the <code>Order</code> aggregate.</span></div></div>
+      <div class="row"><span class="mark">02</span><div><b>Swap in PostgreSQL.</b> <span>Replace <code>UseInMemoryDatabase</code> with <code>UseNpgsql</code>, add the initial EF migration, move seed into <code>DemoSeeder</code>.</span></div></div>
+      <div class="row"><span class="mark">03</span><div><b>Real tenancy.</b> <span>Resolve the tenant from a subdomain/JWT claim in middleware and apply an EF global query filter — stop trusting the slug in the URL.</span></div></div>
+      <div class="row"><span class="mark">04</span><div><b>Auth &amp; roles.</b> <span>JWT for staff with role-gated endpoints; short-lived anonymous <b>table-session tokens</b> for guests so only the right table can post.</span></div></div>
+      <div class="row"><span class="mark">05</span><div><b>Table sessions.</b> <span>Open on first scan, attach every order, close on payment — the fix for "next guest sees old orders".</span></div></div>
+      <div class="row"><span class="mark">06</span><div><b>Validation &amp; errors.</b> <span>FluentValidation on every command; a middleware that returns clean <code>ProblemDetails</code> instead of raw 500s.</span></div></div>
+      <div class="row"><span class="mark">07</span><div><b>Variants &amp; modifiers.</b> <span>Half/full, spice level, add-ons — essential for a desi menu and its pricing.</span></div></div>
+      <div class="row"><span class="mark">08</span><div><b>Observability.</b> <span>Serilog structured logs, health checks, and a Redis backplane so SignalR scales past one server.</span></div></div>
+      <div class="row"><span class="mark">09</span><div><b>Tests + CI.</b> <span>Unit-test the state machine, integration-test the whole flow on a throwaway Postgres, wire a GitHub Actions pipeline.</span></div></div>
+      <div class="row"><span class="mark">10</span><div><b>Package &amp; deploy.</b> <span>Docker Compose (api + postgres + redis + nginx) on a cheap VPS, Cloudflare in front, object storage for menu photos.</span></div></div>
+    </div>
+  </section>
+
+  <!-- ============ 9 ROADMAP ============ -->
+  <section id="roadmap">
+    <div class="eyebrow"><span class="num">09</span><span>Build roadmap</span></div>
+    <h2>What we build, in what order</h2>
+    <p>Phases 1–3 are buildable end to end right now. Phases 4–5 depend on third-party access (fiscal APIs, payment merchant accounts, aggregator partnership) — we design the seams now and slot the providers in when credentials arrive.</p>
+
+    <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Phase</th><th>Delivers</th><th>Modules</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><b>P1 · Foundation</b></td><td>Clean-arch skeleton, Postgres, tenancy, auth, menu admin + QR</td><td class="mono">M0</td><td><span class="pill p-good">buildable now</span></td></tr>
+        <tr><td><b>P2 · Ordering</b></td><td>Sessions, cart, place/track, live ETA, "order more"</td><td class="mono">M1</td><td><span class="pill p-good">buildable now</span></td></tr>
+        <tr><td><b>P3 · Operations</b></td><td>Reception, KDS timing, waiter, table map, thermal print bridge</td><td class="mono">M2</td><td><span class="pill p-good">buildable now</span></td></tr>
+        <tr><td><b>P4 · Billing &amp; tax</b></td><td>Bills, discounts, tax lines, FBR/PRA fiscal invoicing</td><td class="mono">M3</td><td><span class="pill p-placed">needs FBR/PRA creds</span></td></tr>
+        <tr><td><b>P5 · Reach</b></td><td>Payments, WhatsApp, Foodpanda, inventory, multi-branch, analytics</td><td class="mono">M4–M5</td><td><span class="pill p-placed">needs merchant/partner access</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="callout"><b>Recommended first move.</b><p>Build <b>P1</b> as the clean-architecture skeleton and port the working demo flow into it — same behaviour you already saw, but on the production foundation. That gives you something correct to grow, and something real to show owners while the rest lands module by module.</p></div>
+  </section>
+</main>
+
+<footer>
+  QrDine · production blueprint · ASP.NET Core 9 + SignalR + PostgreSQL + React · reviewed before build
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('themeBtn');
+    var root = document.documentElement;
+    btn.addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      var next = cur === 'dark' ? 'light' : (cur === 'light' ? 'dark' : (matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'));
+      root.setAttribute('data-theme', next);
+      btn.textContent = next === 'dark' ? '☀ light' : '☾ dark';
+    });
+  })();
+</script>
