@@ -45,7 +45,8 @@ public static class AuthSetup
                     ValidateLifetime = true,
                     ValidIssuer = issuer,
                     ValidAudience = audience,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
+                    // Must match JwtTokenService: derive a 32-byte key so any secret length works.
+                    IssuerSigningKey = new SymmetricSecurityKey(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(secret))),
                     ClockSkew = TimeSpan.FromSeconds(30),
                 };
                 // Let SignalR pass the token in the query string on the WS handshake.

@@ -55,7 +55,10 @@ public class JwtTokenService : ITokenService
 
     private string Build(IEnumerable<Claim> claims, int hours)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opt.Secret));
+        // Derive a fixed 32-byte key so HS256 works for ANY configured secret length
+        // (a short Jwt:Secret would otherwise throw at signing time). Must match the
+        // validation key in AuthSetup.
+        var key = new SymmetricSecurityKey(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(_opt.Secret)));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             issuer: _opt.Issuer, audience: _opt.Audience, claims: claims,

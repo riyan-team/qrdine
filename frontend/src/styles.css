@@ -82,6 +82,12 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 /* Operational screens (Reception, Kitchen, Waiter) run full-width, left-aligned
    so live order cards fill the display instead of sitting in a centered column. */
 .wrap.ops { max-width: none; margin-left: 0; margin-right: 0; }
+
+/* Auth screens (sign in / sign up): center the card on the page. */
+.auth-page { min-height: calc(100vh - 64px); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 28px 16px; }
+.auth-card { width: 100%; max-width: 440px; margin: 0 auto; }
+.auth-wide { width: 100%; max-width: 960px; margin: 0 auto; text-align: center; }
 .grid { display: grid; gap: 16px; }
 .cols { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }

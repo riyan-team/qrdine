@@ -55,12 +55,12 @@ export default function Signup() {
 
   return (
     <div className="wrap" style={{ maxWidth: 900 }}>
-      <div className="h" style={{ marginTop: 20 }}>Start your restaurant on QrDine</div>
+      <div className="h" style={{ marginTop: 20, textAlign: 'center' }}>Start your restaurant on QrDine</div>
 
       {/* Step 1 — choose a plan (dynamic banners) */}
       {step === 'plan' && (
         <>
-          <p className="muted">Choose a plan. You can change it anytime.</p>
+          <p className="muted" style={{ textAlign: 'center' }}>Choose a plan. You can change it anytime.</p>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
             {plans.map((p) => (
               <div key={p.id} className="card" onClick={() => setPlanId(p.id)}
@@ -82,7 +82,7 @@ export default function Signup() {
             ))}
             {plans.length === 0 && <div className="empty">Loading plans…</div>}
           </div>
-          <div className="row" style={{ marginTop: 16 }}>
+          <div className="row" style={{ marginTop: 16, justifyContent: 'center' }}>
             <button className="primary" disabled={!planId} onClick={() => setStep('details')}>Continue →</button>
           </div>
         </>
@@ -90,7 +90,7 @@ export default function Signup() {
 
       {/* Step 2 — restaurant details */}
       {step === 'details' && (
-        <div className="card" style={{ maxWidth: 480 }}>
+        <div className="card" style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left' }}>
           <div className="muted" style={{ fontSize: 13 }}>Plan: <b style={{ color: 'var(--accent)' }}>{plan?.name}</b> · {plan?.pricePkr > 0 ? money(plan.pricePkr) + '/mo' : 'Free'} <button className="ghost" onClick={() => setStep('plan')}>change</button></div>
           <div style={{ height: 10 }} />
           <input placeholder="Restaurant name" value={f.restaurantName} onChange={(e) => onName(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
@@ -112,7 +112,7 @@ export default function Signup() {
 
       {/* Step 3 — mock payment */}
       {step === 'pay' && (
-        <div className="card" style={{ maxWidth: 420 }}>
+        <div className="card" style={{ maxWidth: 420, margin: '0 auto', textAlign: 'left' }}>
           <b>Payment</b>
           <div className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>{plan?.name} · {money(plan?.pricePkr)}/month</div>
           <input placeholder="Card number" defaultValue="4242 4242 4242 4242" style={{ width: '100%', marginBottom: 10 }} />
