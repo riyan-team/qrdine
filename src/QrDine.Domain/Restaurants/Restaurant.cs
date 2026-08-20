@@ -27,6 +27,10 @@ public class Restaurant : Entity
     public decimal TaxPercent { get; set; } = 0;      // default GST when an item has no own rate
     public decimal ServiceChargePercent { get; set; } = 0;
 
+    // Service settings. When true, approving an order auto-assigns the least-busy
+    // waiter; when false (default) waiters take their own tables / a manager assigns.
+    public bool WaiterAutoAssign { get; set; } = false;
+
     // ---- Seller identity (printed on the fiscal invoice / sent to FBR) ----
     public string BusinessName { get; set; } = "";    // registered business name (defaults to Name)
     public string Ntn { get; set; } = "";             // National Tax Number

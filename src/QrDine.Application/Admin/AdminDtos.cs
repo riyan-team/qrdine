@@ -24,5 +24,9 @@ public record StaffDto(int Id, string Username, string DisplayName, string Role,
 public record FbrSettingsDto(bool FeatureFbr, bool FbrEnabled, string BusinessName, string Ntn, string Strn);
 public record FbrSettingsInput(bool FbrEnabled, string BusinessName, string Ntn, string Strn);
 
+// Front-of-house service settings (currently: how waiters get assigned to tables).
+public record ServiceSettingsDto(bool WaiterAutoAssign);
+public record ServiceSettingsInput(bool WaiterAutoAssign);
+
 // Onboarding
 public record OnboardRequest(string RestaurantName, string Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);

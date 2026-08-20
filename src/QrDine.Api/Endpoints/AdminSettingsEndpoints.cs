@@ -33,6 +33,10 @@ public static class AdminSettingsEndpoints
         g.MapPost("/staff/{id:int}/password", async (int id, ResetPasswordInput body, RestaurantAdminService svc) => { await svc.ResetPassword(id, body.Password); return Results.NoContent(); });
         g.MapDelete("/staff/{id:int}", async (int id, RestaurantAdminService svc) => { await svc.DeleteStaff(id); return Results.NoContent(); });
 
+        // Service settings (waiter auto-assignment).
+        g.MapGet("/service-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetServiceSettings()));
+        g.MapPut("/service-settings", async (ServiceSettingsInput body, RestaurantAdminService svc) => { await svc.SetServiceSettings(body); return Results.NoContent(); });
+
         // FBR fiscal settings (owner enable + seller NTN/STRN). Branch POS config
         // rides on the branch endpoints above.
         g.MapGet("/fbr", async (RestaurantAdminService svc) => Results.Ok(await svc.GetFbrSettings()));

@@ -19,6 +19,7 @@ export default function Settings() {
   return (
     <div className="wrap">
       <div className="h">Settings</div>
+      <ServiceSettings />
       <FbrSettings />
       <Branches />
       <div className="grid g2">
@@ -26,6 +27,33 @@ export default function Settings() {
         <Staff />
       </div>
       {isOwner && <Permissions />}
+    </div>
+  )
+}
+
+// How waiters get attached to tables. Manual (default) vs automatic least-busy.
+function ServiceSettings() {
+  const [s, setS] = useState(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { api.getServiceSettings().then(setS).catch(() => {}) }, [])
+  if (!s) return null
+  const save = async (val) => {
+    setS({ waiterAutoAssign: val })
+    try { await api.setServiceSettings({ waiterAutoAssign: val }); setMsg('Saved'); setTimeout(() => setMsg(''), 1200) }
+    catch (e) { ui.alert(e.message) }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between"><b>Waiter assignment</b>{msg && <span className="muted" style={{ fontSize: 13 }}>{msg}</span>}</div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>How a waiter gets attached to a table’s orders.</p>
+      <label className="row" style={{ gap: 8, marginBottom: 8, cursor: 'pointer', alignItems: 'flex-start' }}>
+        <input type="radio" name="wa" checked={!s.waiterAutoAssign} onChange={() => save(false)} style={{ marginTop: 3 }} />
+        <span><b>Manual</b> — waiters take their own tables (or a manager assigns). <span className="muted">Default. Best if you run fixed sections.</span></span>
+      </label>
+      <label className="row" style={{ gap: 8, cursor: 'pointer', alignItems: 'flex-start' }}>
+        <input type="radio" name="wa" checked={s.waiterAutoAssign} onChange={() => save(true)} style={{ marginTop: 3 }} />
+        <span><b>Automatic</b> — each approved order goes to the least-busy waiter. <span className="muted">Needs staff with the Waiter role.</span></span>
+      </label>
     </div>
   )
 }

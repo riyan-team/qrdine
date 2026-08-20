@@ -203,4 +203,27 @@ public class PlatformService
         r.Status = s;
         await _db.SaveChangesAsync(ct);
     }
+
+    /// <summary>Permanently delete a restaurant and ALL of its data. Child rows
+    /// (order items, invoice lines, variants, recipes…) cascade from their parents
+    /// at the database level; each set here is filtered by RestaurantId with the
+    /// tenant query filter ignored (the operator has no tenant in context).</summary>
+    public async Task DeleteRestaurant(int restaurantId, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstOrDefaultAsync(x => x.Id == restaurantId, ct) ?? throw new DomainException("Restaurant not found.");
+        await _db.Payments.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Invoices.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Orders.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Sessions.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.StockMovements.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Stock.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.MenuItems.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Categories.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Tables.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.RolePermissions.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.SubscriptionPayments.Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Branches.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Staff.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Restaurants.Where(x => x.Id == restaurantId).ExecuteDeleteAsync(ct);
+    }
 }

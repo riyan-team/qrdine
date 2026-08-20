@@ -174,6 +174,20 @@ public class RestaurantAdminService
         await _db.SaveChangesAsync(ct);
     }
 
+    // ---------- service settings (waiter assignment) ----------
+    public async Task<ServiceSettingsDto> GetServiceSettings(CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        return new ServiceSettingsDto(r.WaiterAutoAssign);
+    }
+
+    public async Task SetServiceSettings(ServiceSettingsInput i, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
+        r.WaiterAutoAssign = i.WaiterAutoAssign;
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task ResetPassword(int id, string password, CancellationToken ct = default)
     {
         var s = await _db.Staff.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Staff not found.");

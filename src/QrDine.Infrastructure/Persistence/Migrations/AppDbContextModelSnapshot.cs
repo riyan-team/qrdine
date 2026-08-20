@@ -862,6 +862,9 @@ namespace QrDine.Infrastructure.Persistence.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("WaiterAutoAssign")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Slug")

@@ -33,6 +33,16 @@ export default function PlatformConsole() {
     await platform.setFbr(r.id, !r.featureFbr); load()
   }
   const delPlan = async (p) => { if (await ui.confirm({ title: 'Delete plan', message: `Delete plan "${p.name}"?`, confirmText: 'Delete', danger: true })) { try { await platform.deletePlan(p.id); load() } catch (e) { ui.alert(e.message) } } }
+  const delRestaurant = async (r) => {
+    const typed = await ui.prompt({
+      title: `Delete ${r.name}`,
+      message: `This permanently deletes ${r.name} and ALL its data — menu, tables, staff, orders, invoices, payments. This cannot be undone.\n\nType the restaurant name to confirm:`,
+      placeholder: r.name, confirmText: 'Delete forever', danger: true, required: true,
+    })
+    if (typed == null) return
+    if (typed.trim().toLowerCase() !== r.name.toLowerCase()) { ui.alert("The name didn't match — nothing was deleted."); return }
+    try { await platform.deleteRestaurant(r.id); load() } catch (e) { ui.alert(e.message) }
+  }
   const logout = () => { platformAuth.clear(); nav('/platform/login') }
   const admin = platformAuth.get()
 
@@ -111,9 +121,12 @@ export default function PlatformConsole() {
                     </button>
                   </td>
                   <td>
-                    <button className={r.status === 'Active' ? 'ghost' : 'green'} onClick={() => toggle(r)}>
-                      {r.status === 'Active' ? '🔒 Lock' : '▶ Unlock'}
-                    </button>
+                    <div className="row" style={{ gap: 4 }}>
+                      <button className={r.status === 'Active' ? 'ghost' : 'green'} onClick={() => toggle(r)}>
+                        {r.status === 'Active' ? '🔒 Lock' : '▶ Unlock'}
+                      </button>
+                      <button className="ghost" title="Delete restaurant and all its data" onClick={() => delRestaurant(r)}>🗑</button>
+                    </div>
                   </td>
                 </tr>
               ))}

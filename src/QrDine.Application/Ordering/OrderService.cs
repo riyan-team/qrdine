@@ -110,11 +110,37 @@ public class OrderService
     {
         var order = await LoadOrder(id, ct);
         order.Approve();
+        await AutoAssignWaiter(order, ct);
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
         await _print.Dispatch(Slug, PrintJobs.KitchenTicket(dto), ct);
         await _inventory.ApplyOrderConsumption(Lines(order), restore: false, ct);
         return dto;
+    }
+
+    /// <summary>If the restaurant runs auto-assignment, give this order to the
+    /// waiter currently handling the fewest active orders. No-op in manual mode
+    /// (waiters take their own tables) or when there are no waiters on staff.</summary>
+    private async Task AutoAssignWaiter(Order order, CancellationToken ct)
+    {
+        if (order.WaiterName is not null) return;
+        var restaurant = await _db.Restaurants.AsNoTracking().FirstAsync(r => r.Id == TenantId, ct);
+        if (!restaurant.WaiterAutoAssign) return;
+
+        var waiters = await _db.Staff.AsNoTracking()
+            .Where(s => s.Role == Domain.Identity.StaffRole.Waiter)
+            .Select(s => s.DisplayName).ToListAsync(ct);
+        if (waiters.Count == 0) return;
+
+        // Current active load per waiter (orders not yet paid/cancelled).
+        var load = await _db.Orders.AsNoTracking()
+            .Where(o => o.WaiterName != null && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .GroupBy(o => o.WaiterName!)
+            .Select(g => new { Waiter = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Waiter, x => x.Count, ct);
+
+        var pick = waiters.OrderBy(w => load.GetValueOrDefault(w, 0)).ThenBy(w => w).First();
+        order.AssignWaiter(pick);
     }
     public Task<OrderDto> Cook(int id, int eta, CancellationToken ct = default) => Mutate(id, o => o.StartCooking(eta), ct);
     public Task<OrderDto> Ready(int id, CancellationToken ct = default) => Mutate(id, o => o.MarkReady(), ct);

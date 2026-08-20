@@ -7,6 +7,7 @@ import Receipt from './Receipt.jsx'
 export default function Cashier() {
   const orders = useStaffOrders()
   const [billFor, setBillFor] = useState(null)   // table code being billed
+  const [detailFor, setDetailFor] = useState(null)   // order being viewed
 
   const incoming = orders.filter((o) => o.status === 'Placed')
   const active = orders.filter((o) => o.status !== 'Placed')
@@ -26,8 +27,10 @@ export default function Cashier() {
         {incoming.map((o) => (
           <div className="card" key={o.id}>
             <Head o={o} /><Lines o={o} />
-            <button className="green" style={{ width: '100%', marginTop: 8 }}
-              onClick={() => api.approve(o.id)}>✔ Approve → send to kitchen</button>
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <button className="ghost" onClick={() => setDetailFor(o)}>🔍 Details</button>
+              <button className="green" style={{ marginLeft: 'auto' }} onClick={() => api.approve(o.id)}>✔ Approve → kitchen</button>
+            </div>
           </div>
         ))}
         {incoming.length === 0 && <div className="empty">No new orders.</div>}
@@ -42,8 +45,9 @@ export default function Cashier() {
               <div className="row between"><b>{t.name}</b><span className="muted">{t.orders.length} order(s)</span></div>
               <div style={{ margin: '8px 0' }}>
                 {t.orders.map((o) => (
-                  <div key={o.id} className="row between" style={{ fontSize: 13 }}>
-                    <span className="muted">#{o.id} · {o.items.reduce((s, i) => s + i.qty, 0)} items</span>
+                  <div key={o.id} className="row between" style={{ fontSize: 13, cursor: 'pointer', padding: '2px 0' }}
+                    onClick={() => setDetailFor(o)} title="View & print this order">
+                    <span className="muted">🔍 #{o.id} · {o.items.reduce((s, i) => s + i.qty, 0)} items</span>
                     <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
                   </div>
                 ))}
@@ -59,6 +63,39 @@ export default function Cashier() {
       </div>
 
       {billFor && <BillModal code={billFor} onClose={() => setBillFor(null)} />}
+      {detailFor && <OrderDetail order={detailFor} onClose={() => setDetailFor(null)} />}
+    </div>
+  )
+}
+
+// A running order, in full, with a print button (prints an order slip).
+function OrderDetail({ order: o, onClose }) {
+  return (
+    <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
+      <div className="modal">
+        <div className="receipt">
+          <div className="r-h">
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Order #{o.id}</div>
+            <div style={{ fontSize: 12 }}>{o.tableName}{o.branchName ? ` · ${o.branchName}` : ''}</div>
+            <div style={{ fontSize: 12 }}>{new Date(o.createdAt).toLocaleString()}</div>
+          </div>
+          {o.items.map((i, n) => (
+            <div className="r-line" key={n}>
+              <span>{i.qty}× {i.name}{i.variantName ? ` (${i.variantName})` : ''}
+                {i.modifiers?.length ? ` · ${i.modifiers.join(', ')}` : ''}{i.note ? ` — ${i.note}` : ''}</span>
+              <span>{money(i.price * i.qty)}</span>
+            </div>
+          ))}
+          {o.customerNote && <div style={{ fontSize: 12, marginTop: 6 }}>📝 {o.customerNote}</div>}
+          <div className="r-tot r-line r-grand"><span>Total</span><span>{money(o.total)}</span></div>
+          <div className="r-foot">Status: {STATUS_LABEL[o.status] || o.status}{o.waiterName ? ` · Waiter: ${o.waiterName}` : ''}{o.etaMinutes ? ` · ETA ${o.etaMinutes} min` : ''}</div>
+        </div>
+        <div className="noprint row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
+          <button onClick={onClose}>Close</button>
+          <span className={'pill s-' + o.status} style={{ marginLeft: 'auto' }}>{STATUS_LABEL[o.status] || o.status}</span>
+          <button className="blue" onClick={() => window.print()}>🖨️ Print</button>
+        </div>
+      </div>
     </div>
   )
 }

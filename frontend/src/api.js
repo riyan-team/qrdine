@@ -106,6 +106,8 @@ export const api = {
   // FBR fiscal
   getFbrSettings: () => staffGet(`/admin/fbr`),
   setFbrSettings: (s) => staffPut(`/admin/fbr`, s),
+  getServiceSettings: () => staffGet(`/admin/service-settings`),
+  setServiceSettings: (s) => staffPut(`/admin/service-settings`, s),
   fbrSynced: () => staffGet(`/admin/fbr/invoices/synced`),
   fbrPending: () => staffGet(`/admin/fbr/invoices/pending`),
   fbrRetry: (id) => staffPost(`/admin/fbr/invoices/${id}/retry`),
@@ -164,6 +166,7 @@ export const platform = {
   createPlan: (p) => fetch('/api/platform/plans', { method: 'POST', headers: ph(), body: JSON.stringify(p) }).then(pj),
   updatePlan: (id, p) => fetch(`/api/platform/plans/${id}`, { method: 'PUT', headers: ph(), body: JSON.stringify(p) }).then(pj),
   deletePlan: (id) => fetch(`/api/platform/plans/${id}`, { method: 'DELETE', headers: platformAuth.header() }).then(pj),
+  deleteRestaurant: (id) => fetch(`/api/platform/restaurants/${id}`, { method: 'DELETE', headers: platformAuth.header() }).then(pj),
 }
 
 export const money = (n) => 'Rs ' + Number(n).toLocaleString('en-PK')
