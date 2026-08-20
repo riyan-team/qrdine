@@ -80,13 +80,14 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
-    // SQLite (dev) ships migrations; the cloud Postgres DB is built straight from
-    // the model with EnsureCreated (no Postgres-specific migrations to maintain).
+    // Cloud Postgres applies EF migrations, so every schema change deploys itself.
+    // Local dev (SQLite) is a throwaway DB built straight from the model — delete
+    // qrdine.db to reset — so dev never needs to maintain migrations.
     var dbProvider = app.Configuration["Database:Provider"] ?? "Sqlite";
     if (dbProvider.Equals("Postgres", StringComparison.OrdinalIgnoreCase))
-        await db.Database.EnsureCreatedAsync();
-    else
         await db.Database.MigrateAsync();
+    else
+        await db.Database.EnsureCreatedAsync();
 
     // Platform operator bootstrap. In production set PlatformAdmin__Username /
     // PlatformAdmin__Password as environment variables. In Development we fall back
