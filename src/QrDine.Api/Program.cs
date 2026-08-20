@@ -117,6 +117,7 @@ app.UseAuthorization();                              // enforce role policies on
 
 app.MapOnboarding();
 app.MapFiles();
+app.MapFeedback();
 app.MapPayments();
 app.MapPlatform();
 app.MapAuth();

@@ -111,6 +111,8 @@ export default function Menu() {
         </div>
       ))}
 
+      <FeedbackCard slug={slug} code={code} />
+
       {cartList.length > 0 && (
         <div className="cart">
           <div className="wrap" style={{ padding: 0 }}>
@@ -144,6 +146,53 @@ export default function Menu() {
       {customizing && (
         <Customizer item={customizing} onClose={() => setCustomizing(null)}
           onAdd={(line) => { addToCart(line); setCustomizing(null) }} />
+      )}
+    </div>
+  )
+}
+
+// ---- Rate your experience ----
+function FeedbackCard({ slug, code }) {
+  const [rating, setRating] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [comment, setComment] = useState('')
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    if (!rating) return
+    setBusy(true)
+    try { await api.submitFeedback(slug, { rating, comment: comment.trim(), tableCode: code }); setDone(true) }
+    catch { /* ignore — feedback is best-effort */ }
+    setBusy(false)
+  }
+
+  if (done) return (
+    <div className="card" style={{ marginTop: 12, textAlign: 'center' }}>
+      <div style={{ fontSize: 28 }}>🙏</div>
+      <b>Thanks for your feedback!</b>
+      <div className="muted" style={{ fontSize: 13 }}>We hope to see you again.</div>
+    </div>
+  )
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <b>Rate your experience</b>
+      <div className="row" style={{ gap: 4, margin: '8px 0', fontSize: 30, cursor: 'pointer', justifyContent: 'center' }}
+        onMouseLeave={() => setHover(0)}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <span key={n} onClick={() => setRating(n)} onMouseEnter={() => setHover(n)}
+            style={{ filter: (hover || rating) >= n ? 'none' : 'grayscale(1) opacity(0.4)' }}>⭐</span>
+        ))}
+      </div>
+      {rating > 0 && (
+        <>
+          <textarea placeholder="Tell us more (optional)" value={comment} maxLength={500}
+            onChange={(e) => setComment(e.target.value)} style={{ width: '100%', minHeight: 60, marginBottom: 8 }} />
+          <button className="primary" disabled={busy} onClick={submit} style={{ width: '100%' }}>
+            {busy ? 'Sending…' : 'Submit feedback'}
+          </button>
+        </>
       )}
     </div>
   )

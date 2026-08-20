@@ -43,6 +43,12 @@ export const api = {
       method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify(body),
     }).then(j)
   },
+  submitFeedback: (slug, body) => fetch(`/api/r/${slug}/feedback`, {
+    method: 'POST', headers: json(), body: JSON.stringify(body),
+  }).then(j),
+
+  // feedback (owner)
+  getFeedback: () => staffGet(`/admin/feedback`),
 
   // ---- staff (slug from session) ----
   getTables: () => staffGet(`/tables`),

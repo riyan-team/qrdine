@@ -47,6 +47,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Subscriptions.Plan> Plans => Set<Domain.Subscriptions.Plan>();
     public DbSet<Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments => Set<Domain.Subscriptions.SubscriptionPayment>();
     public DbSet<Domain.Files.StoredFile> StoredFiles => Set<Domain.Files.StoredFile>();
+    public DbSet<Domain.Feedback.Feedback> Feedbacks => Set<Domain.Feedback.Feedback>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -78,6 +79,14 @@ public class AppDbContext : DbContext, IAppDbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasMaxLength(40);
             e.Property(x => x.ContentType).HasMaxLength(60);
+        });
+
+        b.Entity<Domain.Feedback.Feedback>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Comment).HasMaxLength(500);
+            e.Property(x => x.TableCode).HasMaxLength(20);
+            e.HasIndex(x => new { x.RestaurantId, x.CreatedAt });
         });
 
         b.Entity<Domain.Subscriptions.SubscriptionPayment>(e =>

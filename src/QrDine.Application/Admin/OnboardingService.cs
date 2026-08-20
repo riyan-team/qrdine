@@ -32,7 +32,9 @@ public class OnboardingService
         if (await _db.Restaurants.AnyAsync(r => r.Slug == slug, ct))
             throw new DomainException($"The address '{slug}' is already taken — pick another.");
 
-        var restaurant = new Restaurant { Slug = slug, Name = req.RestaurantName.Trim(), Currency = "Rs" };
+        // Start every restaurant on a 14-day trial so the operator has a window to
+        // collect the setup fee + first month before deciding to lock.
+        var restaurant = new Restaurant { Slug = slug, Name = req.RestaurantName.Trim(), Currency = "Rs", PlanExpiresAt = DateTime.UtcNow.AddDays(14) };
         // Apply the chosen plan (defaults to the cheapest active plan if none picked).
         // Default to the cheapest active plan. Order on the client — SQLite can't
         // ORDER BY a decimal column.

@@ -22,8 +22,9 @@ export default function Dashboard() {
   const [from, setFrom] = useState(iso(new Date(Date.now() - 30 * 86400000)))
   const [to, setTo] = useState(iso(new Date()))
   const [dl, setDl] = useState(false)
+  const [fb, setFb] = useState(null)
   const load = (bid = branchId) => api.dashboard(7, bid || null).then(setD).catch((e) => setErr(e.message))
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); api.getFeedback().then(setFb).catch(() => {}) }, [])
   const download = async () => {
     setDl(true)
     try { await api.downloadInvoicesCsv(from, to, branchId || null) } catch (e) { ui.alert(e.message) }
@@ -132,7 +133,49 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {fb && fb.count > 0 && <FeedbackPanel fb={fb} />}
+
       <PrintReport d={d} greet={greet} name={name} />
+    </div>
+  )
+}
+
+// Customer feedback summary: average, star distribution, recent comments.
+function FeedbackPanel({ fb }) {
+  const maxBar = Math.max(1, ...fb.distribution)
+  return (
+    <div className="card noprint" style={{ marginTop: 16 }}>
+      <div className="row between"><b>Customer feedback</b>
+        <span className="muted" style={{ fontSize: 13 }}>{fb.count} rating(s)</span>
+      </div>
+      <div className="row" style={{ gap: 20, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="big" style={{ color: 'var(--accent)', fontSize: 34 }}>{fb.average.toFixed(1)}</div>
+          <div style={{ fontSize: 16 }}>{'⭐'.repeat(Math.round(fb.average))}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          {[5, 4, 3, 2, 1].map((star) => (
+            <div key={star} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 12 }}>
+              <span style={{ width: 24 }}>{star}★</span>
+              <div style={{ flex: 1, height: 7, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden' }}>
+                <div style={{ width: `${(fb.distribution[star - 1] / maxBar) * 100}%`, height: '100%', background: 'var(--accent)' }} />
+              </div>
+              <span className="muted" style={{ width: 22, textAlign: 'right' }}>{fb.distribution[star - 1]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {fb.recent.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="cat-title" style={{ fontSize: 13 }}>Recent comments</div>
+          {fb.recent.slice(0, 8).map((r) => (
+            <div key={r.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+              <div style={{ fontSize: 13 }}>{'⭐'.repeat(r.rating)} <span className="muted">· {r.tableCode || 'table'} · {new Date(r.createdAt).toLocaleDateString()}</span></div>
+              <div style={{ fontSize: 14 }}>{r.comment}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
