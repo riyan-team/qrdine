@@ -74,10 +74,11 @@ export default function Signup() {
                   <b style={{ fontSize: 17 }}>{p.name}</b>
                   {planId === p.id && <span className="pill p-flow">Selected</span>}
                 </div>
-                <div className="big" style={{ color: 'var(--accent)', margin: '6px 0' }}>
+                <div className="big" style={{ color: 'var(--accent)', margin: '6px 0 0' }}>
                   {p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}<span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>{p.pricePkr > 0 ? '/mo' : ''}</span>
                 </div>
-                <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{p.description}</div>
+                {p.setupFeePkr > 0 && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>+ {money(p.setupFeePkr)} one-time setup</div>}
+                <div className="muted" style={{ fontSize: 13, margin: '6px 0 8px' }}>{p.description}</div>
                 {FEATURES.map(([k, label]) => (
                   <div key={k} style={{ fontSize: 13, color: p[k] ? 'var(--ink)' : 'var(--faint)', padding: '1px 0' }}>
                     {p[k] ? '✓' : '·'} {label}
@@ -96,7 +97,7 @@ export default function Signup() {
       {/* Step 2 — restaurant details */}
       {step === 'details' && (
         <div className="card" style={{ maxWidth: 480, margin: '0 auto', textAlign: 'left' }}>
-          <div className="muted" style={{ fontSize: 13 }}>Plan: <b style={{ color: 'var(--accent)' }}>{plan?.name}</b> · {plan?.pricePkr > 0 ? money(plan.pricePkr) + '/mo' : 'Free'} <button className="ghost" onClick={() => setStep('plan')}>change</button></div>
+          <div className="muted" style={{ fontSize: 13 }}>Plan: <b style={{ color: 'var(--accent)' }}>{plan?.name}</b> · {plan?.pricePkr > 0 ? money(plan.pricePkr) + '/mo' : 'Free'}{plan?.setupFeePkr > 0 ? ` + ${money(plan.setupFeePkr)} setup` : ''} <button className="ghost" onClick={() => setStep('plan')}>change</button></div>
           <div style={{ height: 10 }} />
           <input placeholder="Restaurant name" value={f.restaurantName} onChange={(e) => onName(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
           <label className="muted" style={{ fontSize: 13 }}>Your address (used in your menu link)</label>

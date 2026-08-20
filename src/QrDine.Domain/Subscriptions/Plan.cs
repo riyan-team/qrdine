@@ -11,7 +11,8 @@ public class Plan : Entity
 {
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
-    public decimal PricePkr { get; set; }          // per month
+    public decimal PricePkr { get; set; }          // recurring, per month
+    public decimal SetupFeePkr { get; set; }        // one-time activation fee
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
 

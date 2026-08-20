@@ -20,6 +20,10 @@ public static class PlatformEndpoints
         g.MapGet("/restaurants", async (PlatformService svc) => Results.Ok(await svc.ListRestaurants()));
         g.MapPost("/restaurants/{id:int}/plan", async (int id, SetPlanRequest body, PlatformService svc) => { await svc.SetPlan(id, body.PlanId); return Results.NoContent(); });
         g.MapPost("/restaurants/{id:int}/status", async (int id, SetStatusRequest body, PlatformService svc) => { await svc.SetStatus(id, body.Status); return Results.NoContent(); });
+        // Subscription billing: record an offline payment (setup fee or N months) + history.
+        g.MapPost("/restaurants/{id:int}/payment", async (int id, RecordPaymentRequest body, System.Security.Claims.ClaimsPrincipal user, PlatformService svc)
+            => Results.Ok(await svc.RecordPayment(id, body, user.Identity?.Name ?? "operator")));
+        g.MapGet("/restaurants/{id:int}/payments", async (int id, PlatformService svc) => Results.Ok(await svc.ListPayments(id)));
         // SaaS gate: grant/revoke FBR fiscal integration for a restaurant.
         g.MapPost("/restaurants/{id:int}/fbr", async (int id, SetFbrRequest body, PlatformService svc) => { await svc.SetFbr(id, body.Enabled); return Results.NoContent(); });
 

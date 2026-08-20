@@ -45,6 +45,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<PlatformAdmin> PlatformAdmins => Set<PlatformAdmin>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Domain.Subscriptions.Plan> Plans => Set<Domain.Subscriptions.Plan>();
+    public DbSet<Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments => Set<Domain.Subscriptions.SubscriptionPayment>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -68,6 +69,16 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Name).HasMaxLength(60);
             e.Property(x => x.Description).HasMaxLength(200);
             e.Property(x => x.PricePkr).HasPrecision(10, 2);
+            e.Property(x => x.SetupFeePkr).HasPrecision(10, 2);
+        });
+
+        b.Entity<Domain.Subscriptions.SubscriptionPayment>(e =>
+        {
+            e.Property(x => x.AmountPkr).HasPrecision(12, 2);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.Property(x => x.RecordedBy).HasMaxLength(60);
+            e.HasIndex(x => x.RestaurantId);
         });
 
         b.Entity<RolePermission>(e =>

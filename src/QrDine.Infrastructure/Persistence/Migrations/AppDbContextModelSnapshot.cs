@@ -808,6 +808,9 @@ namespace QrDine.Infrastructure.Persistence.Migrations
                     b.Property<bool>("FeatureWaiter")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LastPaymentAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -836,6 +839,9 @@ namespace QrDine.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("ServiceChargePercent")
                         .HasPrecision(5, 2)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("SetupFeePaid")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Slug")
                         .IsRequired()
@@ -902,6 +908,10 @@ namespace QrDine.Infrastructure.Persistence.Migrations
                     b.Property<bool>("Reports")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal>("SetupFeePkr")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
@@ -911,6 +921,50 @@ namespace QrDine.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Plans");
+                });
+
+            modelBuilder.Entity("QrDine.Domain.Subscriptions.SubscriptionPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("AmountPkr")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Months")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("NewPaidThrough")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("PaidAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecordedBy")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RestaurantId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId");
+
+                    b.ToTable("SubscriptionPayments");
                 });
 
             modelBuilder.Entity("QrDine.Domain.Tables.DiningTable", b =>

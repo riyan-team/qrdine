@@ -44,7 +44,11 @@ public class Restaurant : Entity
     public string PlanName { get; set; } = "Trial";
     public RestaurantStatus Status { get; set; } = RestaurantStatus.Active;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? PlanExpiresAt { get; set; }
+    public DateTime? PlanExpiresAt { get; set; }      // paid-through date (monthly)
+
+    // ---- Subscription billing (operator records payments manually) ----
+    public bool SetupFeePaid { get; set; } = false;   // one-time activation fee settled
+    public DateTime? LastPaymentAt { get; set; }
 
     // Feature flags — derived from the plan.
     public bool FeatureOrdering { get; set; } = true;

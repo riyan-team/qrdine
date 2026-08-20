@@ -37,10 +37,10 @@ public static class DbSeeder
         if (!await db.Plans.AnyAsync())
         {
             db.Plans.AddRange(
-                new Domain.Subscriptions.Plan { Name = "QR Menu", Description = "Digital menu with table QR codes", PricePkr = 1500, SortOrder = 1, Reports = false, Inventory = false },
-                new Domain.Subscriptions.Plan { Name = "Ordering", Description = "Self-ordering + live tracking", PricePkr = 4000, SortOrder = 2, Ordering = true, Reports = true },
-                new Domain.Subscriptions.Plan { Name = "Operations", Description = "Kitchen display, waiter, ordering", PricePkr = 8000, SortOrder = 3, Ordering = true, Kitchen = true, Waiter = true, Reports = true, Inventory = true },
-                new Domain.Subscriptions.Plan { Name = "Full ERP", Description = "Everything: billing, tax, inventory, reports", PricePkr = 12000, SortOrder = 4, Ordering = true, Kitchen = true, Waiter = true, Billing = true, Inventory = true, Reports = true }
+                new Domain.Subscriptions.Plan { Name = "QR Menu", Description = "Digital menu with table QR codes", PricePkr = 1500, SetupFeePkr = 5000, SortOrder = 1, Reports = false, Inventory = false },
+                new Domain.Subscriptions.Plan { Name = "Ordering", Description = "Self-ordering + live tracking", PricePkr = 4000, SetupFeePkr = 10000, SortOrder = 2, Ordering = true, Reports = true },
+                new Domain.Subscriptions.Plan { Name = "Operations", Description = "Kitchen display, waiter, ordering", PricePkr = 8000, SetupFeePkr = 15000, SortOrder = 3, Ordering = true, Kitchen = true, Waiter = true, Reports = true, Inventory = true },
+                new Domain.Subscriptions.Plan { Name = "Full ERP", Description = "Everything: billing, tax, inventory, reports", PricePkr = 12000, SetupFeePkr = 25000, SortOrder = 4, Ordering = true, Kitchen = true, Waiter = true, Billing = true, Inventory = true, Reports = true }
             );
             await db.SaveChangesAsync();
         }

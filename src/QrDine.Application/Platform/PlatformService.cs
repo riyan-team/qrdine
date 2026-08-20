@@ -10,16 +10,22 @@ public record PlatformLoginRequest(string Username, string Password);
 public record SetPlanRequest(int PlanId);
 public record SetStatusRequest(string Status);
 
-public record PlanDto(int Id, string Name, string Description, decimal PricePkr, int SortOrder, bool IsActive,
+public record PlanDto(int Id, string Name, string Description, decimal PricePkr, decimal SetupFeePkr, int SortOrder, bool IsActive,
     bool Ordering, bool Kitchen, bool Waiter, bool Billing, bool Inventory, bool Reports);
-public record PlanInput(string Name, string Description, decimal PricePkr, int SortOrder, bool IsActive,
+public record PlanInput(string Name, string Description, decimal PricePkr, decimal SetupFeePkr, int SortOrder, bool IsActive,
     bool Ordering, bool Kitchen, bool Waiter, bool Billing, bool Inventory, bool Reports);
 
 public record SetFbrRequest(bool Enabled);
 
+// Operator records a payment collected offline. Kind = "Setup" | "Monthly".
+public record RecordPaymentRequest(string Kind, int Months, decimal AmountPkr, string? Note);
+public record SubscriptionPaymentDto(int Id, string Kind, int Months, decimal AmountPkr,
+    DateTime PaidAt, DateTime? NewPaidThrough, string Note, string RecordedBy);
+
 public record PlatformStatsDto(int Restaurants, int Active, int Suspended, decimal TotalSales, int TotalBills);
 public record PlatformRestaurantDto(int Id, string Slug, string Name, string Plan, string Status,
-    DateTime CreatedAt, int Staff, int Tables, decimal Sales, int Bills, bool FeatureFbr);
+    DateTime CreatedAt, int Staff, int Tables, decimal Sales, int Bills, bool FeatureFbr,
+    decimal MonthlyPkr, decimal SetupFeePkr, bool SetupFeePaid, DateTime? PaidThrough, DateTime? LastPaymentAt);
 
 /// <summary>
 /// The SaaS operator's control plane. It works ACROSS all tenants, so every query
@@ -59,6 +65,7 @@ public class PlatformService
     public async Task<IReadOnlyList<PlatformRestaurantDto>> ListRestaurants(CancellationToken ct = default)
     {
         var restaurants = await _db.Restaurants.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct);
+        var plans = (await _db.Plans.AsNoTracking().ToListAsync(ct)).ToDictionary(p => p.Id);
 
         var invAgg = (await _db.Invoices.IgnoreQueryFilters().AsNoTracking()
             .Select(i => new { i.RestaurantId, i.Total }).ToListAsync(ct))
@@ -76,10 +83,56 @@ public class PlatformService
         return restaurants.Select(r =>
         {
             var agg = invAgg.GetValueOrDefault(r.Id);
+            var plan = r.PlanId is int pid ? plans.GetValueOrDefault(pid) : null;
             return new PlatformRestaurantDto(r.Id, r.Slug, r.Name, r.PlanName, r.Status.ToString(),
                 r.CreatedAt, staffCounts.GetValueOrDefault(r.Id), tableCounts.GetValueOrDefault(r.Id),
-                agg.Sales, agg.Bills, r.FeatureFbr);
+                agg.Sales, agg.Bills, r.FeatureFbr,
+                plan?.PricePkr ?? 0, plan?.SetupFeePkr ?? 0, r.SetupFeePaid, r.PlanExpiresAt, r.LastPaymentAt);
         }).ToList();
+    }
+
+    /// <summary>Record an offline subscription payment. Setup marks the one-time fee
+    /// paid; Monthly extends the paid-through date by N months and reactivates.</summary>
+    public async Task<SubscriptionPaymentDto> RecordPayment(int restaurantId, RecordPaymentRequest req, string operatorName, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstOrDefaultAsync(x => x.Id == restaurantId, ct) ?? throw new DomainException("Restaurant not found.");
+        if (!Enum.TryParse<Domain.Subscriptions.SubscriptionPaymentKind>(req.Kind, true, out var kind))
+            throw new DomainException($"Unknown payment kind '{req.Kind}'.");
+
+        var now = DateTime.UtcNow;
+        int months = 0;
+        if (kind == Domain.Subscriptions.SubscriptionPaymentKind.Setup)
+        {
+            r.SetupFeePaid = true;
+        }
+        else
+        {
+            months = req.Months <= 0 ? 1 : req.Months;
+            var from = r.PlanExpiresAt is DateTime cur && cur > now ? cur : now;
+            r.PlanExpiresAt = from.AddMonths(months);
+        }
+        r.LastPaymentAt = now;
+        r.Status = RestaurantStatus.Active;   // recording a payment reactivates access
+
+        var payment = new Domain.Subscriptions.SubscriptionPayment
+        {
+            RestaurantId = r.Id, Kind = kind, Months = months, AmountPkr = req.AmountPkr,
+            PaidAt = now, NewPaidThrough = r.PlanExpiresAt, Note = (req.Note ?? "").Trim(), RecordedBy = operatorName,
+        };
+        _db.SubscriptionPayments.Add(payment);
+        await _db.SaveChangesAsync(ct);
+        return new SubscriptionPaymentDto(payment.Id, payment.Kind.ToString(), payment.Months,
+            payment.AmountPkr, payment.PaidAt, payment.NewPaidThrough, payment.Note, payment.RecordedBy);
+    }
+
+    public async Task<IReadOnlyList<SubscriptionPaymentDto>> ListPayments(int restaurantId, CancellationToken ct = default)
+    {
+        return await _db.SubscriptionPayments.AsNoTracking()
+            .Where(p => p.RestaurantId == restaurantId)
+            .OrderByDescending(p => p.PaidAt)
+            .Select(p => new SubscriptionPaymentDto(p.Id, p.Kind.ToString(), p.Months, p.AmountPkr,
+                p.PaidAt, p.NewPaidThrough, p.Note, p.RecordedBy))
+            .ToListAsync(ct);
     }
 
     /// <summary>SaaS gate: grant or revoke FBR integration for a restaurant.</summary>
@@ -105,7 +158,7 @@ public class PlatformService
         var q = _db.Plans.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(p => p.IsActive);
         return await q.OrderBy(p => p.SortOrder).Select(p => new PlanDto(
-            p.Id, p.Name, p.Description, p.PricePkr, p.SortOrder, p.IsActive,
+            p.Id, p.Name, p.Description, p.PricePkr, p.SetupFeePkr, p.SortOrder, p.IsActive,
             p.Ordering, p.Kitchen, p.Waiter, p.Billing, p.Inventory, p.Reports)).ToListAsync(ct);
     }
 
@@ -137,6 +190,7 @@ public class PlatformService
     private static void MapPlan(Domain.Subscriptions.Plan p, PlanInput i)
     {
         p.Name = i.Name.Trim(); p.Description = i.Description?.Trim() ?? ""; p.PricePkr = i.PricePkr;
+        p.SetupFeePkr = i.SetupFeePkr;
         p.SortOrder = i.SortOrder; p.IsActive = i.IsActive;
         p.Ordering = i.Ordering; p.Kitchen = i.Kitchen; p.Waiter = i.Waiter;
         p.Billing = i.Billing; p.Inventory = i.Inventory; p.Reports = i.Reports;

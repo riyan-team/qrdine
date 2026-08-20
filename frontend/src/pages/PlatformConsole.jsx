@@ -12,6 +12,7 @@ export default function PlatformConsole() {
   const [rows, setRows] = useState([])
   const [plans, setPlans] = useState([])
   const [editPlan, setEditPlan] = useState(null)   // plan object or 'new'
+  const [payFor, setPayFor] = useState(null)       // restaurant being paid
   const [err, setErr] = useState('')
 
   const load = () => {
@@ -24,7 +25,7 @@ export default function PlatformConsole() {
   const changePlan = async (r, planId) => { await platform.setPlan(r.id, Number(planId)); load() }
   const toggle = async (r) => {
     const next = r.status === 'Active' ? 'Suspended' : 'Active'
-    if (next === 'Suspended' && !await ui.confirm({ title: 'Suspend restaurant', message: `Suspend ${r.name}? Their app will stop working.`, confirmText: 'Suspend', danger: true })) return
+    if (next === 'Suspended' && !await ui.confirm({ title: 'Lock restaurant', message: `Lock ${r.name}? Their app will stop working until unlocked.`, confirmText: 'Lock', danger: true })) return
     await platform.setStatus(r.id, next); load()
   }
   const toggleFbr = async (r) => {
@@ -67,7 +68,8 @@ export default function PlatformConsole() {
                 <b>{p.name}</b>
                 {!p.isActive && <span className="pill s-Served">hidden</span>}
               </div>
-              <div className="big" style={{ color: 'var(--accent)', margin: '4px 0' }}>{p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}</div>
+              <div className="big" style={{ color: 'var(--accent)', margin: '4px 0' }}>{p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}<span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{p.pricePkr > 0 ? '/mo' : ''}</span></div>
+              {p.setupFeePkr > 0 && <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>+ {money(p.setupFeePkr)} one-time setup</div>}
               <div style={{ fontSize: 12 }}>{FEATURES.filter(([k]) => p[k]).map(([, l]) => l).join(' · ') || 'Menu only'}</div>
               <div className="row" style={{ gap: 6, marginTop: 10 }}>
                 <button className="ghost" onClick={() => setEditPlan(p)}>Edit</button>
@@ -81,7 +83,7 @@ export default function PlatformConsole() {
         <div className="cat-title">Restaurants</div>
         <div className="card" style={{ overflowX: 'auto' }}>
           <table className="tbl">
-            <thead><tr><th>Restaurant</th><th>Plan</th><th>Staff</th><th>Tables</th><th>Sales</th><th>FBR</th><th>Status</th></tr></thead>
+            <thead><tr><th>Restaurant</th><th>Plan</th><th>Billing</th><th>Subscription</th><th>Sales</th><th>FBR</th><th>Access</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>
@@ -92,8 +94,16 @@ export default function PlatformConsole() {
                       {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </td>
-                  <td>{r.staff}</td>
-                  <td>{r.tables}</td>
+                  <td style={{ fontSize: 13 }}>
+                    <div>{money(r.monthlyPkr)}<span className="muted">/mo</span></div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {r.setupFeePaid ? '✓ setup paid' : `setup ${money(r.setupFeePkr)} due`}
+                    </div>
+                  </td>
+                  <td>
+                    {subBadge(r)}
+                    <button className="ghost" style={{ display: 'block', marginTop: 4, padding: '3px 8px', fontSize: 12 }} onClick={() => setPayFor(r)}>💳 Record payment</button>
+                  </td>
                   <td>{money(r.sales)} <span className="muted" style={{ fontSize: 12 }}>· {r.bills}</span></td>
                   <td>
                     <button className={r.featureFbr ? 'primary' : 'ghost'} onClick={() => toggleFbr(r)} title="Grant/revoke FBR fiscal integration">
@@ -101,8 +111,8 @@ export default function PlatformConsole() {
                     </button>
                   </td>
                   <td>
-                    <button className={r.status === 'Active' ? 'ghost' : 'primary'} onClick={() => toggle(r)}>
-                      {r.status === 'Active' ? '⛔ Suspend' : '▶ Activate'}
+                    <button className={r.status === 'Active' ? 'ghost' : 'green'} onClick={() => toggle(r)}>
+                      {r.status === 'Active' ? '🔒 Lock' : '▶ Unlock'}
                     </button>
                   </td>
                 </tr>
@@ -114,19 +124,20 @@ export default function PlatformConsole() {
       </div>
 
       {editPlan && <PlanEditor plan={editPlan === 'new' ? null : editPlan} onClose={() => setEditPlan(null)} onSaved={() => { setEditPlan(null); load() }} />}
+      {payFor && <PaymentModal r={payFor} onClose={() => setPayFor(null)} onSaved={() => { setPayFor(null); load() }} />}
     </div>
   )
 }
 
 function PlanEditor({ plan, onClose, onSaved }) {
-  const [f, setF] = useState(() => plan || { name: '', description: '', pricePkr: 0, sortOrder: 99, isActive: true, ordering: false, kitchen: false, waiter: false, billing: false, inventory: false, reports: false })
+  const [f, setF] = useState(() => plan || { name: '', description: '', pricePkr: 0, setupFeePkr: 0, sortOrder: 99, isActive: true, ordering: false, kitchen: false, waiter: false, billing: false, inventory: false, reports: false })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }))
 
   const save = async () => {
     setBusy(true); setErr('')
-    const payload = { ...f, pricePkr: Number(f.pricePkr), sortOrder: Number(f.sortOrder) }
+    const payload = { ...f, pricePkr: Number(f.pricePkr), setupFeePkr: Number(f.setupFeePkr) || 0, sortOrder: Number(f.sortOrder) }
     try { if (plan) await platform.updatePlan(plan.id, payload); else await platform.createPlan(payload); onSaved() }
     catch (e) { setErr(e.message) }
     setBusy(false)
@@ -139,8 +150,9 @@ function PlanEditor({ plan, onClose, onSaved }) {
         <input placeholder="Plan name" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ width: '100%', margin: '10px 0' }} />
         <input placeholder="Description" value={f.description} onChange={(e) => set('description', e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
         <div className="row" style={{ gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }}>Price (Rs/mo)</label><input type="number" value={f.pricePkr} onChange={(e) => set('pricePkr', e.target.value)} style={{ width: '100%' }} /></div>
-          <div style={{ width: 90 }}><label className="muted" style={{ fontSize: 12 }}>Order</label><input type="number" value={f.sortOrder} onChange={(e) => set('sortOrder', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }}>Monthly (Rs/mo)</label><input type="number" value={f.pricePkr} onChange={(e) => set('pricePkr', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }}>Setup fee (one-time)</label><input type="number" value={f.setupFeePkr} onChange={(e) => set('setupFeePkr', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ width: 80 }}><label className="muted" style={{ fontSize: 12 }}>Order</label><input type="number" value={f.sortOrder} onChange={(e) => set('sortOrder', e.target.value)} style={{ width: '100%' }} /></div>
         </div>
         <div className="cat-title" style={{ fontSize: 13 }}>Included features</div>
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -158,6 +170,92 @@ function PlanEditor({ plan, onClose, onSaved }) {
           <button onClick={onClose}>Cancel</button>
           <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !f.name.trim()} onClick={save}>Save plan</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Subscription state badge derived from the paid-through date.
+function subBadge(r) {
+  if (!r.paidThrough) return <span className="pill s-Cancelled">Unpaid</span>
+  const d = Math.ceil((new Date(r.paidThrough) - Date.now()) / 86400000)
+  const till = new Date(r.paidThrough).toLocaleDateString()
+  if (d < 0) return <span className="pill s-Cancelled" title={`Expired ${till}`}>Overdue {-d}d</span>
+  if (d <= 7) return <span className="pill s-Placed" title={`Paid till ${till}`}>Due in {d}d</span>
+  return <span className="pill s-Served" title={`Paid till ${till}`}>Paid · {till}</span>
+}
+
+// Operator records an offline subscription payment (setup fee or N months).
+function PaymentModal({ r, onClose, onSaved }) {
+  const [kind, setKind] = useState(r.setupFeePaid ? 'Monthly' : 'Setup')
+  const [months, setMonths] = useState(1)
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [hist, setHist] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => { platform.payments(r.id).then(setHist).catch(() => {}) }, [r.id])
+  // Suggest the amount from the plan when the operator hasn't typed one.
+  const suggested = kind === 'Setup' ? r.setupFeePkr : r.monthlyPkr * (Number(months) || 1)
+  const amt = amount === '' ? suggested : Number(amount)
+
+  const save = async () => {
+    setBusy(true); setErr('')
+    try {
+      await platform.recordPayment(r.id, { kind, months: kind === 'Monthly' ? Number(months) || 1 : 0, amountPkr: amt, note })
+      onSaved()
+    } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
+      <div className="modal">
+        <div className="row between"><div className="big">Record payment — {r.name}</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>
+          {subBadge(r)} · Plan {r.plan} · {money(r.monthlyPkr)}/mo · setup {r.setupFeePaid ? 'paid' : money(r.setupFeePkr)}
+        </div>
+
+        <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <select value={kind} onChange={(e) => { setKind(e.target.value); setAmount('') }}>
+            <option value="Setup" disabled={r.setupFeePaid}>One-time setup fee{r.setupFeePaid ? ' (paid)' : ''}</option>
+            <option value="Monthly">Monthly subscription</option>
+          </select>
+          {kind === 'Monthly' && (
+            <label className="row" style={{ gap: 6 }}>
+              <span className="muted" style={{ fontSize: 13 }}>Months</span>
+              <input type="number" min="1" value={months} onChange={(e) => { setMonths(e.target.value); setAmount('') }} style={{ width: 70 }} />
+            </label>
+          )}
+        </div>
+        <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <label className="row" style={{ gap: 6 }}>
+            <span className="muted" style={{ fontSize: 13 }}>Amount Rs</span>
+            <input type="number" value={amt} onChange={(e) => setAmount(e.target.value)} style={{ width: 120 }} />
+          </label>
+          <input placeholder="Note (bank ref, JazzCash id…)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        </div>
+        {kind === 'Monthly' && <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Extends the paid-through date by {Number(months) || 1} month(s) and unlocks the restaurant.</div>}
+        {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
+        <div className="row" style={{ gap: 8 }}>
+          <button onClick={onClose}>Cancel</button>
+          <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || amt <= 0} onClick={save}>{busy ? 'Saving…' : `Record ${money(amt)}`}</button>
+        </div>
+
+        {hist.length > 0 && (
+          <>
+            <div className="cat-title" style={{ fontSize: 13, marginTop: 14 }}>Payment history</div>
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              {hist.map((p) => (
+                <div key={p.id} className="row between" style={{ fontSize: 13, padding: '5px 0', borderBottom: '1px solid var(--line)' }}>
+                  <span>{new Date(p.paidAt).toLocaleDateString()} · {p.kind}{p.months ? ` ×${p.months}` : ''}{p.note ? ` · ${p.note}` : ''}</span>
+                  <b>{money(p.amountPkr)}</b>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
