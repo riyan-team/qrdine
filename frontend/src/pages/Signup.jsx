@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { onboard, getPlans, money, checkout } from '../api'
 import { auth } from '../auth'
+import DineInLogo from '../DineInLogo.jsx'
 
 // Redirect the browser to JazzCash's hosted checkout by POSTing the signed fields.
 function submitToGateway(pay) {
@@ -55,7 +56,10 @@ export default function Signup() {
 
   return (
     <div className="wrap" style={{ maxWidth: 900 }}>
-      <div className="h" style={{ marginTop: 20, textAlign: 'center' }}>Start your restaurant on QrDine</div>
+      <div className="center" style={{ marginTop: 24, color: 'var(--accent)' }}>
+        <DineInLogo style={{ width: 180, height: 'auto' }} />
+      </div>
+      <div className="h" style={{ marginTop: 12, textAlign: 'center' }}>Start your restaurant on QrDine</div>
 
       {/* Step 1 — choose a plan (dynamic banners) */}
       {step === 'plan' && (

@@ -54,11 +54,13 @@ function Nav() {
 export default function App() {
   const loc = useLocation()
   const isPlatform = loc.pathname.startsWith('/platform')
+  // Auth + public menu screens carry their own branding — no staff topbar.
+  const isBare = ['/login', '/signup'].includes(loc.pathname)
   return (
     <>
-      {!isPlatform && <Nav />}
+      {!isPlatform && !isBare && <Nav />}
       <Routes>
-        <Route path="/" element={<Navigate to="/owner" />} />
+        <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/owner" element={<RequireStaff><Owner /></RequireStaff>} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

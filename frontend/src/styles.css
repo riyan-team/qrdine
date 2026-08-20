@@ -87,6 +87,29 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .auth-page { min-height: calc(100vh - 64px); display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 28px 16px; }
 .auth-card { width: 100%; max-width: 440px; margin: 0 auto; }
+
+/* Split auth screen — branded Dine In panel beside the sign-in form. */
+.auth-split { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; }
+.auth-side {
+  background: linear-gradient(150deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #fff; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 20px; padding: 40px; text-align: center;
+}
+.auth-logo { width: min(320px, 70%); height: auto; }
+.auth-side-tag { font-size: 16px; line-height: 1.5; max-width: 320px; opacity: .92; }
+.auth-main { display: flex; align-items: center; justify-content: center; padding: 32px 20px; }
+.auth-main .auth-card { max-width: 380px; }
+
+/* thin "or" separator between the form and the sign-up link */
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--faint); font-size: 13px; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+@media (max-width: 760px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-side { padding: 34px 24px; gap: 14px; }
+  .auth-logo { width: 200px; }
+  .auth-side-tag { font-size: 14px; }
+}
 .auth-wide { width: 100%; max-width: 960px; margin: 0 auto; text-align: center; }
 .grid { display: grid; gap: 16px; }
 .cols { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
