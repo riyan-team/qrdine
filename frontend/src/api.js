@@ -25,6 +25,14 @@ const staffPut = (path, body) => fetch(`/api/r/${S()}${path}`, {
 const staffDelete = (path) => fetch(`/api/r/${S()}${path}`, { method: 'DELETE', headers: staffAuth() }).then(j)
 const staffGet = (path) => fetch(`/api/r/${S()}${path}`, { headers: staffAuth() }).then(j)
 
+// Public: resolve a typed restaurant name or address to its slug (login helper).
+export const lookupRestaurant = (q) =>
+  fetch(`/api/restaurants/lookup?q=${encodeURIComponent(q)}`).then(async (res) => {
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error('Lookup failed')
+    return res.json()   // { slug, name }
+  })
+
 export const api = {
   // ---- guest (slug from the QR URL) ----
   getMenu: (slug) => fetch(`/api/r/${slug}`).then(j),

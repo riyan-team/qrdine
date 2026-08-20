@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { auth } from '../auth'
+import { lookupRestaurant } from '../api'
 import DineInLogo from '../DineInLogo.jsx'
 
 const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', Manager: '/admin/dashboard', Owner: '/admin/dashboard' }
@@ -8,7 +9,7 @@ const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', 
 export default function Login() {
   const nav = useNavigate()
   const stored = auth.getStaff()?.slug
-  const [slug, setSlug] = useState(stored && stored !== 'desidhaba' ? stored : '')
+  const [place, setPlace] = useState(stored && stored !== 'desidhaba' ? stored : '')
   const [username, setU] = useState('')
   const [password, setP] = useState('')
   const [err, setErr] = useState('')
@@ -18,7 +19,10 @@ export default function Login() {
     e.preventDefault()
     setErr(''); setBusy(true)
     try {
-      const session = await auth.login(slug.trim().toLowerCase(), username.trim(), password)
+      // Resolve the typed restaurant name/address to its slug, and confirm it exists.
+      const found = await lookupRestaurant(place.trim())
+      if (!found) { setErr("We couldn't find a restaurant with that name or address."); setBusy(false); return }
+      const session = await auth.login(found.slug, username.trim(), password)
       nav(HOME_FOR[session.role] || '/cashier')
     } catch (e) { setErr(e.message) }
     setBusy(false)
@@ -38,14 +42,14 @@ export default function Login() {
           <div className="h" style={{ marginTop: 0 }}>Welcome back</div>
           <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Sign in to your restaurant.</p>
           <form onSubmit={doLogin}>
-            <label className="muted" style={{ fontSize: 13 }}>Restaurant address</label>
-            <input value={slug} onChange={(e) => setSlug(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} placeholder="your restaurant address" />
+            <label className="muted" style={{ fontSize: 13 }}>Restaurant name or address</label>
+            <input value={place} onChange={(e) => setPlace(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} placeholder="e.g. Desi Dhaba" />
             <label className="muted" style={{ fontSize: 13 }}>Username</label>
             <input value={username} onChange={(e) => setU(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} />
             <label className="muted" style={{ fontSize: 13 }}>Password</label>
             <input type="password" value={password} onChange={(e) => setP(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} />
             {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
-            <button className="primary" disabled={busy || !slug.trim() || !username.trim() || !password} style={{ width: '100%' }}>
+            <button className="primary" disabled={busy || !place.trim() || !username.trim() || !password} style={{ width: '100%' }}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>

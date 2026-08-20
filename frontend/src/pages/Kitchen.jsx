@@ -10,7 +10,7 @@ export default function Kitchen() {
   const cooking = orders.filter((o) => o.status === 'Cooking')
 
   return (
-    <div className="wrap ops">
+    <div className="wrap ops ops-center">
       <div className="h">Kitchen display</div>
       <p className="muted">Approved orders appear here. Set how many minutes it will take — the customer sees a live countdown.</p>
 

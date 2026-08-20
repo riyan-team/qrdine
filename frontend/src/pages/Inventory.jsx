@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { ui } from '../ui.jsx'
 
 // Owner/manager inventory: stock levels, recipes (what each dish consumes), and
 // the movement log. Stock auto-deducts when orders are approved.
@@ -24,10 +25,10 @@ export default function Inventory() {
       setNs({ name: '', unit: 'kg', quantity: '', lowThreshold: '' }); load()
     } catch (e) { setErr(e.message) }
   }
-  const restock = async (s) => { const q = window.prompt(`Add stock to ${s.name} (${s.unit}):`); if (q && Number(q) > 0) { await api.restock(s.id, Number(q), 'Manual restock'); load() } }
-  const adjust = async (s) => { const q = window.prompt(`Set ${s.name} count (${s.unit}):`, s.quantity); if (q != null && Number(q) >= 0) { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } }
-  const editThreshold = async (s) => { const q = window.prompt(`Low-stock alert for ${s.name} at (${s.unit}):`, s.lowThreshold); if (q != null) { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) || 0 }); load() } }
-  const del = async (s) => { if (window.confirm(`Delete ${s.name}?`)) { await api.deleteStock(s.id); load() } }
+  const restock = async (s) => { const q = await ui.prompt({ title: `Add stock — ${s.name}`, placeholder: s.unit, confirmText: 'Add', required: true }); if (q && Number(q) > 0) { await api.restock(s.id, Number(q), 'Manual restock'); load() } }
+  const adjust = async (s) => { const q = await ui.prompt({ title: `Set count — ${s.name}`, defaultValue: String(s.quantity), placeholder: s.unit, confirmText: 'Set' }); if (q != null && Number(q) >= 0) { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } }
+  const editThreshold = async (s) => { const q = await ui.prompt({ title: `Low-stock alert — ${s.name}`, defaultValue: String(s.lowThreshold), placeholder: s.unit, confirmText: 'Save' }); if (q != null) { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) || 0 }); load() } }
+  const del = async (s) => { if (await ui.confirm({ title: 'Delete stock item', message: `Delete ${s.name}?`, confirmText: 'Delete', danger: true })) { await api.deleteStock(s.id); load() } }
 
   const lowCount = stock.filter((s) => s.isLow).length
 
@@ -120,7 +121,7 @@ function RecipeEditor({ item, stock, onClose }) {
   const save = async () => {
     setBusy(true)
     try { await api.setRecipe(item.id, lines.filter((l) => l.stockItemId && Number(l.qtyPerServing) > 0).map((l) => ({ stockItemId: Number(l.stockItemId), qtyPerServing: Number(l.qtyPerServing) }))); onClose() }
-    catch (e) { alert(e.message) }
+    catch (e) { ui.alert(e.message) }
     setBusy(false)
   }
 

@@ -56,6 +56,8 @@ button.primary:hover { background: var(--accent-strong); box-shadow: 0 6px 16px 
 button.green { background: var(--accent2); color: #fff; border-color: transparent; }
 button.green:hover { background: #147a4c; }
 button.blue { background: var(--blue); color: #fff; border-color: transparent; }
+button.red { background: var(--red); color: #fff; border-color: transparent; }
+button.red:hover { background: #b32d3f; }
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 8px 10px; }
 button.ghost:hover { background: var(--surface2); color: var(--ink); box-shadow: none; }
 button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
@@ -103,6 +105,17 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 /* thin "or" separator between the form and the sign-up link */
 .auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--faint); font-size: 13px; }
 .auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* prefixed address field (sign-up): "<origin>/r/[____]" reads as one input */
+.addr-field { display: flex; align-items: stretch; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.addr-field .addr-prefix { display: flex; align-items: center; padding: 0 8px; background: var(--surface2); color: var(--muted); font-size: 13px; white-space: nowrap; border-right: 1px solid var(--line); }
+.addr-field input { flex: 1; min-width: 0; border: none; border-radius: 0; background: transparent; }
+.addr-field input:focus { box-shadow: none; outline: none; }
+
+/* Operational screens (Kitchen, Waiter): centered column + centered card grid */
+.wrap.ops.ops-center { max-width: 1100px; margin: 0 auto; text-align: center; }
+.ops-center .grid.cols { grid-template-columns: repeat(auto-fit, minmax(280px, 340px)); justify-content: center; }
+.ops-center .card { text-align: center; }
 
 @media (max-width: 760px) {
   .auth-split { grid-template-columns: 1fr; }

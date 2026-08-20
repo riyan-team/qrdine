@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, money, STATUS_LABEL } from '../api'
 import { useHub } from '../useHub'
+import { ui } from '../ui.jsx'
 
 export default function Menu() {
   const { slug, code } = useParams()
@@ -61,7 +62,7 @@ export default function Menu() {
         note: note || null,
       })
       setCart({}); setNote('')
-    } catch (e) { alert('Could not place order: ' + e.message) }
+    } catch (e) { ui.alert('Could not place order: ' + e.message) }
     setPlacing(false)
   }
 

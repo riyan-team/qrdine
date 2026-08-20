@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, money } from '../api'
 import { auth } from '../auth'
+import { ui } from '../ui.jsx'
 
 const ACTIONS = [
   { to: '/admin/menu', icon: '🍽️', name: 'Menu', sub: 'Items, prices, photos' },
@@ -25,7 +26,7 @@ export default function Dashboard() {
   useEffect(() => { load() }, [])
   const download = async () => {
     setDl(true)
-    try { await api.downloadInvoicesCsv(from, to, branchId || null) } catch (e) { alert(e.message) }
+    try { await api.downloadInvoicesCsv(from, to, branchId || null) } catch (e) { ui.alert(e.message) }
     setDl(false)
   }
 

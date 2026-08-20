@@ -11,7 +11,7 @@ export default function Waiter() {
   const mine = orders.filter((o) => o.waiterName === me && o.status !== 'Ready')
 
   return (
-    <div className="wrap ops">
+    <div className="wrap ops ops-center">
       <div className="h">Waiter</div>
       <div className="row" style={{ marginBottom: 10 }}>
         <span className="muted">You are:</span>

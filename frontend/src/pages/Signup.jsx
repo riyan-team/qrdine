@@ -22,6 +22,7 @@ const FEATURES = [
 // Public sign-up: pick a plan, (mock) pay, create the restaurant, land in the dashboard.
 export default function Signup() {
   const nav = useNavigate()
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const [step, setStep] = useState('plan')      // plan → details → pay
   const [plans, setPlans] = useState([])
   const [planId, setPlanId] = useState(null)
@@ -98,9 +99,14 @@ export default function Signup() {
           <div className="muted" style={{ fontSize: 13 }}>Plan: <b style={{ color: 'var(--accent)' }}>{plan?.name}</b> · {plan?.pricePkr > 0 ? money(plan.pricePkr) + '/mo' : 'Free'} <button className="ghost" onClick={() => setStep('plan')}>change</button></div>
           <div style={{ height: 10 }} />
           <input placeholder="Restaurant name" value={f.restaurantName} onChange={(e) => onName(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
-          <div className="row" style={{ marginBottom: 10 }}>
-            <span className="muted" style={{ fontSize: 13 }}>/r/</span>
-            <input placeholder="address" value={f.slug} onChange={(e) => set('slug', e.target.value.toLowerCase())} style={{ flex: 1 }} />
+          <label className="muted" style={{ fontSize: 13 }}>Your address (used in your menu link)</label>
+          <div className="addr-field" style={{ margin: '4px 0 6px' }}>
+            <span className="addr-prefix">{origin}/r/</span>
+            <input placeholder="address" value={f.slug}
+              onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, ''))} />
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+            Customers scan a QR that opens <b>{origin}/r/{f.slug || 'address'}/t/T1</b>
           </div>
           <input placeholder="Your name" value={f.ownerDisplayName} onChange={(e) => set('ownerDisplayName', e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
           <div className="row" style={{ gap: 10 }}>

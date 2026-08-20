@@ -13,6 +13,7 @@ import Inventory from './pages/Inventory.jsx'
 import FbrInvoices from './pages/FbrInvoices.jsx'
 import PlatformLogin from './pages/PlatformLogin.jsx'
 import PlatformConsole from './pages/PlatformConsole.jsx'
+import { DialogHost } from './ui.jsx'
 import { auth } from './auth'
 
 // Guards a staff-only route: no token → bounce to /login, remembering where we were.
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/kitchen" element={<RequireStaff><Kitchen /></RequireStaff>} />
         <Route path="/waiter" element={<RequireStaff><Waiter /></RequireStaff>} />
       </Routes>
+      <DialogHost />
     </>
   )
 }

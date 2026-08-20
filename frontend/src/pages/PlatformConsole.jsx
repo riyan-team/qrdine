@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { platform, money } from '../api'
 import { platformAuth } from '../auth'
+import { ui } from '../ui.jsx'
 
 const FEATURES = [['ordering', 'Order'], ['kitchen', 'Kitchen'], ['waiter', 'Waiter'], ['billing', 'Billing'], ['inventory', 'Inventory'], ['reports', 'Reports']]
 
@@ -23,14 +24,14 @@ export default function PlatformConsole() {
   const changePlan = async (r, planId) => { await platform.setPlan(r.id, Number(planId)); load() }
   const toggle = async (r) => {
     const next = r.status === 'Active' ? 'Suspended' : 'Active'
-    if (next === 'Suspended' && !window.confirm(`Suspend ${r.name}? Their app will stop working.`)) return
+    if (next === 'Suspended' && !await ui.confirm({ title: 'Suspend restaurant', message: `Suspend ${r.name}? Their app will stop working.`, confirmText: 'Suspend', danger: true })) return
     await platform.setStatus(r.id, next); load()
   }
   const toggleFbr = async (r) => {
-    if (r.featureFbr && !window.confirm(`Turn OFF FBR for ${r.name}? Their invoice sync will stop.`)) return
+    if (r.featureFbr && !await ui.confirm({ title: 'Turn off FBR', message: `Turn OFF FBR for ${r.name}? Their invoice sync will stop.`, confirmText: 'Turn off', danger: true })) return
     await platform.setFbr(r.id, !r.featureFbr); load()
   }
-  const delPlan = async (p) => { if (window.confirm(`Delete plan "${p.name}"?`)) { try { await platform.deletePlan(p.id); load() } catch (e) { alert(e.message) } } }
+  const delPlan = async (p) => { if (await ui.confirm({ title: 'Delete plan', message: `Delete plan "${p.name}"?`, confirmText: 'Delete', danger: true })) { try { await platform.deletePlan(p.id); load() } catch (e) { ui.alert(e.message) } } }
   const logout = () => { platformAuth.clear(); nav('/platform/login') }
   const admin = platformAuth.get()
 

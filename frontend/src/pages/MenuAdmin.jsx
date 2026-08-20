@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, money } from '../api'
+import { ui } from '../ui.jsx'
 
 // Owner/manager menu management: categories + items, with variants and modifiers.
 export default function MenuAdmin() {
@@ -13,21 +14,23 @@ export default function MenuAdmin() {
   const cats = data?.menu ?? []
 
   const addCategory = async () => {
-    const name = window.prompt('New category name:')
+    const name = await ui.prompt({ title: 'New category', placeholder: 'e.g. Starters', confirmText: 'Add', required: true })
     if (!name) return
-    await api.addCategory(name.trim(), cats.length + 1); load()
+    await api.addCategory(name, cats.length + 1); load()
   }
   const renameCategory = async (c) => {
-    const name = window.prompt('Rename category:', c.name)
+    const name = await ui.prompt({ title: 'Rename category', defaultValue: c.name, confirmText: 'Rename', required: true })
     if (!name || name === c.name) return
-    await api.updateCategory(c.id, name.trim(), cats.indexOf(c) + 1); load()
+    await api.updateCategory(c.id, name, cats.indexOf(c) + 1); load()
   }
   const deleteCategory = async (c) => {
-    if (!window.confirm(`Delete category "${c.name}"?`)) return
-    try { await api.deleteCategory(c.id); load() } catch (e) { alert(e.message) }
+    if (!await ui.confirm({ title: 'Delete category', message: `Delete category "${c.name}"?`, confirmText: 'Delete', danger: true })) return
+    try { await api.deleteCategory(c.id); load() } catch (e) { ui.alert(e.message) }
   }
   const toggle = async (it) => { await api.setAvailability(it.id, !it.available); load() }
-  const removeItem = async (it) => { if (window.confirm(`Delete "${it.name}"?`)) { await api.deleteItem(it.id); load() } }
+  const removeItem = async (it) => {
+    if (await ui.confirm({ title: 'Delete item', message: `Delete "${it.name}"?`, confirmText: 'Delete', danger: true })) { await api.deleteItem(it.id); load() }
+  }
 
   if (!data) return <div className="empty">{err || 'Loading menu…'}</div>
 
@@ -119,7 +122,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
     if (!file || !item) return
     setUploading(true)
     try { const r = await api.uploadItemPhoto(item.id, file); setPhoto(r.imageUrl) }
-    catch (e) { alert(e.message) }
+    catch (e) { ui.alert(e.message) }
     setUploading(false)
   }
 
