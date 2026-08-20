@@ -27,17 +27,18 @@ function Nav() {
   const link = ({ isActive }) => (isActive ? 'active' : '')
   const staff = auth.getStaff()
   const can = (p) => auth.can(p)
+  const has = (f) => auth.hasFeature(f)   // plan-driven module gate
   return (
     <div className="topbar noprint">
       <span className="brand">🍽️ QrDine</span>
-      {can('reports.view') && <NavLink to="/admin/dashboard" className={link}>Dashboard</NavLink>}
+      {can('reports.view') && has('reports') && <NavLink to="/admin/dashboard" className={link}>Dashboard</NavLink>}
       {can('settings.manage') && <NavLink to="/owner" className={link}>QR codes</NavLink>}
       {can('menu.manage') && <NavLink to="/admin/menu" className={link}>Menu</NavLink>}
-      {can('inventory.manage') && <NavLink to="/admin/inventory" className={link}>Inventory</NavLink>}
-      {(can('reports.view') || can('invoice.sync')) && <NavLink to="/admin/fbr" className={link}>FBR</NavLink>}
-      {(can('orders.approve') || can('orders.pay')) && <NavLink to="/cashier" className={link}>Reception</NavLink>}
-      {can('orders.cook') && <NavLink to="/kitchen" className={link}>Kitchen</NavLink>}
-      {can('orders.serve') && <NavLink to="/waiter" className={link}>Waiter</NavLink>}
+      {can('inventory.manage') && has('inventory') && <NavLink to="/admin/inventory" className={link}>Inventory</NavLink>}
+      {has('fbr') && (can('reports.view') || can('invoice.sync')) && <NavLink to="/admin/fbr" className={link}>FBR</NavLink>}
+      {(can('orders.approve') || can('orders.pay')) && (has('ordering') || has('billing')) && <NavLink to="/cashier" className={link}>Reception</NavLink>}
+      {can('orders.cook') && has('kitchen') && <NavLink to="/kitchen" className={link}>Kitchen</NavLink>}
+      {can('orders.serve') && has('waiter') && <NavLink to="/waiter" className={link}>Waiter</NavLink>}
       {can('settings.manage') && <NavLink to="/admin/settings" className={link}>Settings</NavLink>}
       <span style={{ marginLeft: 'auto' }} />
       {staff ? (

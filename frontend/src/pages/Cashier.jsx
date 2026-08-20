@@ -17,7 +17,7 @@ export default function Cashier() {
   const tableList = Object.values(tables)
 
   return (
-    <div className="wrap ops">
+    <div className="wrap ops ops-center">
       <div className="h">Reception</div>
       <p className="muted">Approve new orders to send them to the kitchen. Bill and settle each table when the guests are done.</p>
 

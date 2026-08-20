@@ -66,6 +66,9 @@ public class OnboardingService
         await _db.SaveChangesAsync(ct);
 
         var token = _tokens.CreateStaffToken(owner, slug, Permissions.All);
-        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All);
+        var features = new FeaturesDto(restaurant.FeatureOrdering, restaurant.FeatureKitchen,
+            restaurant.FeatureWaiter, restaurant.FeatureBilling, restaurant.FeatureInventory,
+            restaurant.FeatureReports, restaurant.FeatureFbr);
+        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All, features);
     }
 }

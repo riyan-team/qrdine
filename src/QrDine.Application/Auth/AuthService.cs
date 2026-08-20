@@ -30,7 +30,18 @@ public class AuthService
 
         var perms = await _perms.GetForRole(user.Role, ct);
         var token = _tokens.CreateStaffToken(user, Slug, perms);
-        return new AuthResponse(token, user.DisplayName, user.Role.ToString(), perms);
+        var features = await LoadFeatures(ct);
+        return new AuthResponse(token, user.DisplayName, user.Role.ToString(), perms, features);
+    }
+
+    /// <summary>The signed-in restaurant's enabled modules — so the UI hides what
+    /// the plan doesn't include (and FBR unless the operator granted it).</summary>
+    private async Task<FeaturesDto> LoadFeatures(CancellationToken ct)
+    {
+        var r = await _db.Restaurants.FirstOrDefaultAsync(x => x.Id == TenantId, ct);
+        if (r is null) return new FeaturesDto(true, true, true, true, true, true, false);
+        return new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter,
+            r.FeatureBilling, r.FeatureInventory, r.FeatureReports, r.FeatureFbr);
     }
 
     public async Task<GuestSessionResponse> IssueGuestSession(string tableCode, CancellationToken ct = default)

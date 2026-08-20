@@ -12,6 +12,10 @@ export const auth = {
   role() { return this.getStaff()?.role || null },
   perms() { return this.getStaff()?.permissions || [] },
   can(p) { return this.perms().includes(p) },
+  // Plan-driven module flags. Missing (older session) → treat as enabled so nothing
+  // vanishes until the next login refreshes the flags.
+  features() { return this.getStaff()?.features || null },
+  hasFeature(f) { const x = this.features(); return x ? !!x[f] : true },
 
   async login(slug, username, password) {
     const res = await fetch(`/api/r/${slug}/auth/login`, {
