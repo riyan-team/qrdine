@@ -116,6 +116,7 @@ app.UseMiddleware<TenantResolutionMiddleware>();    // resolve tenant + block cr
 app.UseAuthorization();                              // enforce role policies on endpoints
 
 app.MapOnboarding();
+app.MapFiles();
 app.MapPayments();
 app.MapPlatform();
 app.MapAuth();

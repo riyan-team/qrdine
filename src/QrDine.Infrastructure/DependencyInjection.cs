@@ -43,7 +43,14 @@ public static class DependencyInjection
 
         services.AddScoped<IOrderNotifier, SignalROrderNotifier>();
         services.AddScoped<IPrintDispatcher, SignalRPrintDispatcher>();
-        services.AddSingleton<IFileStorage, Storage.LocalFileStorage>();
+
+        // File storage: "Db" (default) keeps uploads in the database so they survive
+        // redeploys on an ephemeral-disk host; "Local" writes to wwwroot/uploads.
+        var storageProvider = config["Storage:Provider"] ?? "Db";
+        if (storageProvider.Equals("Local", StringComparison.OrdinalIgnoreCase))
+            services.AddSingleton<IFileStorage, Storage.LocalFileStorage>();
+        else
+            services.AddScoped<IFileStorage, Storage.DbFileStorage>();
 
         // Auth: password hashing + JWT issuing.
         services.Configure<JwtOptions>(config.GetSection("Jwt"));

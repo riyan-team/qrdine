@@ -46,6 +46,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Domain.Subscriptions.Plan> Plans => Set<Domain.Subscriptions.Plan>();
     public DbSet<Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments => Set<Domain.Subscriptions.SubscriptionPayment>();
+    public DbSet<Domain.Files.StoredFile> StoredFiles => Set<Domain.Files.StoredFile>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -70,6 +71,13 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Description).HasMaxLength(200);
             e.Property(x => x.PricePkr).HasPrecision(10, 2);
             e.Property(x => x.SetupFeePkr).HasPrecision(10, 2);
+        });
+
+        b.Entity<Domain.Files.StoredFile>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(40);
+            e.Property(x => x.ContentType).HasMaxLength(60);
         });
 
         b.Entity<Domain.Subscriptions.SubscriptionPayment>(e =>

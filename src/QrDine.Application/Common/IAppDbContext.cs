@@ -32,6 +32,7 @@ public interface IAppDbContext
     DbSet<RolePermission> RolePermissions { get; }
     DbSet<QrDine.Domain.Subscriptions.Plan> Plans { get; }
     DbSet<QrDine.Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments { get; }
+    DbSet<QrDine.Domain.Files.StoredFile> StoredFiles { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
