@@ -56,6 +56,12 @@ export default function Login() {
             <span className="muted" style={{ fontSize: 14 }}>New to Dine In? </span>
             <Link to="/signup" style={{ color: 'var(--accent)', fontWeight: 700 }}>Create your restaurant →</Link>
           </div>
+
+          <div className="center" style={{ marginTop: 14 }}>
+            <Link to="/platform/login" className="muted" style={{ fontSize: 13, textDecoration: 'underline' }}>
+              Platform operator sign in
+            </Link>
+          </div>
         </div>
       </main>
     </div>
