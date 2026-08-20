@@ -1,11 +1,12 @@
-import { useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
+import { auth } from '../auth'
 
 // Waiter screen: take a table, get alerted when food is ready, mark served.
+// "You" is the signed-in staff member — assignments are tied to their real name.
 export default function Waiter() {
   const orders = useStaffOrders()
-  const [me, setMe] = useState('Bilal')
+  const me = auth.getStaff()?.displayName || 'Waiter'
 
   const ready = orders.filter((o) => o.status === 'Ready')
   const mine = orders.filter((o) => o.waiterName === me && o.status !== 'Ready')
@@ -13,11 +14,8 @@ export default function Waiter() {
   return (
     <div className="wrap ops ops-center">
       <div className="h">Waiter</div>
-      <div className="row" style={{ marginBottom: 10 }}>
-        <span className="muted">You are:</span>
-        <select value={me} onChange={(e) => setMe(e.target.value)}>
-          {['Bilal', 'Asif', 'Kamran'].map((n) => <option key={n}>{n}</option>)}
-        </select>
+      <div className="row" style={{ marginBottom: 10, justifyContent: 'center' }}>
+        <span className="muted">You are:</span> <b>{me}</b>
       </div>
 
       <div className="cat-title">✅ Ready to serve now ({ready.length})</div>

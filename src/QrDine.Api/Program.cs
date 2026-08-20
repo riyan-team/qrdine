@@ -1,3 +1,6 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using QrDine.Api.Auth;
 using QrDine.Api.Endpoints;
@@ -38,8 +41,36 @@ builder.Services.AddQrDineAuth(builder.Configuration);
 builder.Services.AddSignalR();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database");
 
+// CORS: the SPA is served from the API's own origin, so cross-origin isn't needed
+// in production. If Cors:Origins is set (comma-separated), allow exactly those;
+// otherwise reflect any origin but WITHOUT credentials (we use Bearer headers, not
+// cookies), which is safe — a page can't read a response it isn't allowed to.
+var corsOrigins = (builder.Configuration["Cors:Origins"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+{
+    p.AllowAnyHeader().AllowAnyMethod();
+    if (corsOrigins.Length > 0) p.WithOrigins(corsOrigins).AllowCredentials();
+    else p.SetIsOriginAllowed(_ => true);
+}));
+
+// Trust the platform proxy's forwarded headers so rate limiting / logging see the
+// real client IP (Render terminates TLS and sets X-Forwarded-For / -Proto).
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    o.KnownNetworks.Clear();   // accept the single PaaS proxy hop
+    o.KnownProxies.Clear();
+});
+
+// Throttle authentication endpoints per client IP to blunt brute-force attempts.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
 
 var app = builder.Build();
 
@@ -74,8 +105,10 @@ using (var scope = app.Services.CreateScope())
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads"));
 app.UseStaticFiles();
 
+app.UseForwardedHeaders();                          // real client IP behind the proxy
 app.UseSerilogRequestLogging();                     // one tidy log line per request
 app.UseCors();
+app.UseRateLimiter();                               // throttle login endpoints
 app.UseMiddleware<ExceptionHandlingMiddleware>();   // outermost: catches everything below
 app.UseAuthentication();                            // populate ctx.User before tenant check
 app.UseMiddleware<TenantResolutionMiddleware>();    // resolve tenant + block cross-tenant tokens

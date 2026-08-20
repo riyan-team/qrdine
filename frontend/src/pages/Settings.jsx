@@ -19,6 +19,7 @@ export default function Settings() {
   return (
     <div className="wrap">
       <div className="h">Settings</div>
+      <AccountSettings />
       <ServiceSettings />
       <FbrSettings />
       <Branches />
@@ -27,6 +28,34 @@ export default function Settings() {
         <Staff />
       </div>
       {isOwner && <Permissions />}
+    </div>
+  )
+}
+
+// The signed-in user changes their own password.
+function AccountSettings() {
+  const [cur, setCur] = useState('')
+  const [nw, setNw] = useState('')
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const staff = auth.getStaff()
+  const save = async () => {
+    setErr(''); setMsg(''); setBusy(true)
+    try { await api.changePassword(cur, nw); setMsg('Password updated.'); setCur(''); setNw(''); setTimeout(() => setMsg(''), 2000) }
+    catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between"><b>Your account</b><span className="muted" style={{ fontSize: 13 }}>{staff?.displayName} · {staff?.role}</span></div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>Change your own password.</p>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <input type="password" placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        <input type="password" placeholder="New password (6+)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        <button className="primary" disabled={busy || !cur || nw.length < 6} onClick={save}>{msg || 'Update password'}</button>
+      </div>
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
 }

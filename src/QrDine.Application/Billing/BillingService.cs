@@ -150,17 +150,29 @@ public class BillingService
         List<Order> orders, string tableCode, List<InvoiceLine> lines, decimal discount, string method,
         string? operatorUsername, CancellationToken ct)
     {
-        var nextNumber = (await _db.Invoices.MaxAsync(i => (int?)i.Number, ct) ?? 0) + 1;
-        var usin = $"USIN{nextNumber:D6}";              // unique per restaurant; FBR idempotency key
         var invoice = Invoice.Create(TenantId, session.Id, tableCode, session.TableName,
-            lines, r.ServiceChargePercent, discount, method, nextNumber, usin);
+            lines, r.ServiceChargePercent, discount, method, 0, "");
         invoice.BranchId = session.BranchId;
         invoice.CreatedByUsername = operatorUsername ?? "";
 
         _db.Invoices.Add(invoice);
         foreach (var o in orders) o.Settle();
         session.Close();
-        await _db.SaveChangesAsync(ct);
+
+        // Sequential invoice number = current max + 1. Under two terminals settling at
+        // the same instant this can collide on the unique (RestaurantId, Number) index —
+        // so we retry with a freshly-read number instead of 500-ing the sale.
+        for (int attempt = 1; ; attempt++)
+        {
+            var nextNumber = (await _db.Invoices.MaxAsync(i => (int?)i.Number, ct) ?? 0) + 1;
+            invoice.Number = nextNumber;
+            invoice.Usin = $"USIN{nextNumber:D6}";       // unique per restaurant; FBR idempotency key
+            try { await _db.SaveChangesAsync(ct); break; }
+            catch (DbUpdateException) when (attempt < 6)
+            {
+                await Task.Delay(20 * attempt, ct);      // brief backoff, then recompute
+            }
+        }
 
         // File with FBR (no-op if fiscal is off). Never blocks the sale — a failure is
         // captured on the invoice and shows in the owner's pending list for retry.

@@ -44,6 +44,20 @@ public class AuthService
             r.FeatureBilling, r.FeatureInventory, r.FeatureReports, r.FeatureFbr);
     }
 
+    /// <summary>A signed-in staff member changes their own password (verifies the
+    /// current one first). Scoped to the tenant by the global query filter.</summary>
+    public async Task ChangePassword(string username, ChangePasswordRequest req, CancellationToken ct = default)
+    {
+        var user = await _db.Staff.FirstOrDefaultAsync(s => s.Username == username, ct)
+            ?? throw new DomainException("You are not signed in.");
+        if (!_hasher.Verify(req.CurrentPassword, user.PasswordHash))
+            throw new DomainException("Your current password is incorrect.");
+        if ((req.NewPassword ?? "").Length < 6)
+            throw new DomainException("New password must be at least 6 characters.");
+        user.PasswordHash = _hasher.Hash(req.NewPassword);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<GuestSessionResponse> IssueGuestSession(string tableCode, CancellationToken ct = default)
     {
         var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode, ct)

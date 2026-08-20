@@ -10,7 +10,8 @@ public static class PlatformEndpoints
     public static void MapPlatform(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/platform/login", async (PlatformLoginRequest body, PlatformService svc)
-            => Results.Ok(await svc.Login(body))).AddEndpointFilter<ValidationFilter>();
+            => Results.Ok(await svc.Login(body))).AddEndpointFilter<ValidationFilter>()
+            .RequireRateLimiting("login");
 
         // Public: active plans, for the sign-up banners.
         app.MapGet("/api/plans", async (PlatformService svc) => Results.Ok(await svc.ListPlans(activeOnly: true)));

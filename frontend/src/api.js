@@ -108,6 +108,7 @@ export const api = {
   setFbrSettings: (s) => staffPut(`/admin/fbr`, s),
   getServiceSettings: () => staffGet(`/admin/service-settings`),
   setServiceSettings: (s) => staffPut(`/admin/service-settings`, s),
+  changePassword: (currentPassword, newPassword) => staffPost(`/auth/change-password`, { currentPassword, newPassword }),
   fbrSynced: () => staffGet(`/admin/fbr/invoices/synced`),
   fbrPending: () => staffGet(`/admin/fbr/invoices/pending`),
   fbrRetry: (id) => staffPost(`/admin/fbr/invoices/${id}/retry`),

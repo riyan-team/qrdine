@@ -1,6 +1,7 @@
 namespace QrDine.Application.Auth;
 
 public record LoginRequest(string Username, string Password);
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 // Which modules the restaurant's plan (and the FBR gate) enable. Drives the
 // frontend nav so staff only see what the subscription actually includes.
