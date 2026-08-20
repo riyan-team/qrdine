@@ -3,6 +3,7 @@ using QrDine.Application.Auth;
 using QrDine.Application.Common;
 using QrDine.Domain.Common;
 using QrDine.Domain.Identity;
+using QrDine.Domain.Menu;
 using QrDine.Domain.Restaurants;
 using QrDine.Domain.Tables;
 
@@ -65,7 +66,43 @@ public class OnboardingService
 
         await _db.SaveChangesAsync(ct);
 
+        await SeedStarterMenu(restaurant.Id, ct);
+
         var token = _tokens.CreateStaffToken(owner, slug, Permissions.All);
+        return BuildResponse(restaurant, owner, token);
+    }
+
+    /// <summary>Seed the ready-to-edit starter menu (categories + items + Half/Full
+    /// variants). RestaurantId is set explicitly — there's no tenant in context yet.</summary>
+    private async Task SeedStarterMenu(int restaurantId, CancellationToken ct)
+    {
+        var cats = StarterMenu.Categories
+            .Select((c, i) => new MenuCategory { RestaurantId = restaurantId, Name = c.Name, SortOrder = i + 1 })
+            .ToList();
+        _db.Categories.AddRange(cats);
+        await _db.SaveChangesAsync(ct);   // materialise category ids
+
+        for (int i = 0; i < cats.Count; i++)
+        {
+            foreach (var it in StarterMenu.Categories[i].Items)
+            {
+                var mi = new MenuItem
+                {
+                    RestaurantId = restaurantId, CategoryId = cats[i].Id,
+                    Name = it.Name, NameUrdu = it.Urdu, Price = it.Price,
+                    Emoji = it.Emoji, PrepMinutes = it.Prep, Available = true,
+                };
+                if (it.Variants is not null)
+                    for (int v = 0; v < it.Variants.Length; v++)
+                        mi.Variants.Add(new MenuItemVariant { Name = it.Variants[v].Name, Price = it.Variants[v].Price, SortOrder = v + 1 });
+                _db.MenuItems.Add(mi);
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private AuthResponse BuildResponse(Restaurant restaurant, StaffMember owner, string token)
+    {
         var features = new FeaturesDto(restaurant.FeatureOrdering, restaurant.FeatureKitchen,
             restaurant.FeatureWaiter, restaurant.FeatureBilling, restaurant.FeatureInventory,
             restaurant.FeatureReports, restaurant.FeatureFbr);
