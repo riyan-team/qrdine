@@ -15,6 +15,9 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     public AppDbContext CreateDbContext(string[] args)
     {
+        // MUST match Program.cs, or the migration snapshot (timestamptz) won't match
+        // the runtime model (timestamp) and Migrate() throws PendingModelChangesWarning.
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Database=qrdine;Username=postgres;Password=postgres")
             .Options;

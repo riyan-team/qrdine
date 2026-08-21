@@ -50,6 +50,23 @@ namespace QrDine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Feedbacks",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    RestaurantId = table.Column<int>(type: "integer", nullable: false),
+                    Rating = table.Column<int>(type: "integer", nullable: false),
+                    Comment = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    TableCode = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Feedbacks", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Invoices",
                 columns: table => new
                 {
@@ -72,7 +89,7 @@ namespace QrDine.Infrastructure.Migrations
                     Total = table.Column<decimal>(type: "numeric(12,2)", precision: 12, scale: 2, nullable: false),
                     PaymentMethod = table.Column<string>(type: "text", nullable: false),
                     InvoiceType = table.Column<int>(type: "integer", nullable: false),
-                    IssuedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    IssuedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
                     CreatedByUsername = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     BuyerName = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
                     BuyerNtn = table.Column<string>(type: "character varying(15)", maxLength: 15, nullable: false),
@@ -84,7 +101,7 @@ namespace QrDine.Infrastructure.Migrations
                     FiscalQrPayload = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
                     FiscalError = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     FiscalAttempts = table.Column<int>(type: "integer", nullable: false),
-                    FiscalLastAttemptAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    FiscalLastAttemptAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     SyncedByPosId = table.Column<long>(type: "bigint", nullable: true)
                 },
                 constraints: table =>
@@ -131,8 +148,8 @@ namespace QrDine.Infrastructure.Migrations
                     TableCode = table.Column<string>(type: "text", nullable: false),
                     TableName = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    AcceptedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    AcceptedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     EtaMinutes = table.Column<int>(type: "integer", nullable: false),
                     WaiterName = table.Column<string>(type: "text", nullable: true),
                     CustomerNote = table.Column<string>(type: "text", nullable: true),
@@ -154,7 +171,7 @@ namespace QrDine.Infrastructure.Migrations
                     TableSessionId = table.Column<int>(type: "integer", nullable: false),
                     Amount = table.Column<decimal>(type: "numeric(12,2)", precision: 12, scale: 2, nullable: false),
                     Method = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -221,10 +238,10 @@ namespace QrDine.Infrastructure.Migrations
                     PlanId = table.Column<int>(type: "integer", nullable: true),
                     PlanName = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    PlanExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    PlanExpiresAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     SetupFeePaid = table.Column<bool>(type: "boolean", nullable: false),
-                    LastPaymentAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastPaymentAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     FeatureOrdering = table.Column<bool>(type: "boolean", nullable: false),
                     FeatureKitchen = table.Column<bool>(type: "boolean", nullable: false),
                     FeatureWaiter = table.Column<bool>(type: "boolean", nullable: false),
@@ -264,8 +281,8 @@ namespace QrDine.Infrastructure.Migrations
                     TableCode = table.Column<string>(type: "text", nullable: false),
                     TableName = table.Column<string>(type: "text", nullable: false),
                     IsOpen = table.Column<bool>(type: "boolean", nullable: false),
-                    OpenedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    ClosedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    OpenedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    ClosedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -319,11 +336,26 @@ namespace QrDine.Infrastructure.Migrations
                     Delta = table.Column<decimal>(type: "numeric(12,3)", precision: 12, scale: 3, nullable: false),
                     Type = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     Reason = table.Column<string>(type: "text", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_StockMovements", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "StoredFiles",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    ContentType = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    Data = table.Column<byte[]>(type: "bytea", nullable: false),
+                    RestaurantId = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StoredFiles", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -336,8 +368,8 @@ namespace QrDine.Infrastructure.Migrations
                     Kind = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
                     Months = table.Column<int>(type: "integer", nullable: false),
                     AmountPkr = table.Column<decimal>(type: "numeric(12,2)", precision: 12, scale: 2, nullable: false),
-                    PaidAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    NewPaidThrough = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    PaidAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
+                    NewPaidThrough = table.Column<DateTime>(type: "timestamp without time zone", nullable: true),
                     Note = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     RecordedBy = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false)
                 },
@@ -528,6 +560,11 @@ namespace QrDine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Feedbacks_RestaurantId_CreatedAt",
+                table: "Feedbacks",
+                columns: new[] { "RestaurantId", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_InvoiceLine_InvoiceId",
                 table: "InvoiceLine",
                 column: "InvoiceId");
@@ -620,6 +657,9 @@ namespace QrDine.Infrastructure.Migrations
                 name: "Categories");
 
             migrationBuilder.DropTable(
+                name: "Feedbacks");
+
+            migrationBuilder.DropTable(
                 name: "InvoiceLine");
 
             migrationBuilder.DropTable(
@@ -660,6 +700,9 @@ namespace QrDine.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "StockMovements");
+
+            migrationBuilder.DropTable(
+                name: "StoredFiles");
 
             migrationBuilder.DropTable(
                 name: "SubscriptionPayments");

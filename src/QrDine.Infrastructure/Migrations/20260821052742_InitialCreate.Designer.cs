@@ -12,8 +12,8 @@ using QrDine.Infrastructure.Persistence;
 namespace QrDine.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260820205848_AddFeedback")]
-    partial class AddFeedback
+    [Migration("20260821052742_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -73,7 +73,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime?>("FiscalLastAttemptAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("FiscalNumber")
                         .HasMaxLength(60)
@@ -101,7 +101,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("IssuedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("Number")
                         .HasColumnType("integer");
@@ -250,7 +250,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Method")
                         .IsRequired()
@@ -282,7 +282,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
@@ -314,7 +314,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(60)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<byte[]>("Data")
                         .IsRequired()
@@ -497,7 +497,7 @@ namespace QrDine.Infrastructure.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<decimal>("Delta")
                         .HasPrecision(12, 3)
@@ -704,7 +704,7 @@ namespace QrDine.Infrastructure.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime?>("AcceptedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("BranchId")
                         .HasColumnType("integer");
@@ -717,7 +717,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("CustomerNote")
                         .HasColumnType("text");
@@ -884,7 +884,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(150)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Currency")
                         .IsRequired()
@@ -915,7 +915,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastPaymentAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -933,7 +933,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("PlanExpiresAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int?>("PlanId")
                         .HasColumnType("integer");
@@ -1055,7 +1055,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("NewPaidThrough")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Note")
                         .IsRequired()
@@ -1063,7 +1063,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<DateTime>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("RecordedBy")
                         .IsRequired()
@@ -1122,7 +1122,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("ClosedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("DiningTableId")
                         .HasColumnType("integer");
@@ -1131,7 +1131,7 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("OpenedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
