@@ -1,0 +1,6 @@
+# Shell scripts and Docker/deploy files must keep LF endings so they run on Linux.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Caddyfile text eol=lf
