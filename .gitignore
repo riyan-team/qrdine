@@ -16,3 +16,11 @@ dist/
 # IDE
 .vs/
 .idea/
+
+# Secrets & local data (never commit)
+.env
+**/.env
+deploy/oracle/backups/
+*.key
+*.pem
+*.pfx
