@@ -11,5 +11,6 @@ if [ "$before" != "$after" ]; then
   git reset --hard origin/main      # .env is untracked, so it is never touched
   cd deploy/oracle
   sudo docker compose up -d --build
+  sudo docker image prune -f >/dev/null 2>&1 || true   # drop the now-dangling old image
   echo "$(date): done"
 fi
