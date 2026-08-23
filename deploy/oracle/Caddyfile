@@ -1,0 +1,7 @@
+# Caddy fetches and renews a free Let's Encrypt certificate automatically for the
+# domain below, and reverse-proxies to the app. The domain MUST point at this VM
+# (Cloudflare A record, grey cloud / DNS-only) and ports 80+443 must be open.
+{$DOMAIN} {
+    encode gzip
+    reverse_proxy app:8080
+}

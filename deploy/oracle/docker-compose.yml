@@ -1,0 +1,71 @@
+# QrDine on one Oracle Cloud VM: app + Postgres + Caddy (auto HTTPS) + nightly backup.
+# Run from this folder:  ./setup.sh   (or: docker compose up -d --build)
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qrdine
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: qrdine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qrdine"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ../..          # repository root (the Dockerfile there builds frontend + API)
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      Database__Provider: Postgres
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=qrdine;Username=qrdine;Password=${DB_PASSWORD}"
+      Jwt__Secret: ${JWT_SECRET}
+      PlatformAdmin__Username: ${PLATFORM_ADMIN_USER}
+      PlatformAdmin__Password: ${PLATFORM_ADMIN_PASSWORD}
+      Fiscal__Simulate: "true"
+      ASPNETCORE_ENVIRONMENT: Production
+      Gemini__ApiKey: ${GEMINI_API_KEY}
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Nightly pg_dump kept for 14 days on the VM disk.
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["bash", "/backup.sh"]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
