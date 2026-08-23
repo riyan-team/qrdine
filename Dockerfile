@@ -25,5 +25,8 @@ COPY --from=build /app/publish ./
 COPY --from=frontend /web/dist ./wwwroot
 # Fallback port for local `docker run`; on Render the app binds $PORT (see Program.cs).
 ENV ASPNETCORE_URLS=http://+:8080
+# Don't watch appsettings.json for changes — the file watchers exhaust the small
+# inotify limit on the container and crash startup ("inotify instances reached").
+ENV DOTNET_hostBuilder__reloadConfigOnChange=false
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "QrDine.Api.dll"]
