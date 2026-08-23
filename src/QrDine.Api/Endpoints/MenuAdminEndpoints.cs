@@ -19,7 +19,7 @@ public static class MenuAdminEndpoints
 
         g.MapGet("/menu", async (string slug, MenuService svc) =>
         {
-            var menu = await svc.GetMenu(slug);
+            var menu = await svc.GetMenu(slug, forAdmin: true);
             return menu is null ? Results.NotFound() : Results.Ok(menu);
         });
 

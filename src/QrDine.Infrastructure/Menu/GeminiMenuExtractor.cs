@@ -35,8 +35,10 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
             "You are reading a restaurant menu image. Extract every category with its items and prices. " +
             "Group items under their section/category headings exactly as printed (e.g. Biryani, Karahi, Drinks). " +
             "Price must be a plain number in the menu's currency (strip any symbols, commas, or size labels). " +
-            "If an item has multiple sizes, use the largest/full price. Ignore descriptions, phone numbers and addresses. " +
-            "Return JSON only.";
+            "If an item has multiple sizes, use the largest/full price. " +
+            "If an item shows a discount or deal (e.g. a crossed-out original price, or 'was 500 now 400'), " +
+            "set price to the ORIGINAL price and dealPrice to the DISCOUNTED price; otherwise omit dealPrice. " +
+            "Ignore descriptions, phone numbers and addresses. Return JSON only.";
 
         var payload = new
         {
@@ -76,6 +78,7 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
                                             {
                                                 name = new { type = "string" },
                                                 price = new { type = "number" },
+                                                dealPrice = new { type = "number", nullable = true },
                                             },
                                             required = new[] { "name", "price" },
                                         },

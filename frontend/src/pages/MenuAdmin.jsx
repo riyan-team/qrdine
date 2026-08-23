@@ -68,7 +68,8 @@ export default function MenuAdmin() {
                   ? <img src={it.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} />
                   : it.emoji}</div>
                 <div style={{ flex: 1 }}>
-                  <div className="name">{it.name} {!it.available && <span className="pill s-Served">out of stock</span>}</div>
+                  <div className="name">{it.name} {!it.available && <span className="pill s-Served">out of stock</span>}
+                    {it.dealPrice != null && <span className="pill s-Cancelled">🏷 deal {money(it.dealPrice)}{it.dealActive ? '' : ' (scheduled)'}</span>}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {it.variants?.length ? it.variants.map((v) => `${v.name} ${money(v.price)}`).join(' · ') : money(it.price)}
                     {it.modifierGroups?.length ? ` · ${it.modifierGroups.length} option group(s)` : ''}
@@ -101,7 +102,12 @@ const blankItem = (categoryId) => ({
   categoryId, name: '', nameUrdu: '', description: '', price: 0, emoji: '🍽️',
   available: true, prepMinutes: 15, taxRate: '', furtherTaxRate: 0, pctCode: '',
   variants: [], modifierGroups: [],
+  dealPrice: '', dealDescription: '', dealDays: [], dealStart: '', dealEnd: '', dealHideWhenOff: false,
 })
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const minToHHMM = (m) => (m == null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+const hhmmToMin = (s) => { if (!s) return null; const [h, m] = s.split(':').map(Number); return h * 60 + (m || 0) }
 
 function ItemEditor({ item, categories, onClose, onSaved }) {
   const [f, setF] = useState(() => item ? {
@@ -109,6 +115,10 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
     name: item.name, nameUrdu: item.nameUrdu || '', description: item.description || '',
     price: item.price, emoji: item.emoji, available: item.available, prepMinutes: item.prepMinutes,
     taxRate: item.taxRate ?? '', furtherTaxRate: item.furtherTaxRate ?? 0, pctCode: item.pctCode || '',
+    dealPrice: item.dealPrice ?? '', dealDescription: item.dealDescription || '',
+    dealDays: item.dealDays ? item.dealDays.split(',').filter(Boolean).map(Number) : [],
+    dealStart: minToHHMM(item.dealStartMinutes), dealEnd: minToHHMM(item.dealEndMinutes),
+    dealHideWhenOff: !!item.dealHideWhenOff,
     variants: (item.variants || []).map((v) => ({ name: v.name, price: v.price })),
     modifierGroups: (item.modifierGroups || []).map((g) => ({
       name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect,
@@ -150,6 +160,11 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
       available: f.available, prepMinutes: Number(f.prepMinutes),
       taxRate: f.taxRate === '' || f.taxRate === null ? null : Number(f.taxRate),
       furtherTaxRate: Number(f.furtherTaxRate) || 0, pctCode: (f.pctCode || '').trim(),
+      dealPrice: f.dealPrice === '' || f.dealPrice === null ? null : Number(f.dealPrice),
+      dealDescription: (f.dealDescription || '').trim(),
+      dealDays: [...f.dealDays].sort((a, b) => a - b).join(','),
+      dealStartMinutes: hhmmToMin(f.dealStart), dealEndMinutes: hhmmToMin(f.dealEnd),
+      dealHideWhenOff: !!f.dealHideWhenOff,
       variants: f.variants.map((v, i) => ({ name: v.name.trim(), price: Number(v.price), sortOrder: i + 1 })),
       modifierGroups: f.modifierGroups.map((g, gi) => ({
         name: g.name.trim(), minSelect: Number(g.minSelect), maxSelect: Number(g.maxSelect), sortOrder: gi + 1,
@@ -208,6 +223,35 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
           <input type="checkbox" checked={f.available} onChange={(e) => set('available', e.target.checked)} /> Available
         </label>
         {f.variants.length > 0 && <div className="muted" style={{ fontSize: 12 }}>If sizes are set, the base price is ignored.</div>}
+
+        {/* Deal / offer */}
+        <div className="cat-title" style={{ fontSize: 14 }}>Deal / offer <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(optional — shows an “OFF” price)</span></div>
+        <div className="row" style={{ gap: 8 }}>
+          <input type="number" placeholder="Deal price (below base)" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={{ ...inp, flex: 1 }} />
+          <input placeholder="What’s included (combo)" value={f.dealDescription} onChange={(e) => set('dealDescription', e.target.value)} style={{ ...inp, flex: 2 }} />
+        </div>
+        {f.dealPrice !== '' && Number(f.dealPrice) >= 0 && (
+          <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+            <label className="muted" style={{ fontSize: 12 }}>Active days (none = every day)</label>
+            <div className="row" style={{ gap: 4, flexWrap: 'wrap', margin: '4px 0 8px' }}>
+              {DAYS.map((d, idx) => (
+                <button key={idx} className={f.dealDays.includes(idx) ? 'primary' : 'ghost'} style={{ padding: '4px 9px' }}
+                  onClick={() => set('dealDays', f.dealDays.includes(idx) ? f.dealDays.filter((x) => x !== idx) : [...f.dealDays, idx])}>{d}</button>
+              ))}
+            </div>
+            <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="muted" style={{ fontSize: 12 }}>Time</span>
+              <input type="time" value={f.dealStart} onChange={(e) => set('dealStart', e.target.value)} />
+              <span className="muted">to</span>
+              <input type="time" value={f.dealEnd} onChange={(e) => set('dealEnd', e.target.value)} />
+              <span className="muted" style={{ fontSize: 11 }}>(blank = all day)</span>
+            </div>
+            <label className="row" style={{ gap: 8, marginTop: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={f.dealHideWhenOff} onChange={(e) => set('dealHideWhenOff', e.target.checked)} />
+              <span style={{ fontSize: 13 }}>Hide this item when the deal isn’t active</span>
+            </label>
+          </div>
+        )}
 
         {/* Variants */}
         <div className="cat-title" style={{ fontSize: 14 }}>Sizes / variants</div>
@@ -281,7 +325,7 @@ function MenuImportModal({ onClose, onImported }) {
     setBusy(false)
   }
   const downloadTemplate = () => {
-    const csv = 'Category,Item,Price\nStarters,Chicken Corn Soup,250\nBiryani,Chicken Biryani,350\nDrinks,Soft Drink,80\n'
+    const csv = 'Category,Item,Price,DealPrice\nStarters,Chicken Corn Soup,250,\nBiryani,Chicken Biryani,350,\nDeals,Family Deal,1500,1200\nDrinks,Soft Drink,80,\n'
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
     const a = document.createElement('a'); a.href = url; a.download = 'menu-template.csv'; a.click(); URL.revokeObjectURL(url)
   }
@@ -313,7 +357,7 @@ function MenuImportModal({ onClose, onImported }) {
             </div>
             {mode === 'csv' ? (
               <>
-                <p className="muted" style={{ fontSize: 13 }}>Columns: <b>Category, Item, Price</b>. Paste below or upload a .csv. <button className="ghost" onClick={downloadTemplate}>Download template</button></p>
+                <p className="muted" style={{ fontSize: 13 }}>Columns: <b>Category, Item, Price</b> (optional 4th column: <b>deal price</b> for offers). Paste below or upload a .csv. <button className="ghost" onClick={downloadTemplate}>Download template</button></p>
                 <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={'Category,Item,Price\nBiryani,Chicken Biryani,350'} style={{ width: '100%', minHeight: 120, marginBottom: 8 }} />
                 <div className="row" style={{ gap: 8 }}>
                   <input type="file" accept=".csv,text/csv" onChange={onCsvFile} />

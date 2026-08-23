@@ -8,7 +8,10 @@ public record MenuCategoryDto(int Id, string Name, IReadOnlyList<MenuItemDto> It
 public record MenuItemDto(int Id, string Name, string NameUrdu, string Description,
     decimal Price, string Emoji, string? ImageUrl, bool Available, int PrepMinutes,
     IReadOnlyList<VariantDto> Variants, IReadOnlyList<ModifierGroupDto> ModifierGroups,
-    decimal? TaxRate = null, decimal FurtherTaxRate = 0, string PctCode = "");
+    decimal? TaxRate = null, decimal FurtherTaxRate = 0, string PctCode = "",
+    // Deal / offer
+    decimal? DealPrice = null, bool DealActive = false, string DealDescription = "",
+    string DealDays = "", int? DealStartMinutes = null, int? DealEndMinutes = null, bool DealHideWhenOff = false);
 
 public record VariantDto(int Id, string Name, decimal Price);
 public record ModifierGroupDto(int Id, string Name, int MinSelect, int MaxSelect, IReadOnlyList<ModifierOptionDto> Options);

@@ -85,9 +85,22 @@ using (var scope = app.Services.CreateScope())
     // qrdine.db to reset — so dev never needs to maintain migrations.
     var dbProvider = app.Configuration["Database:Provider"] ?? "Sqlite";
     if (dbProvider.Equals("Postgres", StringComparison.OrdinalIgnoreCase))
+    {
+        // One-time recovery: if the DB was built the old way (tables but no migration
+        // history), Migrate() collides ("relation already exists"). Setting
+        // Database__ResetSchema=true wipes the public schema so migrations rebuild it
+        // cleanly. Set it, deploy once, then REMOVE it. Destructive — deletes all data.
+        if (app.Configuration.GetValue("Database:ResetSchema", false))
+        {
+            Log.Warning("Database:ResetSchema=true — dropping and recreating the public schema.");
+            await db.Database.ExecuteSqlRawAsync("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+        }
         await db.Database.MigrateAsync();
+    }
     else
+    {
         await db.Database.EnsureCreatedAsync();
+    }
 
     // Platform operator bootstrap. In production set PlatformAdmin__Username /
     // PlatformAdmin__Password as environment variables. In Development we fall back

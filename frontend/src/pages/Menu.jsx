@@ -43,7 +43,7 @@ export default function Menu() {
   const onPlus = (it) => {
     if (needsCustomizing(it)) setCustomizing(it)
     else addToCart({ sig: `${it.id}`, item: it, name: it.name, variantId: null, variantName: null,
-      modifierOptionIds: [], modifierNames: [], unitPrice: it.price, qty: 1 })
+      modifierOptionIds: [], modifierNames: [], unitPrice: (it.dealActive && it.dealPrice != null) ? it.dealPrice : it.price, qty: 1 })
   }
 
   const cartList = Object.values(cart)
@@ -97,9 +97,18 @@ export default function Menu() {
                     <div className="name">{it.name} <span className="muted" style={{ fontWeight: 400 }}>{it.nameUrdu}</span></div>
                     <div className="muted" style={{ fontSize: 13 }}>{it.description}</div>
                     <div style={{ marginTop: 2 }}>
-                      {it.variants?.length ? <span className="muted">from </span> : null}{money(from)}
+                      {it.dealActive && it.dealPrice != null && !it.variants?.length ? (
+                        <span>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--faint)' }}>{money(it.price)}</span>{' '}
+                          <b style={{ color: 'var(--accent)' }}>{money(it.dealPrice)}</b>{' '}
+                          <span className="pill s-Cancelled">{Math.round((1 - it.dealPrice / it.price) * 100)}% OFF</span>
+                        </span>
+                      ) : (
+                        <>{it.variants?.length ? <span className="muted">from </span> : null}{money(from)}</>
+                      )}
                       {needsCustomizing(it) && <span className="muted" style={{ fontSize: 12 }}> · customizable</span>}
                     </div>
+                    {it.dealActive && it.dealDescription && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🏷 {it.dealDescription}</div>}
                   </div>
                   {it.available
                     ? <button className="primary" onClick={() => onPlus(it)}>{needsCustomizing(it) ? 'Choose' : '+'}</button>

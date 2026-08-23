@@ -103,6 +103,14 @@ public class MenuAdminService
         item.FurtherTaxRate = Math.Clamp(input.FurtherTaxRate, 0, 100);
         item.PctCode = input.PctCode?.Trim() ?? "";
 
+        // Deal / offer. A deal price at/above the normal price is meaningless — drop it.
+        item.DealPrice = input.DealPrice is { } dp && dp >= 0 && dp < input.Price ? dp : null;
+        item.DealDescription = input.DealDescription?.Trim() ?? "";
+        item.DealDays = (input.DealDays ?? "").Trim();
+        item.DealStartMinutes = input.DealStartMinutes;
+        item.DealEndMinutes = input.DealEndMinutes;
+        item.DealHideWhenOff = input.DealHideWhenOff && item.DealPrice is not null;
+
         foreach (var v in input.Variants ?? new())
             item.Variants.Add(new MenuItemVariant { Name = v.Name.Trim(), Price = v.Price, SortOrder = v.SortOrder });
 

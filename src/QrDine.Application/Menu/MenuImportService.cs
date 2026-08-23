@@ -8,7 +8,7 @@ using QrDine.Domain.Menu;
 namespace QrDine.Application.Menu;
 
 // Shared shape for an imported/parsed menu the owner reviews before saving.
-public record ImportItem(string Name, decimal Price);
+public record ImportItem(string Name, decimal Price, decimal? DealPrice = null);
 public record ImportCategory(string Name, List<ImportItem> Items);
 public record MenuImportPreview(List<ImportCategory> Categories);
 public record ApplyImportRequest(List<ImportCategory> Categories);
@@ -57,12 +57,16 @@ public class MenuImportService
             if (cat.Length == 0 || item.Length == 0) continue;
             TryParsePrice(priceText, out var price);
 
+            // Optional 4th column: a deal/offer price (only kept if below the price).
+            decimal? deal = null;
+            if (cols.Count >= 4 && TryParsePrice(cols[3], out var d) && d > 0 && d < price) deal = d;
+
             if (!map.TryGetValue(cat, out var c))
             {
                 c = new ImportCategory(cat, new List<ImportItem>());
                 map[cat] = c; order.Add(cat);
             }
-            c.Items.Add(new ImportItem(item, price));
+            c.Items.Add(new ImportItem(item, price, deal));
         }
         var cats = order.Select(k => map[k]).Where(c => c.Items.Count > 0).ToList();
         if (cats.Count == 0) throw new DomainException("No rows found. Use columns: Category, Item, Price.");
@@ -94,10 +98,12 @@ public class MenuImportService
             {
                 var iname = (it.Name ?? "").Trim();
                 if (iname.Length == 0) continue;
+                var price = it.Price < 0 ? 0 : it.Price;
                 _db.MenuItems.Add(new MenuItem
                 {
                     CategoryId = category.Id, Name = iname,
-                    Price = it.Price < 0 ? 0 : it.Price, Emoji = "🍽️", Available = true,
+                    Price = price, Emoji = "🍽️", Available = true,
+                    DealPrice = it.DealPrice is { } dp && dp >= 0 && dp < price ? dp : null,
                 });
                 created++;
             }

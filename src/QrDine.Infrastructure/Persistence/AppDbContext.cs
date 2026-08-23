@@ -135,6 +135,9 @@ public class AppDbContext : DbContext, IAppDbContext
         {
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
             e.Property(x => x.Price).HasPrecision(10, 2);
+            e.Property(x => x.DealPrice).HasPrecision(10, 2);
+            e.Property(x => x.DealDescription).HasMaxLength(200);
+            e.Property(x => x.DealDays).HasMaxLength(20);
             e.Property(x => x.TaxRate).HasPrecision(5, 2);
             e.Property(x => x.FurtherTaxRate).HasPrecision(5, 2);
             e.Property(x => x.PctCode).HasMaxLength(12);

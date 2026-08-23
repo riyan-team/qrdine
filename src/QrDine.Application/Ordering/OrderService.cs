@@ -81,6 +81,10 @@ public class OrderService
                     ?? throw new DomainException($"Please choose a size for {mi.Name}.");
                 basePrice = v.Price; variantName = v.Name;
             }
+            else if (mi.IsDealActive(DateTime.UtcNow))
+            {
+                basePrice = mi.DealPrice!.Value;   // charge the live deal/offer price
+            }
 
             // Resolve modifiers and enforce each group's min/max rule.
             var chosenIds = line.ModifierOptionIds ?? new List<int>();

@@ -13,7 +13,7 @@ public class MenuService
     // The tenant is already resolved by middleware, so the global query filter
     // scopes every query below to the current restaurant automatically.
 
-    public async Task<MenuDto?> GetMenu(string slug, CancellationToken ct = default)
+    public async Task<MenuDto?> GetMenu(string slug, bool forAdmin = false, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.AsNoTracking().FirstOrDefaultAsync(x => x.Slug == slug, ct);
         if (r is null) return null;
@@ -25,15 +25,21 @@ public class MenuService
             .Include(i => i.ModifierGroups).ThenInclude(g => g.Options)
             .ToListAsync(ct);
 
+        var now = DateTime.UtcNow;
         var menu = cats.Select(c => new MenuCategoryDto(
             c.Id, c.Name,
-            items.Where(i => i.CategoryId == c.Id).Select(i => new MenuItemDto(
+            items.Where(i => i.CategoryId == c.Id)
+                // Guests don't see a time-limited item outside its window; the owner always does.
+                .Where(i => forAdmin || !(i.DealHideWhenOff && !i.IsDealActive(now)))
+                .Select(i => new MenuItemDto(
                 i.Id, i.Name, i.NameUrdu, i.Description, i.Price, i.Emoji, i.ImageUrl, i.Available, i.PrepMinutes,
                 i.Variants.OrderBy(v => v.SortOrder).Select(v => new VariantDto(v.Id, v.Name, v.Price)).ToList(),
                 i.ModifierGroups.OrderBy(g => g.SortOrder).Select(g => new ModifierGroupDto(
                     g.Id, g.Name, g.MinSelect, g.MaxSelect,
                     g.Options.OrderBy(o => o.SortOrder).Select(o => new ModifierOptionDto(o.Id, o.Name, o.Price)).ToList())).ToList(),
-                i.TaxRate, i.FurtherTaxRate, i.PctCode
+                i.TaxRate, i.FurtherTaxRate, i.PctCode,
+                i.DealPrice, i.IsDealActive(now), i.DealDescription,
+                i.DealDays, i.DealStartMinutes, i.DealEndMinutes, i.DealHideWhenOff
             )).ToList()))
             .ToList();
 
