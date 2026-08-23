@@ -68,32 +68,42 @@ export default function Cashier() {
   )
 }
 
-// A running order, in full, with a print button (prints an order slip).
+// A running order, with buttons to print BOTH a kitchen ticket (no prices) and a
+// receipt/invoice (with prices). The visible slip previews whichever is selected.
 function OrderDetail({ order: o, onClose }) {
+  const [mode, setMode] = useState('kitchen')   // 'kitchen' | 'bill'
+  const doPrint = (m) => { setMode(m); setTimeout(() => window.print(), 80) }
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
       <div className="modal">
         <div className="receipt">
           <div className="r-h">
-            <div style={{ fontWeight: 800, fontSize: 18 }}>Order #{o.id}</div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>{mode === 'kitchen' ? '🍳 KITCHEN' : 'Receipt'} · #{o.id}</div>
             <div style={{ fontSize: 12 }}>{o.tableName}{o.branchName ? ` · ${o.branchName}` : ''}</div>
             <div style={{ fontSize: 12 }}>{new Date(o.createdAt).toLocaleString()}</div>
           </div>
           {o.items.map((i, n) => (
-            <div className="r-line" key={n}>
+            <div className="r-line" key={n} style={mode === 'kitchen' ? { fontSize: 16, fontWeight: 700 } : {}}>
               <span>{i.qty}× {i.name}{i.variantName ? ` (${i.variantName})` : ''}
                 {i.modifiers?.length ? ` · ${i.modifiers.join(', ')}` : ''}{i.note ? ` — ${i.note}` : ''}</span>
-              <span>{money(i.price * i.qty)}</span>
+              {mode === 'bill' && <span>{money(i.price * i.qty)}</span>}
             </div>
           ))}
           {o.customerNote && <div style={{ fontSize: 12, marginTop: 6 }}>📝 {o.customerNote}</div>}
-          <div className="r-tot r-line r-grand"><span>Total</span><span>{money(o.total)}</span></div>
-          <div className="r-foot">Status: {STATUS_LABEL[o.status] || o.status}{o.waiterName ? ` · Waiter: ${o.waiterName}` : ''}{o.etaMinutes ? ` · ETA ${o.etaMinutes} min` : ''}</div>
+          {mode === 'bill' && <div className="r-tot r-line r-grand"><span>Total</span><span>{money(o.total)}</span></div>}
+          <div className="r-foot">{o.waiterName ? `Waiter: ${o.waiterName} · ` : ''}{STATUS_LABEL[o.status] || o.status}{mode === 'kitchen' && o.etaMinutes ? ` · ETA ${o.etaMinutes} min` : ''}</div>
         </div>
-        <div className="noprint row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
-          <button onClick={onClose}>Close</button>
-          <span className={'pill s-' + o.status} style={{ marginLeft: 'auto' }}>{STATUS_LABEL[o.status] || o.status}</span>
-          <button className="blue" onClick={() => window.print()}>🖨️ Print</button>
+        <div className="noprint" style={{ marginTop: 14 }}>
+          <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+            <button className={mode === 'kitchen' ? 'primary' : ''} onClick={() => setMode('kitchen')}>🍳 Kitchen view</button>
+            <button className={mode === 'bill' ? 'primary' : ''} onClick={() => setMode('bill')}>🧾 Receipt view</button>
+          </div>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <button onClick={onClose}>Close</button>
+            <span style={{ marginLeft: 'auto' }} />
+            <button className="blue" onClick={() => doPrint('kitchen')}>🖨 Kitchen ticket</button>
+            <button className="green" onClick={() => doPrint('bill')}>🖨 Receipt</button>
+          </div>
         </div>
       </div>
     </div>
