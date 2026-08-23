@@ -77,6 +77,11 @@ export const api = {
   deleteItem: (id) => staffDelete(`/admin/items/${id}`),
   uploadItemPhoto: (id, file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/items/${id}/photo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
 
+  // bulk menu import (returns a preview to review before saving)
+  importMenuPhoto: (file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/menu/import/photo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
+  importMenuCsv: (csv) => fetch(`/api/r/${S()}/admin/menu/import/csv`, { method: 'POST', headers: { 'Content-Type': 'text/csv', ...staffAuth() }, body: csv }).then(j),
+  applyMenuImport: (categories) => staffPost(`/admin/menu/import/apply`, { categories }),
+
   // dashboard
   dashboard: (days = 7, branchId = null) => staffGet(`/admin/dashboard?days=${days}${branchId ? `&branchId=${branchId}` : ''}`),
   downloadInvoicesCsv: async (from, to, branchId = null) => {

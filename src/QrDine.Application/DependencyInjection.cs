@@ -14,6 +14,7 @@ public static class DependencyInjection
     {
         services.AddScoped<MenuService>();
         services.AddScoped<MenuAdminService>();
+        services.AddScoped<Menu.MenuImportService>();
         services.AddScoped<Admin.RestaurantAdminService>();
         services.AddScoped<Admin.OnboardingService>();
         services.AddScoped<Inventory.InventoryService>();

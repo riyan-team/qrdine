@@ -6,6 +6,7 @@ import { ui } from '../ui.jsx'
 export default function MenuAdmin() {
   const [data, setData] = useState(null)
   const [editing, setEditing] = useState(null)   // item being edited, or 'new'
+  const [importing, setImporting] = useState(false)
   const [err, setErr] = useState('')
 
   const load = () => api.adminMenu().then(setData).catch((e) => setErr(e.message))
@@ -38,12 +39,15 @@ export default function MenuAdmin() {
     <div className="wrap">
       <div className="row between">
         <div className="h" style={{ margin: 0 }}>Menu management</div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => setImporting(true)}>⬆ Import menu</button>
           <button onClick={addCategory}>+ Category</button>
           <button className="primary" onClick={() => setEditing('new')} disabled={cats.length === 0}>+ Item</button>
         </div>
       </div>
       <p className="muted">Add or edit your menu — prices, photos (emoji), availability, sizes and add-ons. Changes are live for customers instantly.</p>
+
+      {importing && <MenuImportModal onClose={() => setImporting(false)} onImported={() => { setImporting(false); load() }} />}
 
       {cats.length === 0 && <div className="empty">Add a category first, then add items to it.</div>}
 
@@ -254,4 +258,104 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
 function findCategoryId(categories, itemId) {
   for (const c of categories) if (c.items.some((i) => i.id === itemId)) return c.id
   return null
+}
+
+// Bulk import: read a menu from a spreadsheet (CSV) or a photo, review, then add.
+function MenuImportModal({ onClose, onImported }) {
+  const [mode, setMode] = useState('csv')
+  const [preview, setPreview] = useState(null)
+  const [csvText, setCsvText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const runCsv = async () => {
+    setErr(''); setBusy(true)
+    try { setPreview(await api.importMenuCsv(csvText)) } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  const onCsvFile = async (e) => { const f = e.target.files?.[0]; if (f) setCsvText(await f.text()) }
+  const onPhoto = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return
+    setErr(''); setBusy(true)
+    try { setPreview(await api.importMenuPhoto(f)) } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  const downloadTemplate = () => {
+    const csv = 'Category,Item,Price\nStarters,Chicken Corn Soup,250\nBiryani,Chicken Biryani,350\nDrinks,Soft Drink,80\n'
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a'); a.href = url; a.download = 'menu-template.csv'; a.click(); URL.revokeObjectURL(url)
+  }
+  const setItem = (ci, ii, k, v) => setPreview((p) => ({ ...p, categories: p.categories.map((c, x) => x !== ci ? c : { ...c, items: c.items.map((it, y) => y !== ii ? it : { ...it, [k]: v }) }) }))
+  const removeItem = (ci, ii) => setPreview((p) => ({ ...p, categories: p.categories.map((c, x) => x !== ci ? c : { ...c, items: c.items.filter((_, y) => y !== ii) }).filter((c) => c.items.length) }))
+  const setCat = (ci, name) => setPreview((p) => ({ ...p, categories: p.categories.map((c, x) => x !== ci ? c : { ...c, name }) }))
+  const total = preview ? preview.categories.reduce((s, c) => s + c.items.length, 0) : 0
+
+  const apply = async () => {
+    setBusy(true); setErr('')
+    try {
+      const categories = preview.categories.map((c) => ({ name: c.name, items: c.items.map((i) => ({ name: i.name, price: Number(i.price) || 0 })) }))
+      const r = await api.applyMenuImport(categories)
+      await ui.alert(`Added ${r.created} item(s) to your menu.`)
+      onImported()
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  return (
+    <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
+      <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="row between"><div className="big">Import menu</div><button className="ghost" onClick={onClose}>✕</button></div>
+
+        {!preview && (
+          <>
+            <div className="row" style={{ gap: 8, margin: '10px 0' }}>
+              <button className={mode === 'csv' ? 'primary' : ''} onClick={() => { setMode('csv'); setErr('') }}>📄 Spreadsheet</button>
+              <button className={mode === 'photo' ? 'primary' : ''} onClick={() => { setMode('photo'); setErr('') }}>📷 Photo</button>
+            </div>
+            {mode === 'csv' ? (
+              <>
+                <p className="muted" style={{ fontSize: 13 }}>Columns: <b>Category, Item, Price</b>. Paste below or upload a .csv. <button className="ghost" onClick={downloadTemplate}>Download template</button></p>
+                <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={'Category,Item,Price\nBiryani,Chicken Biryani,350'} style={{ width: '100%', minHeight: 120, marginBottom: 8 }} />
+                <div className="row" style={{ gap: 8 }}>
+                  <input type="file" accept=".csv,text/csv" onChange={onCsvFile} />
+                  <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy || !csvText.trim()} onClick={runCsv}>{busy ? 'Reading…' : 'Preview →'}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted" style={{ fontSize: 13 }}>Upload a clear photo of your printed menu — we’ll read the items and prices for you to review.</p>
+                <input type="file" accept="image/*" onChange={onPhoto} />
+                {busy && <div className="muted" style={{ marginTop: 8 }}>Reading the menu photo…</div>}
+              </>
+            )}
+            {err && <div style={{ color: 'var(--red)', fontSize: 14, marginTop: 8 }}>{err}</div>}
+          </>
+        )}
+
+        {preview && (
+          <>
+            <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Review &amp; fix prices, then add. <b>{total}</b> item(s) across {preview.categories.length} categories.</p>
+            <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+              {preview.categories.map((c, ci) => (
+                <div key={ci} style={{ marginBottom: 12 }}>
+                  <input value={c.name} onChange={(e) => setCat(ci, e.target.value)} style={{ fontWeight: 700, width: '100%', marginBottom: 4 }} />
+                  {c.items.map((it, ii) => (
+                    <div key={ii} className="row" style={{ gap: 6, marginBottom: 4 }}>
+                      <input value={it.name} onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
+                      <input type="number" value={it.price} onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
+                      <button className="ghost" onClick={() => removeItem(ci, ii)}>🗑</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {err && <div style={{ color: 'var(--red)', fontSize: 14, marginTop: 8 }}>{err}</div>}
+            <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <button onClick={() => setPreview(null)}>← Back</button>
+              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || total === 0} onClick={apply}>{busy ? 'Adding…' : `Add ${total} item(s)`}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }

@@ -52,6 +52,11 @@ public static class DependencyInjection
         else
             services.AddScoped<IFileStorage, Storage.DbFileStorage>();
 
+        // Menu photo import via Gemini (free tier). Works only once Gemini:ApiKey is set;
+        // the CSV import needs nothing.
+        services.AddHttpClient<Application.Menu.IMenuVisionExtractor, Menu.GeminiMenuExtractor>(
+            c => c.Timeout = TimeSpan.FromSeconds(30));
+
         // Auth: password hashing + JWT issuing.
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();

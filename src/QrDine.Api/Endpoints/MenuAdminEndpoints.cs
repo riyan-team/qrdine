@@ -47,6 +47,31 @@ public static class MenuAdminEndpoints
             return Results.Ok(new { imageUrl = url });
         }).DisableAntiforgery();
 
+        // ---- Bulk menu import (review before saving) ----
+        // Read a menu from a photo (Gemini). Returns a preview; nothing is saved yet.
+        g.MapPost("/menu/import/photo", async (IFormFile file, IMenuVisionExtractor vision) =>
+        {
+            if (file is null || file.Length == 0) return Results.BadRequest(new { detail = "No file." });
+            if (file.Length > 8 * 1024 * 1024) return Results.BadRequest(new { detail = "Image must be under 8 MB." });
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var mime = ext switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            return Results.Ok(await vision.Extract(ms.ToArray(), mime));
+        }).DisableAntiforgery();
+
+        // Parse a pasted/uploaded CSV (Category, Item, Price). Returns a preview.
+        g.MapPost("/menu/import/csv", async (HttpRequest req, MenuImportService svc) =>
+        {
+            using var reader = new StreamReader(req.Body);
+            var csv = await reader.ReadToEndAsync();
+            return Results.Ok(svc.ParseCsv(csv));
+        }).DisableAntiforgery();
+
+        // Apply the reviewed preview → create categories + items.
+        g.MapPost("/menu/import/apply", async (ApplyImportRequest body, MenuImportService svc)
+            => Results.Ok(new { created = await svc.Apply(body) }));
+
         // Owner sales dashboard (Owner/Manager).
         app.MapGet("/api/r/{slug}/admin/dashboard", async (int? days, int? branchId, ReportsService svc)
                 => Results.Ok(await svc.GetDashboard(days ?? 7, branchId)))
