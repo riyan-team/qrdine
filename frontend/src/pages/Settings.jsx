@@ -13,6 +13,15 @@ const PERM_LABELS = {
   'reports.view': 'View reports & dashboard', 'invoice.sync': 'Sync invoices with FBR',
 }
 
+// Which plan feature each permission belongs to (unlisted = always available).
+// Permissions for modules not in the plan are hidden from the editor.
+const PERM_FEATURE = {
+  'orders.approve': 'ordering', 'orders.pay': 'ordering', 'orders.cancel': 'ordering',
+  'orders.cook': 'kitchen', 'orders.serve': 'waiter',
+  'inventory.manage': 'inventory', 'reports.view': 'reports', 'invoice.sync': 'fbr',
+}
+const permInPlan = (perm) => { const f = PERM_FEATURE[perm]; return !f || auth.hasFeature(f) }
+
 // Owner/manager settings: manage tables, staff and (owner-only) permissions.
 export default function Settings() {
   const isOwner = auth.role() === 'Owner'
@@ -260,7 +269,7 @@ function Permissions() {
             <tr><th>Permission</th>{roles.map((r) => <th key={r} style={{ textAlign: 'center' }}>{r}</th>)}</tr>
           </thead>
           <tbody>
-            {matrix.all.map((perm) => (
+            {matrix.all.filter(permInPlan).map((perm) => (
               <tr key={perm}>
                 <td>{PERM_LABELS[perm] || perm}</td>
                 {roles.map((r) => (

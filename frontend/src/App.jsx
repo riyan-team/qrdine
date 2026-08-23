@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useLocation, Link } from 'react-router-dom'
 import Owner from './pages/Owner.jsx'
 import Menu from './pages/Menu.jsx'
 import Cashier from './pages/Cashier.jsx'
@@ -28,10 +28,16 @@ function Nav() {
   const staff = auth.getStaff()
   const can = (p) => auth.can(p)
   const has = (f) => auth.hasFeature(f)   // plan-driven module gate
+  // The signed-in user's home screen — the clickable logo returns here.
+  const home = can('reports.view') ? '/admin/dashboard'
+    : (can('orders.approve') || can('orders.pay')) ? '/cashier'
+    : can('orders.cook') ? '/kitchen'
+    : can('orders.serve') ? '/waiter'
+    : can('menu.manage') ? '/admin/menu' : '/admin/settings'
   return (
     <div className="topbar noprint">
-      <span className="brand">🍽️ QrDine</span>
-      {can('reports.view') && has('reports') && <NavLink to="/admin/dashboard" className={link}>Dashboard</NavLink>}
+      <Link to={home} className="brand" style={{ textDecoration: 'none' }}>🍽️ QrDine</Link>
+      {can('reports.view') && <NavLink to="/admin/dashboard" className={link}>Dashboard</NavLink>}
       {can('settings.manage') && <NavLink to="/owner" className={link}>QR codes</NavLink>}
       {can('menu.manage') && <NavLink to="/admin/menu" className={link}>Menu</NavLink>}
       {can('inventory.manage') && has('inventory') && <NavLink to="/admin/inventory" className={link}>Inventory</NavLink>}

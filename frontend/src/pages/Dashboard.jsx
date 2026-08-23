@@ -4,13 +4,16 @@ import { api, money } from '../api'
 import { auth } from '../auth'
 import { ui } from '../ui.jsx'
 
+// Each tile shows only when the plan includes its feature AND the user has the
+// permission — so the Manage grid matches the top nav (no dead modules).
 const ACTIONS = [
-  { to: '/admin/menu', icon: '🍽️', name: 'Menu', sub: 'Items, prices, photos' },
-  { to: '/admin/inventory', icon: '📦', name: 'Inventory', sub: 'Stock & recipes' },
-  { to: '/cashier', icon: '🧾', name: 'Reception', sub: 'Approve & bill' },
-  { to: '/kitchen', icon: '👨‍🍳', name: 'Kitchen', sub: 'Live tickets' },
-  { to: '/owner', icon: '🔳', name: 'QR codes', sub: 'Print table QRs' },
-  { to: '/admin/settings', icon: '⚙️', name: 'Settings', sub: 'Tables & staff' },
+  { to: '/admin/menu', icon: '🍽️', name: 'Menu', sub: 'Items, prices, photos', show: () => auth.can('menu.manage') },
+  { to: '/admin/inventory', icon: '📦', name: 'Inventory', sub: 'Stock & recipes', show: () => auth.can('inventory.manage') && auth.hasFeature('inventory') },
+  { to: '/cashier', icon: '🧾', name: 'Reception', sub: 'Approve & bill', show: () => (auth.can('orders.approve') || auth.can('orders.pay')) && (auth.hasFeature('ordering') || auth.hasFeature('billing')) },
+  { to: '/kitchen', icon: '👨‍🍳', name: 'Kitchen', sub: 'Live tickets', show: () => auth.can('orders.cook') && auth.hasFeature('kitchen') },
+  { to: '/waiter', icon: '🧑‍🍳', name: 'Waiter', sub: 'Serve tables', show: () => auth.can('orders.serve') && auth.hasFeature('waiter') },
+  { to: '/owner', icon: '🔳', name: 'QR codes', sub: 'Print table QRs', show: () => auth.can('settings.manage') },
+  { to: '/admin/settings', icon: '⚙️', name: 'Settings', sub: 'Tables & staff', show: () => auth.can('settings.manage') },
 ]
 
 export default function Dashboard() {
@@ -66,11 +69,13 @@ export default function Dashboard() {
         <Stat icon="📈" num={money(d.periodSales)} label="7-day sales" />
         <Stat icon="🧮" num={money(d.periodAvgBill)} label="Avg bill" />
         <Stat icon="🏦" num={money((d.periodTax || 0) + (d.periodFurtherTax || 0))} label="Sales tax · 7d" />
-        <div className={'card stat' + (d.lowStock > 0 ? ' ' : '')} style={{ cursor: 'pointer' }} onClick={() => nav('/admin/inventory')}>
-          <div className="chip" style={d.lowStock > 0 ? { background: 'var(--amber-tint)', color: 'var(--amber)' } : {}}>⚠️</div>
-          <div className="num" style={{ color: d.lowStock > 0 ? 'var(--amber)' : 'var(--ink)' }}>{d.lowStock}</div>
-          <div className="lbl">Low stock</div>
-        </div>
+        {auth.hasFeature('inventory') && (
+          <div className="card stat" style={{ cursor: 'pointer' }} onClick={() => nav('/admin/inventory')}>
+            <div className="chip" style={d.lowStock > 0 ? { background: 'var(--amber-tint)', color: 'var(--amber)' } : {}}>⚠️</div>
+            <div className="num" style={{ color: d.lowStock > 0 ? 'var(--amber)' : 'var(--ink)' }}>{d.lowStock}</div>
+            <div className="lbl">Low stock</div>
+          </div>
+        )}
       </div>
 
       {/* Reports export */}
@@ -92,7 +97,7 @@ export default function Dashboard() {
       {/* Quick actions */}
       <div className="cat-title noprint">Manage</div>
       <div className="grid noprint" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        {ACTIONS.map((a) => (
+        {ACTIONS.filter((a) => a.show()).map((a) => (
           <div key={a.to} className="card tile" onClick={() => nav(a.to)}>
             <div className="chip">{a.icon}</div>
             <div><div className="t-name">{a.name}</div><div className="t-sub">{a.sub}</div></div>
