@@ -6,7 +6,14 @@ cd "$(dirname "$0")"
 
 echo "==> 1/4 Docker"
 if ! command -v docker >/dev/null 2>&1; then
-  curl -fsSL https://get.docker.com | sudo sh
+  # Oracle Linux ('ol') isn't supported by get.docker.com — use the CE repo directly.
+  if [ -f /etc/oracle-release ] || grep -qi '^ID="\?ol"\?' /etc/os-release 2>/dev/null; then
+    sudo dnf install -y dnf-plugins-core
+    sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin --allowerasing
+  else
+    curl -fsSL https://get.docker.com | sudo sh
+  fi
   sudo systemctl enable --now docker || true
 fi
 
