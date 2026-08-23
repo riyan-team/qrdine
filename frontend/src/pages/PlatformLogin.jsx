@@ -32,7 +32,6 @@ export default function PlatformLogin() {
           {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
           <button className="primary" disabled={busy} style={{ width: '100%' }}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
-        <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>Demo: superadmin / super123</div>
       </div>
     </div>
   )
