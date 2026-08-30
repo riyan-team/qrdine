@@ -21,6 +21,7 @@ public class Order : AggregateRoot, ITenantOwned
     public string TableName { get; set; } = "";
 
     public OrderStatus Status { get; private set; } = OrderStatus.Placed;
+    public OrderSource Source { get; private set; } = OrderSource.Qr;
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime? AcceptedAt { get; private set; }   // when the kitchen started cooking
     public int EtaMinutes { get; private set; }         // kitchen's promised time → phone countdown
@@ -40,7 +41,8 @@ public class Order : AggregateRoot, ITenantOwned
     private Order() { }
 
     /// <summary>Create a new order in the Placed state.</summary>
-    public static Order Place(int restaurantId, TableSessionInfo table, string? customerNote)
+    public static Order Place(int restaurantId, TableSessionInfo table, string? customerNote,
+        OrderSource source = OrderSource.Qr)
     {
         var order = new Order
         {
@@ -52,6 +54,7 @@ public class Order : AggregateRoot, ITenantOwned
             TableCode = table.TableCode,
             TableName = table.TableName,
             Status = OrderStatus.Placed,
+            Source = source,
             CreatedAt = DateTime.UtcNow,
             CustomerNote = customerNote,
         };

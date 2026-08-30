@@ -9,6 +9,7 @@ public record OrderDto(
     string TableName,
     string BranchName,
     string Status,
+    string Source,
     DateTime CreatedAt,
     DateTime? AcceptedAt,
     int EtaMinutes,
@@ -18,10 +19,19 @@ public record OrderDto(
     IReadOnlyList<OrderItemDto> Items)
 {
     public static OrderDto From(Order o) => new(
-        o.Id, o.TableCode, o.TableName, o.BranchName, o.Status.ToString(), o.CreatedAt,
-        o.AcceptedAt, o.EtaMinutes, o.WaiterName, o.CustomerNote, o.Total,
+        o.Id, o.TableCode, o.TableName, o.BranchName, o.Status.ToString(), o.Source.ToString(), AsUtc(o.CreatedAt),
+        AsUtc(o.AcceptedAt), o.EtaMinutes, o.WaiterName, o.CustomerNote, o.Total,
         o.Items.Select(i => new OrderItemDto(i.Name, i.VariantName, i.Price, i.Qty, i.Note,
             i.Modifiers.Select(m => m.Name).ToList())).ToList());
+
+    // CreatedAt/AcceptedAt are stored as UTC (DateTime.UtcNow) but come back from the
+    // DB as Kind=Unspecified, so System.Text.Json serialises them WITHOUT a trailing
+    // 'Z'. The browser then parses them as *local* time, throwing the kitchen countdown
+    // off by the client's UTC offset (00:00 for anyone ahead of UTC). Tagging them Utc
+    // makes the JSON carry 'Z' so `new Date(...)` is correct everywhere.
+    private static DateTime AsUtc(DateTime d) =>
+        d.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : d.ToUniversalTime();
+    private static DateTime? AsUtc(DateTime? d) => d is null ? null : AsUtc(d.Value);
 }
 
 public record OrderItemDto(string Name, string? VariantName, decimal Price, int Qty, string? Note,

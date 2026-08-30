@@ -44,5 +44,37 @@ public static class DbSeeder
             );
             await db.SaveChangesAsync();
         }
+
+        await BackfillOrderCreatePermissionAsync(db);
+    }
+
+    /// <summary>
+    /// Grant the (newer) <c>orders.create</c> permission to restaurants that were
+    /// seeded before it existed, so waiters/reception can take orders without a manual
+    /// settings change. Idempotent and non-destructive: a restaurant that already has
+    /// <c>orders.create</c> for any role is left untouched, so an owner who later revokes
+    /// it is never overridden. New restaurants get it from Permissions.DefaultsFor and
+    /// so are skipped here. Query filters are bypassed — this runs with no tenant in
+    /// context and must see every restaurant's grants.
+    /// </summary>
+    private static async Task BackfillOrderCreatePermissionAsync(AppDbContext db)
+    {
+        var withAnyPerm = await db.RolePermissions.IgnoreQueryFilters()
+            .Select(p => p.RestaurantId).Distinct().ToListAsync();
+        var withCreate = await db.RolePermissions.IgnoreQueryFilters()
+            .Where(p => p.Permission == Domain.Identity.Permissions.OrdersCreate)
+            .Select(p => p.RestaurantId).Distinct().ToListAsync();
+
+        var toBackfill = withAnyPerm.Except(withCreate).ToList();
+        if (toBackfill.Count == 0) return;
+
+        foreach (var rid in toBackfill)
+            foreach (var role in new[] { StaffRole.Manager, StaffRole.Cashier, StaffRole.Waiter })
+                db.RolePermissions.Add(new RolePermission
+                {
+                    RestaurantId = rid, Role = role,
+                    Permission = Domain.Identity.Permissions.OrdersCreate,
+                });
+        await db.SaveChangesAsync();
     }
 }

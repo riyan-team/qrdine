@@ -8,6 +8,7 @@ namespace QrDine.Domain.Identity;
 /// </summary>
 public static class Permissions
 {
+    public const string OrdersCreate = "orders.create";  // take an order on a table's behalf (waiter / reception)
     public const string OrdersApprove = "orders.approve";
     public const string OrdersCook = "orders.cook";
     public const string OrdersServe = "orders.serve";
@@ -21,7 +22,7 @@ public static class Permissions
 
     public static readonly string[] All =
     {
-        OrdersApprove, OrdersCook, OrdersServe, OrdersPay, OrdersCancel,
+        OrdersCreate, OrdersApprove, OrdersCook, OrdersServe, OrdersPay, OrdersCancel,
         MenuManage, InventoryManage, SettingsManage, ReportsView, InvoiceSync,
     };
 
@@ -29,9 +30,9 @@ public static class Permissions
     public static string[] DefaultsFor(StaffRole role) => role switch
     {
         StaffRole.Owner or StaffRole.Manager => All,
-        StaffRole.Cashier => new[] { OrdersApprove, OrdersPay, InvoiceSync },
+        StaffRole.Cashier => new[] { OrdersCreate, OrdersApprove, OrdersPay, InvoiceSync },
         StaffRole.Kitchen => new[] { OrdersCook },
-        StaffRole.Waiter => new[] { OrdersServe },
+        StaffRole.Waiter => new[] { OrdersCreate, OrdersServe },
         _ => Array.Empty<string>(),
     };
 }

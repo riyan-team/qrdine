@@ -5,6 +5,8 @@ using QrDine.Application.Common;
 using QrDine.Application.Ordering;
 using QrDine.Application.Ordering.Dtos;
 using QrDine.Domain.Common;
+using QrDine.Domain.Identity;
+using QrDine.Domain.Ordering;
 
 namespace QrDine.Api.Endpoints;
 
@@ -20,13 +22,22 @@ public static class OrderEndpoints
             // A guest token may only order for the table it was issued to. Staff
             // (e.g. a waiter ordering on behalf) may order for any table.
             var type = user.FindFirst(AppClaims.TokenType)?.Value;
+            if (type == AppClaims.TypeStaff)
+            {
+                // Taking an order on a table's behalf is a gated action (configurable per role).
+                var canCreate = user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCreate);
+                if (!canCreate)
+                    return Results.Problem(detail: "You don't have permission to take orders.", statusCode: 403);
+                var waiter = user.FindFirst(ClaimTypes.Name)?.Value;
+                return Results.Ok(await svc.Place(body, OrderSource.Waiter, waiter));
+            }
             if (type == AppClaims.TypeGuest)
             {
                 var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
                 if (!string.Equals(tokenTable, body.TableCode, StringComparison.OrdinalIgnoreCase))
                     throw new DomainException("This session is for a different table.");
             }
-            return Results.Ok(await svc.Place(body));
+            return Results.Ok(await svc.Place(body, OrderSource.Qr));
         }).RequireAuthorization(Policies.GuestOrStaff);
 
         // Reading a table's own live orders stays public (the customer just scanned it).

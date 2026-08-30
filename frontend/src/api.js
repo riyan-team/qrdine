@@ -52,6 +52,9 @@ export const api = {
 
   // ---- staff (slug from session) ----
   getTables: () => staffGet(`/tables`),
+  // A waiter/reception takes an order on a table's behalf (staff token → any table).
+  // Server stamps it Source=Waiter and assigns the signed-in staff member.
+  placeStaffOrder: (body) => staffPost(`/orders`, body),
   staffOrders: () => staffGet(`/staff/orders`),
   approve: (id) => staffPost(`/orders/${id}/approve`),
   cook: (id, etaMinutes) => staffPost(`/orders/${id}/cook`, { etaMinutes }),

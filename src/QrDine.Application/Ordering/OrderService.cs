@@ -32,8 +32,9 @@ public class OrderService
     private int TenantId => _tenant.RestaurantId ?? throw new DomainException("No restaurant in context.");
     private string Slug => _tenant.Slug ?? "";
 
-    // ---------- place (guest) ----------
-    public async Task<OrderDto> Place(PlaceOrderRequest req, CancellationToken ct = default)
+    // ---------- place (guest QR self-order, or a waiter ordering on behalf) ----------
+    public async Task<OrderDto> Place(PlaceOrderRequest req, OrderSource source = OrderSource.Qr,
+        string? waiterName = null, CancellationToken ct = default)
     {
         // The subscription plan may be menu-only — then self-ordering is off.
         var restaurant = await _db.Restaurants.FirstAsync(r => r.Id == TenantId, ct);
@@ -60,7 +61,12 @@ public class OrderService
 
         var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
         var order = Order.Place(TenantId,
-            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName), req.Note);
+            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName), req.Note, source);
+
+        // A waiter taking the order is the one serving that table — attach them now so
+        // it shows on their board and skips auto-assignment later.
+        if (source == OrderSource.Waiter && !string.IsNullOrWhiteSpace(waiterName))
+            order.AssignWaiter(waiterName.Trim());
 
         var menu = await _db.MenuItems
             .Include(m => m.Variants)

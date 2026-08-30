@@ -6,6 +6,7 @@ import { ui } from '../ui.jsx'
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
 const PERM_LABELS = {
+  'orders.create': 'Take orders (waiter/reception)',
   'orders.approve': 'Approve orders', 'orders.cook': 'Kitchen: cook & ready',
   'orders.serve': 'Waiter: assign & serve', 'orders.pay': 'Billing & payment',
   'orders.cancel': 'Cancel orders', 'menu.manage': 'Manage menu',
@@ -16,6 +17,7 @@ const PERM_LABELS = {
 // Which plan feature each permission belongs to (unlisted = always available).
 // Permissions for modules not in the plan are hidden from the editor.
 const PERM_FEATURE = {
+  'orders.create': 'ordering',
   'orders.approve': 'ordering', 'orders.pay': 'ordering', 'orders.cancel': 'ordering',
   'orders.cook': 'kitchen', 'orders.serve': 'waiter',
   'inventory.manage': 'inventory', 'reports.view': 'reports', 'invoice.sync': 'fbr',

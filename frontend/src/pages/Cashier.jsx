@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
+import { OrderActions } from '../ordering.jsx'
 import Receipt from './Receipt.jsx'
 
 // Reception / cashier: approve new orders, then bill & settle each table.
@@ -45,10 +46,14 @@ export default function Cashier() {
               <div className="row between"><b>{t.name}</b><span className="muted">{t.orders.length} order(s)</span></div>
               <div style={{ margin: '8px 0' }}>
                 {t.orders.map((o) => (
-                  <div key={o.id} className="row between" style={{ fontSize: 13, cursor: 'pointer', padding: '2px 0' }}
-                    onClick={() => setDetailFor(o)} title="View & print this order">
-                    <span className="muted">🔍 #{o.id} · {o.items.reduce((s, i) => s + i.qty, 0)} items</span>
-                    <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
+                  <div key={o.id} className="row between" style={{ fontSize: 13, padding: '2px 0' }}>
+                    <span className="muted" style={{ cursor: 'pointer' }} onClick={() => setDetailFor(o)} title="View & print this order">
+                      🔍 #{o.id} · {o.items.reduce((s, i) => s + i.qty, 0)} items <SourceBadge source={o.source} />
+                    </span>
+                    <span className="row" style={{ gap: 6 }}>
+                      <OrderActions o={o} />
+                      <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -204,10 +209,21 @@ function BillModal({ code, onClose }) {
   )
 }
 
+// Where the order came from — a self-service QR scan or a waiter taking it.
+function SourceBadge({ source }) {
+  const waiter = source === 'Waiter'
+  return (
+    <span className="pill" style={{ background: 'var(--surface2)', fontSize: 11 }}
+      title={waiter ? 'Taken by a waiter' : 'Self-ordered via table QR'}>
+      {waiter ? '🧑‍🍳 Waiter' : '📱 QR'}
+    </span>
+  )
+}
+
 function Head({ o }) {
   return (
     <div className="row between">
-      <div><b>{o.tableName}</b> · #{o.id}</div>
+      <div><b>{o.tableName}</b> · #{o.id} <SourceBadge source={o.source} /></div>
       <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status] || o.status}</span>
     </div>
   )
