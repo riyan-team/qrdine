@@ -50,7 +50,7 @@ export default function Owner() {
           </div>
         </div>
       ))}
-      {tables.length === 0 && <div className="empty">Loading tables… is the API running on :5099?</div>}
+      {tables.length === 0 && <div className="empty">Loading tables…</div>}
     </div>
   )
 }

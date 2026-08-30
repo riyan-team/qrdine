@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, money } from '../api'
-import { ui } from '../ui.jsx'
+import { ui, toast } from '../ui.jsx'
+import { friendlyError } from '../errors'
 
 // Owner/manager menu management: categories + items, with variants and modifiers.
 export default function MenuAdmin() {
@@ -17,20 +18,23 @@ export default function MenuAdmin() {
   const addCategory = async () => {
     const name = await ui.prompt({ title: 'New category', placeholder: 'e.g. Starters', confirmText: 'Add', required: true })
     if (!name) return
-    await api.addCategory(name, cats.length + 1); load()
+    try { await api.addCategory(name, cats.length + 1); load() } catch (e) { toast.error(friendlyError(e)) }
   }
   const renameCategory = async (c) => {
     const name = await ui.prompt({ title: 'Rename category', defaultValue: c.name, confirmText: 'Rename', required: true })
     if (!name || name === c.name) return
-    await api.updateCategory(c.id, name, cats.indexOf(c) + 1); load()
+    try { await api.updateCategory(c.id, name, cats.indexOf(c) + 1); load() } catch (e) { toast.error(friendlyError(e)) }
   }
   const deleteCategory = async (c) => {
     if (!await ui.confirm({ title: 'Delete category', message: `Delete category "${c.name}"?`, confirmText: 'Delete', danger: true })) return
-    try { await api.deleteCategory(c.id); load() } catch (e) { ui.alert(e.message) }
+    try { await api.deleteCategory(c.id); load() } catch (e) { toast.error(friendlyError(e)) }
   }
-  const toggle = async (it) => { await api.setAvailability(it.id, !it.available); load() }
+  const toggle = async (it) => {
+    try { await api.setAvailability(it.id, !it.available); load() } catch (e) { toast.error(friendlyError(e)) }
+  }
   const removeItem = async (it) => {
-    if (await ui.confirm({ title: 'Delete item', message: `Delete "${it.name}"?`, confirmText: 'Delete', danger: true })) { await api.deleteItem(it.id); load() }
+    if (!await ui.confirm({ title: 'Delete item', message: `Delete "${it.name}"?`, confirmText: 'Delete', danger: true })) return
+    try { await api.deleteItem(it.id); load() } catch (e) { toast.error(friendlyError(e)) }
   }
 
   if (!data) return <div className="empty">{err || 'Loading menu…'}</div>

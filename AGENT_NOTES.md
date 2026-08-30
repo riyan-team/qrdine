@@ -123,6 +123,25 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-08-31** — Security + auth/UX hardening pass:
+  - **Login fixed**: name→slug lookup is now normalisation-tolerant (type the name OR
+    the address, any spacing/casing), fields are clearly labelled with guidance, and a
+    freshly-registered restaurant logs in immediately. Root cause was an exact-match-only
+    lookup with no UI guidance (`OnboardingEndpoints.cs` lookup, `pages/Login.jsx`).
+  - **Friendly errors everywhere**: `ValidationFilter` emits camelCase field keys + a
+    human `detail`; all FluentValidation rules got friendly `.WithMessage()`; the SPA's
+    `errors.js` (`ApiError` + `parseError`) maps every 4xx/5xx to a friendly line and per
+    -field messages — the old `j()`/`pj()` raw-JSON leak is gone. 500s carry a support
+    `reference` (logged server-side). Added an `ErrorBoundary` + toast host (`ui.jsx`).
+  - **Inline validation**: `forms.jsx` (`useForm` + `FormField`) — validate on blur+submit,
+    clear-on-fix, preserve values, focus first invalid, subtle red border + message below.
+    Applied to Signup, Login, PlatformLogin.
+  - **Rate limiting** expanded + configurable (`RateLimits` in appsettings): `login`,
+    `register` (onboard), `orders`, `public` (guest session/feedback). Friendly 429 body.
+  - **Security fixes**: owner-only gating on owner-role staff create/update/delete/password
+    (was Manager-escalatable — H1); reject non-guest/non-staff tokens on order placement;
+    `nosniff` on served files; 1 MB CSV-import cap; startup guard rejecting a weak/default
+    `Jwt:Secret` in production; FBR TLS bypass now gated by `Fiscal:AllowInvalidCertificate`.
 - **2026-08-31** — Waiter ordering (take order on a table's behalf), `Order.Source`
   (QR vs Waiter) + Reception badge, `orders.create` permission (configurable + enforced),
   role-gated `OrderActions` for kitchen-unavailable fallback (Reception & Waiter),

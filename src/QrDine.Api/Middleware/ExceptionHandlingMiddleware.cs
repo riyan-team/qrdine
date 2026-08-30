@@ -30,15 +30,23 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Unhandled error");
-            await Write(ctx, StatusCodes.Status500InternalServerError, "Server error", "Something went wrong.");
+            // A short reference the customer can quote to support; the same id is on the
+            // logged exception so an operator can find the full stack trace. The user
+            // never sees the technical detail — only the reference.
+            var reference = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+            _log.LogError(ex, "Unhandled error (ref {Reference})", reference);
+            await Write(ctx, StatusCodes.Status500InternalServerError, "Something went wrong",
+                "We couldn't complete your request right now. Please try again. If the problem continues, contact support.",
+                reference);
         }
     }
 
-    private static async Task Write(HttpContext ctx, int status, string title, string detail)
+    private static async Task Write(HttpContext ctx, int status, string title, string detail, string? reference = null)
     {
+        if (ctx.Response.HasStarted) return;   // can't rewrite a response already on the wire
+        ctx.Response.Clear();
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/problem+json";
-        await ctx.Response.WriteAsJsonAsync(new { type = "about:blank", title, status, detail });
+        await ctx.Response.WriteAsJsonAsync(new { type = "about:blank", title, status, detail, reference });
     }
 }

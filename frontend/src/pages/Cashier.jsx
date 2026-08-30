@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { OrderActions } from '../ordering.jsx'
+import { toast } from '../ui.jsx'
+import { friendlyError } from '../errors'
 import Receipt from './Receipt.jsx'
+
+// Run a status action, surfacing any failure as a toast (never silently).
+const run = (p) => Promise.resolve(p).catch((e) => toast.error(friendlyError(e)))
 
 // Reception / cashier: approve new orders, then bill & settle each table.
 export default function Cashier() {
@@ -30,7 +35,7 @@ export default function Cashier() {
             <Head o={o} /><Lines o={o} />
             <div className="row" style={{ gap: 8, marginTop: 8 }}>
               <button className="ghost" onClick={() => setDetailFor(o)}>🔍 Details</button>
-              <button className="green" style={{ marginLeft: 'auto' }} onClick={() => api.approve(o.id)}>✔ Approve → kitchen</button>
+              <button className="green" style={{ marginLeft: 'auto' }} onClick={() => run(api.approve(o.id))}>✔ Approve → kitchen</button>
             </div>
           </div>
         ))}

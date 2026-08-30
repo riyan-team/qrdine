@@ -1,3 +1,4 @@
+import { Component } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation, Link } from 'react-router-dom'
 import Owner from './pages/Owner.jsx'
 import Menu from './pages/Menu.jsx'
@@ -13,7 +14,7 @@ import Inventory from './pages/Inventory.jsx'
 import FbrInvoices from './pages/FbrInvoices.jsx'
 import PlatformLogin from './pages/PlatformLogin.jsx'
 import PlatformConsole from './pages/PlatformConsole.jsx'
-import { DialogHost } from './ui.jsx'
+import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
 
 // Guards a staff-only route: no token → bounce to /login, remembering where we were.
@@ -21,6 +22,28 @@ function RequireStaff({ children }) {
   const loc = useLocation()
   if (!auth.staffToken) return <Navigate to="/login" state={{ from: loc.pathname }} replace />
   return children
+}
+
+// Catches any render-time crash so a bug shows a friendly recovery screen instead of
+// a blank white page. The technical error is logged to the console for developers.
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { failed: false } }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(error, info) { console.error('UI error:', error, info) }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="wrap" style={{ maxWidth: 460, marginTop: 80, textAlign: 'center' }}>
+        <div className="card">
+          <div className="big" style={{ marginBottom: 8 }}>Something went wrong</div>
+          <p className="muted" style={{ fontSize: 14 }}>
+            The page ran into an unexpected problem. Reloading usually fixes it.
+          </p>
+          <button className="primary" onClick={() => { location.href = '/' }}>Reload the app</button>
+        </div>
+      </div>
+    )
+  }
 }
 
 function Nav() {
@@ -65,7 +88,7 @@ export default function App() {
   // Auth + public menu screens carry their own branding — no staff topbar.
   const isBare = ['/login', '/signup'].includes(loc.pathname)
   return (
-    <>
+    <ErrorBoundary>
       {!isPlatform && !isBare && <Nav />}
       <Routes>
         <Route path="/" element={<Navigate to="/login" />} />
@@ -85,6 +108,7 @@ export default function App() {
         <Route path="/waiter" element={<RequireStaff><Waiter /></RequireStaff>} />
       </Routes>
       <DialogHost />
-    </>
+      <ToastHost />
+    </ErrorBoundary>
   )
 }

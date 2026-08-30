@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { auth } from '../auth'
 import { lookupRestaurant } from '../api'
+import { useForm, FormField, required } from '../forms.jsx'
+import { friendlyError } from '../errors'
 import DineInLogo from '../DineInLogo.jsx'
 
 const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', Manager: '/admin/dashboard', Owner: '/admin/dashboard' }
@@ -9,23 +11,39 @@ const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', 
 export default function Login() {
   const nav = useNavigate()
   const stored = auth.getStaff()?.slug
-  const [place, setPlace] = useState(stored && stored !== 'desidhaba' ? stored : '')
-  const [username, setU] = useState('')
-  const [password, setP] = useState('')
+  const form = useForm(
+    { place: stored && stored !== 'desidhaba' ? stored : '', username: '', password: '' },
+    {
+      place: (v) => required(v, 'Restaurant name or address'),
+      username: (v) => required(v, 'Username'),
+      password: (v) => required(v, 'Password'),
+    },
+  )
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   const doLogin = async (e) => {
     e.preventDefault()
-    setErr(''); setBusy(true)
+    setErr('')
+    if (!form.validateAll()) return
+    setBusy(true)
     try {
-      // Resolve the typed restaurant name/address to its slug, and confirm it exists.
+      const { place, username, password } = form.values
+      // Resolve the typed restaurant name/address to its sign-in address (slug).
       const found = await lookupRestaurant(place.trim())
-      if (!found) { setErr("We couldn't find a restaurant with that name or address."); setBusy(false); return }
+      if (!found) {
+        setErr("We couldn't find a restaurant with that name or address. Enter the exact restaurant name you registered, or your menu address (the part after /r/ in your QR link).")
+        setBusy(false)
+        return
+      }
       const session = await auth.login(found.slug, username.trim(), password)
       nav(HOME_FOR[session.role] || '/cashier')
-    } catch (e) { setErr(e.message) }
-    setBusy(false)
+    } catch (e2) {
+      // Surface any per-field messages inline, plus a friendly summary.
+      if (e2.fieldErrors) form.setServerErrors(e2.fieldErrors)
+      setErr(friendlyError(e2))
+      setBusy(false)
+    }
   }
 
   return (
@@ -41,15 +59,28 @@ export default function Login() {
         <div className="auth-card">
           <div className="h" style={{ marginTop: 0 }}>Welcome back</div>
           <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Sign in to your restaurant.</p>
-          <form onSubmit={doLogin}>
-            <label className="muted" style={{ fontSize: 13 }}>Restaurant name or address</label>
-            <input value={place} onChange={(e) => setPlace(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} placeholder="e.g. Desi Dhaba" />
-            <label className="muted" style={{ fontSize: 13 }}>Username</label>
-            <input value={username} onChange={(e) => setU(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} />
-            <label className="muted" style={{ fontSize: 13 }}>Password</label>
-            <input type="password" value={password} onChange={(e) => setP(e.target.value)} style={{ width: '100%', margin: '4px 0 12px' }} />
-            {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
-            <button className="primary" disabled={busy || !place.trim() || !username.trim() || !password} style={{ width: '100%' }}>
+          <form onSubmit={doLogin} noValidate>
+            <FormField
+              label="Restaurant name or address"
+              placeholder="e.g. Karachi Biryani House"
+              hint="The exact name you registered, or your menu address (after /r/ in your QR link)."
+              autoFocus
+              {...form.register('place')}
+            />
+            <FormField
+              label="Username"
+              placeholder="The username you created at sign-up"
+              autoComplete="username"
+              {...form.register('username')}
+            />
+            <FormField
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              {...form.register('password')}
+            />
+            {err && <div className="form-error">{err}</div>}
+            <button className="primary" disabled={busy} style={{ width: '100%' }}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>

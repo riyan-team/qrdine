@@ -63,8 +63,15 @@ public static class MenuAdminEndpoints
         // Parse a pasted/uploaded CSV (Category, Item, Price). Returns a preview.
         g.MapPost("/menu/import/csv", async (HttpRequest req, MenuImportService svc) =>
         {
+            // Cap the body so a huge paste can't exhaust server memory.
+            const long maxBytes = 1 * 1024 * 1024;   // 1 MB of CSV is thousands of rows
+            if (req.ContentLength is long len && len > maxBytes)
+                return Results.BadRequest(new { detail = "That CSV is too large (max 1 MB)." });
             using var reader = new StreamReader(req.Body);
-            var csv = await reader.ReadToEndAsync();
+            var buffer = new char[maxBytes + 1];
+            var read = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
+            if (read > maxBytes) return Results.BadRequest(new { detail = "That CSV is too large (max 1 MB)." });
+            var csv = new string(buffer, 0, read);
             return Results.Ok(svc.ParseCsv(csv));
         }).DisableAntiforgery();
 

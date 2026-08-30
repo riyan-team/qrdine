@@ -34,6 +34,18 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
     .Enrich.FromLogContext()
     .WriteTo.Console());
 
+// Fail fast in production on a weak/default JWT secret. A guessable secret lets an
+// attacker forge a platform token and take over the whole control plane, so this is
+// a hard startup gate (Development keeps the convenient dev secret).
+if (!builder.Environment.IsDevelopment())
+{
+    var secret = builder.Configuration["Jwt:Secret"] ?? "";
+    if (secret.Length < 32 || secret.Contains("dev-only", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException(
+            "Jwt:Secret must be a random value of at least 32 characters in production. " +
+            "Set Jwt__Secret (e.g. `openssl rand -base64 48`).");
+}
+
 // ---- composition root: each layer wires its own services ----
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -63,13 +75,50 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
     o.KnownProxies.Clear();
 });
 
-// Throttle authentication endpoints per client IP to blunt brute-force attempts.
+// Server-side rate limiting per client IP to blunt brute-force and abuse. Limits are
+// configurable via the "RateLimits" config section (see appsettings.json); the values
+// below are the fallbacks. Each named policy is applied to its endpoints with
+// .RequireRateLimiting(name). Rejections return 429 with a friendly problem+json body.
+string ClientKey(HttpContext ctx) =>
+    ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+FixedWindowRateLimiterOptions Window(int permit, int seconds) =>
+    new() { PermitLimit = permit, Window = TimeSpan.FromSeconds(seconds), QueueLimit = 0 };
+
+int Limit(string name, int fallback) =>
+    builder.Configuration.GetValue($"RateLimits:{name}:PermitLimit", fallback);
+int WindowSecs(string name, int fallback) =>
+    builder.Configuration.GetValue($"RateLimits:{name}:WindowSeconds", fallback);
+
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Sign-in / password endpoints: tight, to slow credential stuffing.
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
-        ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        ClientKey(ctx), _ => Window(Limit("login", 10), WindowSecs("login", 60))));
+    // New-restaurant sign-up: very tight — few legitimate attempts per IP.
+    o.AddPolicy("register", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ClientKey(ctx), _ => Window(Limit("register", 5), WindowSecs("register", 3600))));
+    // Order placement (guest + waiter): generous but bounded against spam.
+    o.AddPolicy("orders", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ClientKey(ctx), _ => Window(Limit("orders", 40), WindowSecs("orders", 60))));
+    // Public guest endpoints (table session issue, feedback): bounded per IP.
+    o.AddPolicy("public", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ClientKey(ctx), _ => Window(Limit("public", 60), WindowSecs("public", 60))));
+
+    // Friendly rejection body (never a bare 429). Don't reveal whether an account exists.
+    o.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.ContentType = "application/problem+json";
+        await ctx.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            type = "about:blank",
+            title = "Too many attempts",
+            status = StatusCodes.Status429TooManyRequests,
+            detail = "You've tried a few times in quick succession. Please wait a moment and try again."
+        }, ct);
+    };
 });
 
 var app = builder.Build();

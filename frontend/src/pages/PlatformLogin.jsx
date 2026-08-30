@@ -2,23 +2,32 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { platform } from '../api'
 import { platformAuth } from '../auth'
+import { useForm, FormField, required } from '../forms.jsx'
+import { friendlyError } from '../errors'
 
 // SaaS operator sign-in — separate from restaurant staff.
 export default function PlatformLogin() {
   const nav = useNavigate()
-  const [u, setU] = useState('')
-  const [p, setP] = useState('')
+  const form = useForm(
+    { username: '', password: '' },
+    { username: (v) => required(v, 'Username'), password: (v) => required(v, 'Password') },
+  )
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   const go = async (e) => {
-    e.preventDefault(); setErr(''); setBusy(true)
+    e.preventDefault(); setErr('')
+    if (!form.validateAll()) return
+    setBusy(true)
     try {
-      const s = await platform.login(u.trim(), p)
+      const s = await platform.login(form.values.username.trim(), form.values.password)
       platformAuth.set(s)
       nav('/platform')
-    } catch (e) { setErr(e.message) }
-    setBusy(false)
+    } catch (e2) {
+      if (e2.fieldErrors) form.setServerErrors(e2.fieldErrors)
+      setErr(friendlyError(e2))
+      setBusy(false)
+    }
   }
 
   return (
@@ -26,10 +35,10 @@ export default function PlatformLogin() {
       <div className="h" style={{ marginTop: 40 }}>QrDine — Operator</div>
       <div className="card">
         <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Platform control panel. Manage all restaurants, plans and subscriptions.</p>
-        <form onSubmit={go}>
-          <input placeholder="Username" value={u} onChange={(e) => setU(e.target.value)} style={{ width: '100%', marginBottom: 10 }} autoFocus />
-          <input type="password" placeholder="Password" value={p} onChange={(e) => setP(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
-          {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
+        <form onSubmit={go} noValidate>
+          <FormField label="Username" autoComplete="username" autoFocus {...form.register('username')} />
+          <FormField label="Password" type="password" autoComplete="current-password" {...form.register('password')} />
+          {err && <div className="form-error">{err}</div>}
           <button className="primary" disabled={busy} style={{ width: '100%' }}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
       </div>

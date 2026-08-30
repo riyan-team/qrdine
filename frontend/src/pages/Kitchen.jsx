@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
+import { toast } from '../ui.jsx'
+import { friendlyError } from '../errors'
+
+// Run a status action, surfacing any failure as a toast (never silently).
+const run = (p) => Promise.resolve(p).catch((e) => toast.error(friendlyError(e)))
 
 // Kitchen Display Screen (KDS): accept approved orders, set the cooking time,
 // then mark ready. The time you set drives the countdown on the customer's phone.
@@ -29,7 +34,7 @@ export default function Kitchen() {
             <Lines o={o} />
             <div className="muted">Promised: {o.etaMinutes} min</div>
             <button className="green" style={{ width: '100%', marginTop: 8 }}
-              onClick={() => api.ready(o.id)}>🔔 Mark ready</button>
+              onClick={() => run(api.ready(o.id))}>🔔 Mark ready</button>
           </div>
         ))}
       </div>
@@ -51,7 +56,7 @@ function CookCard({ o }) {
           {[5, 10, 15, 20, 25, 30, 40, 45, 60].map((m) => <option key={m} value={m}>{m} min</option>)}
         </select>
         <button className="primary" style={{ marginLeft: 'auto' }}
-          onClick={() => api.cook(o.id, eta)}>Start cooking →</button>
+          onClick={() => run(api.cook(o.id, eta))}>Start cooking →</button>
       </div>
     </div>
   )

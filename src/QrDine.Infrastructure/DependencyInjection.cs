@@ -81,12 +81,16 @@ public static class DependencyInjection
         }
         else
         {
-            // Real FBR transport. FBR's gateway presents a certificate their spec has
-            // clients bypass-validate, so we relax validation for THIS client only.
-            // Short timeout: at settle time this call is on the cashier's critical path,
-            // so an offline FBR must fail fast → invoice goes Pending, receipt prints now.
-            services.AddHttpClient<IFiscalService, FbrFiscalService>(c => c.Timeout = TimeSpan.FromSeconds(8))
-                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            // Real FBR transport. FBR's gateway has historically presented a certificate
+            // their spec has clients bypass-validate. That bypass is MITM-exposed, so it
+            // is gated behind Fiscal:AllowInvalidCertificate (default true only to preserve
+            // the documented spec behavior) — set it to false once the gateway serves a
+            // valid chain. Short timeout: at settle time this call is on the cashier's
+            // critical path, so an offline FBR must fail fast → invoice goes Pending.
+            var allowInvalidCert = config.GetValue("Fiscal:AllowInvalidCertificate", true);
+            var http = services.AddHttpClient<IFiscalService, FbrFiscalService>(c => c.Timeout = TimeSpan.FromSeconds(8));
+            if (allowInvalidCert)
+                http.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
                 {
                     ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
                 });

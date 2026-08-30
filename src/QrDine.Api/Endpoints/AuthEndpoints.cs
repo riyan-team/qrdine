@@ -28,6 +28,7 @@ public static class AuthEndpoints
 
         // Guest scans a table → gets a short-lived token scoped to that table.
         g.MapPost("/tables/{code}/session", async (string code, AuthService svc)
-            => Results.Ok(await svc.IssueGuestSession(code)));
+            => Results.Ok(await svc.IssueGuestSession(code)))
+            .RequireRateLimiting("public");
     }
 }

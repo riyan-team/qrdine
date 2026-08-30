@@ -21,12 +21,26 @@ public class ValidationFilter : IEndpointFilter
             var result = await validator.ValidateAsync(new ValidationContext<object>(arg));
             if (!result.IsValid)
             {
+                // Keys are camelCased so the SPA can map each error to its form field
+                // (ownerUsername → the "Username" input). A friendly `detail` (the first
+                // message) is included so any client that only reads `detail` still shows
+                // a human sentence rather than a raw property name.
                 var errors = result.Errors
-                    .GroupBy(e => e.PropertyName)
-                    .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
-                return Results.ValidationProblem(errors);
+                    .GroupBy(e => CamelCase(e.PropertyName))
+                    .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).Distinct().ToArray());
+                var detail = result.Errors.FirstOrDefault()?.ErrorMessage ?? "Please check the highlighted fields.";
+                return Results.ValidationProblem(errors, detail: detail,
+                    title: "Please check the highlighted fields.");
             }
         }
         return await next(ctx);
+    }
+
+    // "OwnerUsername" → "ownerUsername"; nested paths keep their segments ("Lines[0].Name").
+    private static string CamelCase(string property)
+    {
+        if (string.IsNullOrEmpty(property)) return property;
+        if (property.Length == 1) return property.ToLowerInvariant();
+        return char.ToLowerInvariant(property[0]) + property.Substring(1);
     }
 }

@@ -17,6 +17,45 @@ export const ui = {
   alert: (opts) => new Promise((resolve) => emit({ kind: 'alert', ...norm(opts), resolve })),
 }
 
+// Transient corner notifications for background/non-form actions (a save that
+// succeeded, an action that failed) — so nothing fails silently.
+const toastListeners = new Set()
+let toastId = 0
+export const toast = {
+  show: (message, tone = 'info', ms = 4000) => {
+    const t = { id: ++toastId, message: typeof message === 'string' ? message : String(message ?? ''), tone, ms }
+    toastListeners.forEach((l) => l(t))
+    return t.id
+  },
+  error: (message, ms = 5000) => toast.show(message, 'error', ms),
+  success: (message, ms = 3500) => toast.show(message, 'success', ms),
+  info: (message, ms = 4000) => toast.show(message, 'info', ms),
+}
+
+export function ToastHost() {
+  const [items, setItems] = useState([])
+  useEffect(() => {
+    const l = (t) => {
+      setItems((cur) => [...cur, t])
+      if (t.ms > 0) setTimeout(() => setItems((cur) => cur.filter((x) => x.id !== t.id)), t.ms)
+    }
+    toastListeners.add(l)
+    return () => toastListeners.delete(l)
+  }, [])
+  if (!items.length) return null
+  const dismiss = (id) => setItems((cur) => cur.filter((x) => x.id !== id))
+  return (
+    <div className="toast-host noprint" aria-live="polite">
+      {items.map((t) => (
+        <div key={t.id} className={`toast toast-${t.tone}`} onClick={() => dismiss(t.id)} role="status">
+          <span className="toast-dot" />
+          <span className="toast-msg">{t.message}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function DialogHost() {
   const [d, setD] = useState(null)
   const [val, setVal] = useState('')

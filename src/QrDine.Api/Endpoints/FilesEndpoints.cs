@@ -14,6 +14,8 @@ public static class FilesEndpoints
             var f = await db.StoredFiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
             if (f is null) return Results.NotFound();
             http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            // Stop browsers content-sniffing a stored file into something executable.
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
             return Results.File(f.Data, f.ContentType);
         });
     }

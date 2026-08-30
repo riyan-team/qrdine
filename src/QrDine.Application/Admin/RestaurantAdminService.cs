@@ -119,9 +119,13 @@ public class RestaurantAdminService
             .Select(s => new StaffDto(s.Id, s.Username, s.DisplayName, s.Role.ToString(),
                 s.FbrPosId, s.FbrToken != null && s.FbrToken != "")).ToListAsync(ct);
 
-    public async Task<int> AddStaff(StaffInput input, CancellationToken ct = default)
+    public async Task<int> AddStaff(StaffInput input, bool callerIsOwner, CancellationToken ct = default)
     {
         var role = ParseRole(input.Role);
+        // Only an owner can create another owner — otherwise a manager (who holds
+        // settings.manage by default) could mint an owner account and take over.
+        if (role == StaffRole.Owner && !callerIsOwner)
+            throw new DomainException("Only an owner can add another owner.");
         var username = input.Username.Trim().ToLowerInvariant();
         if (await _db.Staff.AnyAsync(s => s.Username == username, ct))
             throw new DomainException($"Username '{username}' is taken.");
@@ -137,10 +141,14 @@ public class RestaurantAdminService
         return s.Id;
     }
 
-    public async Task UpdateStaff(int id, StaffUpdateInput input, CancellationToken ct = default)
+    public async Task UpdateStaff(int id, StaffUpdateInput input, bool callerIsOwner, CancellationToken ct = default)
     {
         var s = await _db.Staff.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Staff not found.");
         var role = ParseRole(input.Role);
+        // A non-owner may neither modify an existing owner nor promote anyone to owner
+        // (which would be a self-service privilege escalation).
+        if ((s.Role == StaffRole.Owner || role == StaffRole.Owner) && !callerIsOwner)
+            throw new DomainException("Only an owner can manage owner accounts.");
         // Don't allow removing the last owner.
         if (s.Role == StaffRole.Owner && role != StaffRole.Owner &&
             await _db.Staff.CountAsync(x => x.Role == StaffRole.Owner, ct) <= 1)
@@ -188,16 +196,21 @@ public class RestaurantAdminService
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task ResetPassword(int id, string password, CancellationToken ct = default)
+    public async Task ResetPassword(int id, string password, bool callerIsOwner, CancellationToken ct = default)
     {
         var s = await _db.Staff.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Staff not found.");
+        // Only an owner can reset an owner's password (otherwise a manager could hijack it).
+        if (s.Role == StaffRole.Owner && !callerIsOwner)
+            throw new DomainException("Only an owner can reset an owner's password.");
         s.PasswordHash = _hasher.Hash(password);
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task DeleteStaff(int id, CancellationToken ct = default)
+    public async Task DeleteStaff(int id, bool callerIsOwner, CancellationToken ct = default)
     {
         var s = await _db.Staff.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Staff not found.");
+        if (s.Role == StaffRole.Owner && !callerIsOwner)
+            throw new DomainException("Only an owner can remove an owner account.");
         if (s.Role == StaffRole.Owner && await _db.Staff.CountAsync(x => x.Role == StaffRole.Owner, ct) <= 1)
             throw new DomainException("You can't delete the last owner.");
         _db.Staff.Remove(s);

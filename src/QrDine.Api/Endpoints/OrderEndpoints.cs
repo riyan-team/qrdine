@@ -31,14 +31,14 @@ public static class OrderEndpoints
                 var waiter = user.FindFirst(ClaimTypes.Name)?.Value;
                 return Results.Ok(await svc.Place(body, OrderSource.Waiter, waiter));
             }
-            if (type == AppClaims.TypeGuest)
-            {
-                var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
-                if (!string.Equals(tokenTable, body.TableCode, StringComparison.OrdinalIgnoreCase))
-                    throw new DomainException("This session is for a different table.");
-            }
+            if (type != AppClaims.TypeGuest)
+                // Not a staff or guest token (e.g. a platform token) — has no business ordering.
+                return Results.Problem(detail: "This session can't place orders.", statusCode: 403);
+            var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
+            if (!string.Equals(tokenTable, body.TableCode, StringComparison.OrdinalIgnoreCase))
+                throw new DomainException("This session is for a different table.");
             return Results.Ok(await svc.Place(body, OrderSource.Qr));
-        }).RequireAuthorization(Policies.GuestOrStaff);
+        }).RequireAuthorization(Policies.GuestOrStaff).RequireRateLimiting("orders");
 
         // Reading a table's own live orders stays public (the customer just scanned it).
         g.MapGet("/tables/{code}/orders", async (string code, OrderService svc)

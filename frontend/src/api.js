@@ -1,4 +1,5 @@
 import { auth, staffAuth, platformAuth } from './auth'
+import { parseError } from './errors'
 
 // Staff calls target the signed-in restaurant; guest calls take an explicit slug.
 const S = () => auth.staffSlug()
@@ -6,8 +7,7 @@ const S = () => auth.staffSlug()
 async function j(res) {
   if (!res.ok) {
     if (res.status === 401) { auth.clearStaff(); if (location.pathname !== '/login') location.href = '/login' }
-    const text = await res.text()
-    try { throw new Error(JSON.parse(text).detail || text) } catch { throw new Error(text || res.statusText) }
+    throw await parseError(res)   // friendly ApiError — never the raw body
   }
   const t = await res.text()
   return t ? JSON.parse(t) : null
@@ -160,8 +160,7 @@ export const checkout = (amountPkr, reference, description) => fetch('/api/payme
 async function pj(res) {
   if (!res.ok) {
     if (res.status === 401) { platformAuth.clear(); if (location.pathname !== '/platform/login') location.href = '/platform/login' }
-    const text = await res.text()
-    try { throw new Error(JSON.parse(text).detail || text) } catch { throw new Error(text || res.statusText) }
+    throw await parseError(res)   // friendly ApiError — never the raw body
   }
   const t = await res.text(); return t ? JSON.parse(t) : null
 }

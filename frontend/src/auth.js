@@ -1,6 +1,8 @@
 // Auth + tenant store. The staff session remembers which restaurant (slug) the
 // user signed into, so all staff calls target that tenant. Guest tokens are keyed
 // per restaurant+table and kept in memory only.
+import { parseError } from './errors'
+
 const STAFF_KEY = 'qrdine.staff'
 
 export const auth = {
@@ -22,10 +24,7 @@ export const auth = {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     })
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({}))
-      throw new Error(b.detail || 'Login failed')
-    }
+    if (!res.ok) throw await parseError(res)   // friendly ApiError
     const session = await res.json()          // { token, displayName, role }
     this.setStaff({ ...session, slug })
     return session

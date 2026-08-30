@@ -13,7 +13,7 @@ public static class FeedbackEndpoints
         {
             await svc.Submit(body);
             return Results.NoContent();
-        });
+        }).RequireRateLimiting("public");
 
         app.MapGet("/api/r/{slug}/admin/feedback", async (FeedbackService svc)
                 => Results.Ok(await svc.GetSummary()))

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { auth } from '../auth'
-import { ui } from '../ui.jsx'
+import { ui, toast } from '../ui.jsx'
+import { friendlyError } from '../errors'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -155,7 +156,7 @@ function Branches() {
     try { await api.addBranch({ name: f.name.trim(), address: f.address.trim(), isActive: true }); setF({ name: '', address: '' }); load() }
     catch (e) { setErr(e.message) }
   }
-  const rename = async (b) => { const name = await ui.prompt({ title: 'Rename branch', defaultValue: b.name, confirmText: 'Rename', required: true }); if (name && name !== b.name) { await api.updateBranch(b.id, { ...b, name }); load() } }
+  const rename = async (b) => { const name = await ui.prompt({ title: 'Rename branch', defaultValue: b.name, confirmText: 'Rename', required: true }); if (name && name !== b.name) { try { await api.updateBranch(b.id, { ...b, name }); load() } catch (e) { toast.error(friendlyError(e)) } } }
   const del = async (b) => { if (await ui.confirm({ title: 'Delete branch', message: `Delete branch "${b.name}"?`, confirmText: 'Delete', danger: true })) { try { await api.deleteBranch(b.id); load() } catch (e) { ui.alert(e.message) } } }
   const [fbrFor, setFbrFor] = useState(null)
 
@@ -259,7 +260,12 @@ function Permissions() {
     const s = new Set(d[role]); s.has(perm) ? s.delete(perm) : s.add(perm)
     return { ...d, [role]: s }
   })
-  const save = async (role) => { await api.setPermissions(role, [...draft[role]]); setSavedRole(role); setTimeout(() => setSavedRole(''), 1500) }
+  const save = async (role) => {
+    try {
+      await api.setPermissions(role, [...draft[role]])
+      setSavedRole(role); setTimeout(() => setSavedRole(''), 1500)
+    } catch (e) { toast.error(friendlyError(e)) }
+  }
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -315,9 +321,9 @@ function Tables() {
   }
   const rename = async (t) => {
     const name = await ui.prompt({ title: `Rename ${t.code}`, defaultValue: t.name, confirmText: 'Rename', required: true })
-    if (name && name !== t.name) { await api.updateTable(t.id, t.code, name, t.branchId); load() }
+    if (name && name !== t.name) { try { await api.updateTable(t.id, t.code, name, t.branchId); load() } catch (e) { toast.error(friendlyError(e)) } }
   }
-  const moveBranch = async (t, bid) => { await api.updateTable(t.id, t.code, t.name, Number(bid)); load() }
+  const moveBranch = async (t, bid) => { try { await api.updateTable(t.id, t.code, t.name, Number(bid)); load() } catch (e) { toast.error(friendlyError(e)) } }
   const del = async (t) => {
     if (!await ui.confirm({ title: 'Delete table', message: `Delete ${t.code}?`, confirmText: 'Delete', danger: true })) return
     try { await api.deleteTable(t.id); load() } catch (e) { ui.alert(e.message) }
@@ -380,7 +386,10 @@ function Staff() {
   const changeRole = async (s, role) => { try { await api.updateStaff(s.id, { displayName: s.displayName, role, fbrPosId: s.fbrPosId }); load() } catch (e) { ui.alert(e.message) } }
   const resetPw = async (s) => {
     const pw = await ui.prompt({ title: `New password for ${s.username}`, placeholder: 'New password', confirmText: 'Update', required: true })
-    if (pw) { await api.resetStaffPassword(s.id, pw); ui.alert('Password updated.') }
+    if (pw) {
+      try { await api.resetStaffPassword(s.id, pw); ui.alert('Password updated.') }
+      catch (e) { toast.error(friendlyError(e)) }
+    }
   }
   const del = async (s) => {
     if (!await ui.confirm({ title: 'Remove staff', message: `Remove ${s.username}?`, confirmText: 'Remove', danger: true })) return

@@ -26,12 +26,13 @@ public static class AdminSettingsEndpoints
         g.MapPut("/tables/{id:int}", async (int id, TableInput body, RestaurantAdminService svc) => { await svc.UpdateTable(id, body); return Results.NoContent(); });
         g.MapDelete("/tables/{id:int}", async (int id, RestaurantAdminService svc) => { await svc.DeleteTable(id); return Results.NoContent(); });
 
-        // staff
+        // staff — owner-role accounts can only be created/modified/reset/deleted by an
+        // owner (a manager holds settings.manage but must not escalate to owner).
         g.MapGet("/staff", async (RestaurantAdminService svc) => Results.Ok(await svc.ListStaff()));
-        g.MapPost("/staff", async (StaffInput body, RestaurantAdminService svc) => Results.Ok(new { id = await svc.AddStaff(body) }));
-        g.MapPut("/staff/{id:int}", async (int id, StaffUpdateInput body, RestaurantAdminService svc) => { await svc.UpdateStaff(id, body); return Results.NoContent(); });
-        g.MapPost("/staff/{id:int}/password", async (int id, ResetPasswordInput body, RestaurantAdminService svc) => { await svc.ResetPassword(id, body.Password); return Results.NoContent(); });
-        g.MapDelete("/staff/{id:int}", async (int id, RestaurantAdminService svc) => { await svc.DeleteStaff(id); return Results.NoContent(); });
+        g.MapPost("/staff", async (StaffInput body, System.Security.Claims.ClaimsPrincipal user, RestaurantAdminService svc) => Results.Ok(new { id = await svc.AddStaff(body, user.IsInRole("Owner")) }));
+        g.MapPut("/staff/{id:int}", async (int id, StaffUpdateInput body, System.Security.Claims.ClaimsPrincipal user, RestaurantAdminService svc) => { await svc.UpdateStaff(id, body, user.IsInRole("Owner")); return Results.NoContent(); });
+        g.MapPost("/staff/{id:int}/password", async (int id, ResetPasswordInput body, System.Security.Claims.ClaimsPrincipal user, RestaurantAdminService svc) => { await svc.ResetPassword(id, body.Password, user.IsInRole("Owner")); return Results.NoContent(); });
+        g.MapDelete("/staff/{id:int}", async (int id, System.Security.Claims.ClaimsPrincipal user, RestaurantAdminService svc) => { await svc.DeleteStaff(id, user.IsInRole("Owner")); return Results.NoContent(); });
 
         // Service settings (waiter auto-assignment).
         g.MapGet("/service-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetServiceSettings()));
