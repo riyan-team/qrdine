@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { auth } from '../auth'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon } from '../icons.jsx'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -32,6 +33,7 @@ export default function Settings() {
     <div className="wrap">
       <div className="h">Settings</div>
       <AccountSettings />
+      <ReceiptSettings />
       <ServiceSettings />
       <FbrSettings />
       <Branches />
@@ -66,6 +68,83 @@ function AccountSettings() {
         <input type="password" placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
         <input type="password" placeholder="New password (6+)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
         <button className="primary" disabled={busy || !cur || nw.length < 6} onClick={save}>{msg || 'Update password'}</button>
+      </div>
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
+    </div>
+  )
+}
+
+// Receipt branding: a centred logo plus the printed header (address/phone) and
+// footer (thank-you) lines. Shown on every 80mm bill and invoice.
+function ReceiptSettings() {
+  const [s, setS] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+  const load = () => api.getReceiptSettings().then(setS).catch((e) => setErr(e.message))
+  useEffect(() => { load() }, [])
+  if (!s) return null
+
+  const set = (k, v) => setS((x) => ({ ...x, [k]: v }))
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 1500) }
+
+  const save = async () => {
+    setErr(''); setBusy(true)
+    try {
+      await api.setReceiptSettings({ receiptHeader: s.receiptHeader || '', receiptFooter: s.receiptFooter || '', logoUrl: s.logoUrl || '' })
+      flash('Saved.')
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
+  }
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    setErr(''); setBusy(true)
+    try { const { logoUrl } = await api.uploadLogo(file); set('logoUrl', logoUrl); flash('Logo uploaded.') }
+    catch (e2) { setErr(friendlyError(e2)) }
+    setBusy(false); if (fileRef.current) fileRef.current.value = ''
+  }
+  const removeLogo = async () => {
+    setBusy(true)
+    try { await api.setReceiptSettings({ receiptHeader: s.receiptHeader || '', receiptFooter: s.receiptFooter || '', logoUrl: '' }); set('logoUrl', ''); flash('Logo removed.') }
+    catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between"><b>Receipt &amp; branding</b>{msg && <span className="muted" style={{ fontSize: 13 }}>{msg}</span>}</div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>Your logo prints centred at the top of every 80&nbsp;mm bill, with the header under it and the footer at the foot.</p>
+
+      <div className="receipt-brand">
+        {/* Logo — always centred */}
+        <div className="logo-box">
+          {s.logoUrl
+            ? <img src={s.logoUrl} alt="Logo" className="logo-preview" />
+            : <div className="logo-empty"><ImageIcon size={26} /><span>No logo</span></div>}
+          <div className="row" style={{ gap: 8, marginTop: 10, justifyContent: 'center' }}>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={onFile} style={{ display: 'none' }} />
+            <button disabled={busy} onClick={() => fileRef.current?.click()}>{s.logoUrl ? 'Replace logo' : 'Upload logo'}</button>
+            {s.logoUrl && <button className="ghost" disabled={busy} onClick={removeLogo}>Remove</button>}
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 6, textAlign: 'center' }}>PNG, JPG or WebP · under 2&nbsp;MB</div>
+        </div>
+
+        <div className="brand-fields">
+          <label className="fld">
+            <span className="muted" style={{ fontSize: 13 }}>Header — address, phone, tagline</span>
+            <textarea rows={2} placeholder={`${s.restaurantName || 'Your restaurant'}\nMain Boulevard, Lahore · 042-000000`}
+              value={s.receiptHeader || ''} onChange={(e) => set('receiptHeader', e.target.value)} />
+          </label>
+          <label className="fld">
+            <span className="muted" style={{ fontSize: 13 }}>Footer — thank-you or policy note</span>
+            <textarea rows={2} placeholder="Thank you — please come again!"
+              value={s.receiptFooter || ''} onChange={(e) => set('receiptFooter', e.target.value)} />
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -148,7 +227,13 @@ function Branches() {
   const [rows, setRows] = useState([])
   const [f, setF] = useState({ name: '', address: '' })
   const [err, setErr] = useState('')
-  const load = () => api.listBranches().then(setRows).catch((e) => setErr(e.message))
+  const [fbrOn, setFbrOn] = useState(false)   // is FBR integration enabled for this restaurant?
+  const [fbrFor, setFbrFor] = useState(null)
+  const [editFor, setEditFor] = useState(null)
+  const load = () => {
+    api.listBranches().then(setRows).catch((e) => setErr(e.message))
+    api.getFbrSettings().then((s) => setFbrOn(!!(s.featureFbr && s.fbrEnabled))).catch(() => {})
+  }
   useEffect(() => { load() }, [])
 
   const add = async () => {
@@ -156,32 +241,63 @@ function Branches() {
     try { await api.addBranch({ name: f.name.trim(), address: f.address.trim(), isActive: true }); setF({ name: '', address: '' }); load() }
     catch (e) { setErr(e.message) }
   }
-  const rename = async (b) => { const name = await ui.prompt({ title: 'Rename branch', defaultValue: b.name, confirmText: 'Rename', required: true }); if (name && name !== b.name) { try { await api.updateBranch(b.id, { ...b, name }); load() } catch (e) { toast.error(friendlyError(e)) } } }
   const del = async (b) => { if (await ui.confirm({ title: 'Delete branch', message: `Delete branch "${b.name}"?`, confirmText: 'Delete', danger: true })) { try { await api.deleteBranch(b.id); load() } catch (e) { ui.alert(e.message) } } }
-  const [fbrFor, setFbrFor] = useState(null)
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <b>Branches</b>
-      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>Each location has its own tables, QR codes and its own FBR POS registration. Sales report per branch.</p>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
+        Each location has its own tables, QR codes and (when FBR is on) its own POS registration. Sales report per branch.
+        <span className="hint-inline"> Double-click a branch to edit it.</span>
+      </p>
       {rows.map((b) => (
         <div key={b.id} style={{ borderBottom: '1px solid var(--line)' }}>
-          <div className="row between" style={{ padding: '7px 0' }}>
-            <span><b>{b.name}</b> <span className="muted">· {b.address || 'no address'} · {b.tables} table(s)
-              {b.fbrPosId ? ` · FBR ${b.fbrMode} POS ${b.fbrPosId}` : ''}</span></span>
-            <div className="row" style={{ gap: 6 }}>
-              <button className="ghost" onClick={() => setFbrFor(fbrFor === b.id ? null : b.id)}>FBR POS</button>
-              <button className="ghost" onClick={() => rename(b)}>Rename</button>
-              <button className="ghost" onClick={() => del(b)}>🗑</button>
+          {editFor === b.id ? (
+            <BranchEdit b={b} onDone={() => { setEditFor(null); load() }} onCancel={() => setEditFor(null)} />
+          ) : (
+            <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(b.id)} title="Double-click to edit">
+              <span><b>{b.name}</b> <span className="muted">· {b.address || 'no address'} · {b.tables} table(s)
+                {fbrOn && b.fbrPosId ? ` · FBR ${b.fbrMode} POS ${b.fbrPosId}` : ''}</span></span>
+              <div className="row" style={{ gap: 4 }}>
+                {fbrOn && <button className="ghost btn-sm" onClick={() => setFbrFor(fbrFor === b.id ? null : b.id)}>FBR POS</button>}
+                <button className="ghost icon-btn" title="Edit branch" onClick={() => setEditFor(b.id)}><EditIcon /></button>
+                <button className="ghost icon-btn danger" title="Delete branch" onClick={() => del(b)}><TrashIcon /></button>
+              </div>
             </div>
-          </div>
-          {fbrFor === b.id && <BranchFbr b={b} onSaved={() => { setFbrFor(null); load() }} />}
+          )}
+          {fbrOn && fbrFor === b.id && editFor !== b.id && <BranchFbr b={b} onSaved={() => { setFbrFor(null); load() }} />}
         </div>
       ))}
-      <div className="row" style={{ gap: 8, marginTop: 10 }}>
+      <div className="cat-title" style={{ fontSize: 13, margin: '10px 0 6px' }}>Add branch</div>
+      <div className="row" style={{ gap: 8 }}>
         <input placeholder="Branch name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={{ flex: 1 }} />
         <input placeholder="Address" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} style={{ flex: 1 }} />
-        <button className="primary" disabled={!f.name.trim()} onClick={add}>Add branch</button>
+        <button className="primary" disabled={!f.name.trim()} onClick={add}><PlusIcon /> Add</button>
+      </div>
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
+    </div>
+  )
+}
+
+// Inline editor for a branch's name + address (opened by the Edit button or a
+// double-click). FBR POS config stays on its own panel.
+function BranchEdit({ b, onDone, onCancel }) {
+  const [name, setName] = useState(b.name)
+  const [address, setAddress] = useState(b.address || '')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setErr(''); setBusy(true)
+    try { await api.updateBranch(b.id, { ...b, name: name.trim(), address: address.trim() }); onDone() }
+    catch (e) { setErr(friendlyError(e)); setBusy(false) }
+  }
+  return (
+    <div className="edit-panel">
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <input autoFocus placeholder="Branch name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+        <input placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+        <button className="primary" disabled={busy || !name.trim()} onClick={save}>Save</button>
+        <button disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -334,16 +450,16 @@ function Tables() {
       <b>Tables</b>
       <div style={{ margin: '10px 0' }}>
         {rows.map((t) => (
-          <div key={t.id} className="row between" style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+          <div key={t.id} className="row between list-row" style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }} onDoubleClick={() => rename(t)} title="Double-click to rename">
             <span><b>{t.code}</b> <span className="muted">· {t.name}</span></span>
-            <div className="row" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 4 }}>
               {branches.length > 1 && (
                 <select value={t.branchId} onChange={(e) => moveBranch(t, e.target.value)} style={{ padding: '4px 6px', fontSize: 12 }}>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               )}
-              <button className="ghost" onClick={() => rename(t)}>Rename</button>
-              <button className="ghost" onClick={() => del(t)}>🗑</button>
+              <button className="ghost icon-btn" title="Rename table" onClick={() => rename(t)}><EditIcon /></button>
+              <button className="ghost icon-btn danger" title="Delete table" onClick={() => del(t)}><TrashIcon /></button>
             </div>
           </div>
         ))}
@@ -357,7 +473,7 @@ function Tables() {
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
-        <button className="primary" disabled={!code.trim() || !name.trim()} onClick={add}>Add</button>
+        <button className="primary" disabled={!code.trim() || !name.trim()} onClick={add}><PlusIcon /> Add</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -368,8 +484,12 @@ function Staff() {
   const [rows, setRows] = useState([])
   const [f, setF] = useState({ username: '', displayName: '', role: 'Cashier', password: '', fbrPosId: '', fbrToken: '' })
   const [err, setErr] = useState('')
-  const [posFor, setPosFor] = useState(null)
-  const load = () => api.listStaff().then(setRows).catch((e) => setErr(e.message))
+  const [editFor, setEditFor] = useState(null)
+  const [fbrOn, setFbrOn] = useState(false)
+  const load = () => {
+    api.listStaff().then(setRows).catch((e) => setErr(e.message))
+    api.getFbrSettings().then((s) => setFbrOn(!!(s.featureFbr && s.fbrEnabled))).catch(() => {})
+  }
   useEffect(() => { load() }, [])
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }))
 
@@ -383,11 +503,10 @@ function Staff() {
       setF({ username: '', displayName: '', role: 'Cashier', password: '', fbrPosId: '', fbrToken: '' }); load()
     } catch (e) { setErr(e.message) }
   }
-  const changeRole = async (s, role) => { try { await api.updateStaff(s.id, { displayName: s.displayName, role, fbrPosId: s.fbrPosId }); load() } catch (e) { ui.alert(e.message) } }
   const resetPw = async (s) => {
     const pw = await ui.prompt({ title: `New password for ${s.username}`, placeholder: 'New password', confirmText: 'Update', required: true })
     if (pw) {
-      try { await api.resetStaffPassword(s.id, pw); ui.alert('Password updated.') }
+      try { await api.resetStaffPassword(s.id, pw); toast.success('Password updated.') }
       catch (e) { toast.error(friendlyError(e)) }
     }
   }
@@ -399,22 +518,23 @@ function Staff() {
   return (
     <div className="card">
       <b>Staff</b>
-      <div style={{ margin: '10px 0' }}>
+      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}><span className="hint-inline">Double-click a member to edit.</span></p>
+      <div style={{ margin: '8px 0' }}>
         {rows.map((s) => (
           <div key={s.id} style={{ borderBottom: '1px solid var(--line)' }}>
-            <div className="row between" style={{ padding: '7px 0' }}>
-              <span><b>{s.displayName}</b> <span className="muted">· {s.username}
-                {s.fbrPosId ? ` · POS ${s.fbrPosId}` : ''}{s.hasFbrToken ? ' 🔑' : ''}</span></span>
-              <div className="row" style={{ gap: 6 }}>
-                <select value={s.role} onChange={(e) => changeRole(s, e.target.value)} style={{ padding: '5px 8px' }}>
-                  {ROLES.map((r) => <option key={r}>{r}</option>)}
-                </select>
-                <button className="ghost" title="FBR POS credentials" onClick={() => setPosFor(posFor === s.id ? null : s.id)}>🧾</button>
-                <button className="ghost" onClick={() => resetPw(s)}>🔑</button>
-                <button className="ghost" onClick={() => del(s)}>🗑</button>
+            {editFor === s.id ? (
+              <StaffEdit s={s} fbrOn={fbrOn} onDone={() => { setEditFor(null); load() }} onCancel={() => setEditFor(null)} />
+            ) : (
+              <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(s.id)} title="Double-click to edit">
+                <span><b>{s.displayName}</b> <span className="muted">· {s.username} · {s.role}
+                  {fbrOn && s.fbrPosId ? ` · POS ${s.fbrPosId}` : ''}</span></span>
+                <div className="row" style={{ gap: 4 }}>
+                  <button className="ghost icon-btn" title="Edit member" onClick={() => setEditFor(s.id)}><EditIcon /></button>
+                  <button className="ghost icon-btn" title="Reset password" onClick={() => resetPw(s)}><KeyIcon /></button>
+                  <button className="ghost icon-btn danger" title="Remove member" onClick={() => del(s)}><TrashIcon /></button>
+                </div>
               </div>
-            </div>
-            {posFor === s.id && <StaffFbr s={s} onSaved={() => { setPosFor(null); load() }} />}
+            )}
           </div>
         ))}
         {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No staff yet.</div>}
@@ -428,36 +548,52 @@ function Staff() {
         <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
         <input placeholder="Password" type="password" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
       </div>
-      <div className="row" style={{ gap: 8 }}>
-        <input placeholder="FBR POSID (optional)" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 150 }} />
-        <input placeholder="FBR token (cloud, optional)" value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1 }} />
-        <button className="primary" disabled={!f.username.trim() || !f.displayName.trim() || !f.password} onClick={add}>Add</button>
-      </div>
+      {fbrOn && (
+        <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+          <input placeholder="FBR POSID (optional)" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 150 }} />
+          <input placeholder="FBR token (cloud, optional)" value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1 }} />
+        </div>
+      )}
+      <div className="row"><button className="primary" style={{ marginLeft: 'auto' }} disabled={!f.username.trim() || !f.displayName.trim() || !f.password} onClick={add}><PlusIcon /> Add member</button></div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
 }
 
-// Edit an existing operator's FBR POSID / token (cloud sync files under these).
-function StaffFbr({ s, onSaved }) {
-  const [posId, setPosId] = useState(s.fbrPosId || '')
-  const [token, setToken] = useState('')
+// Full inline editor for a staff member: username, display name, role and (when FBR
+// is on) their POS registration. Opened by the Edit button or a double-click.
+function StaffEdit({ s, fbrOn, onDone, onCancel }) {
+  const [f, setF] = useState({ username: s.username, displayName: s.displayName, role: s.role, fbrPosId: s.fbrPosId || '', fbrToken: '' })
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
-    setErr('')
+    setErr(''); setBusy(true)
     try {
-      // token: leave blank to keep unchanged; send explicit value to set/clear.
-      await api.updateStaff(s.id, { displayName: s.displayName, role: s.role, fbrPosId: posId ? Number(posId) : null, ...(token !== '' ? { fbrToken: token } : {}) })
-      onSaved()
-    } catch (e) { setErr(e.message) }
+      await api.updateStaff(s.id, {
+        username: f.username.trim(), displayName: f.displayName.trim(), role: f.role,
+        fbrPosId: f.fbrPosId ? Number(f.fbrPosId) : null,
+        ...(f.fbrToken !== '' ? { fbrToken: f.fbrToken } : {}),   // blank = keep token
+      })
+      onDone()
+    } catch (e) { setErr(friendlyError(e)); setBusy(false) }
   }
   return (
-    <div style={{ background: 'var(--surface2)', borderRadius: 8, margin: '4px 0 8px', padding: 12 }}>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>This operator’s FBR POS registration. Cloud filings use these; blank falls back to the branch defaults.</div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <input placeholder="POSID" value={posId} onChange={(e) => setPosId(e.target.value)} style={{ width: 140 }} />
-        <input placeholder={s.hasFbrToken ? 'Token set — type to change' : 'Bearer token (cloud)'} value={token} onChange={(e) => setToken(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
-        <button className="primary" onClick={save}>Save</button>
+    <div className="edit-panel">
+      <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <input autoFocus placeholder="Username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
+        <input placeholder="Display name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
+        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+      </div>
+      {fbrOn && (
+        <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <input placeholder="FBR POSID" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 130 }} />
+          <input placeholder={s.hasFbrToken ? 'Token set — type to change' : 'FBR token (cloud)'} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1, minWidth: 150 }} />
+        </div>
+      )}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="primary" disabled={busy || !f.username.trim() || !f.displayName.trim()} onClick={save}>Save changes</button>
+        <button disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>

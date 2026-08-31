@@ -27,6 +27,11 @@ public class Restaurant : Entity
     public decimal TaxPercent { get; set; } = 0;      // default GST when an item has no own rate
     public decimal ServiceChargePercent { get; set; } = 0;
 
+    // ---- Receipt branding (printed on 80mm thermal receipts) ----
+    public string LogoUrl { get; set; } = "";          // logo shown centred at the top of the receipt
+    public string ReceiptHeader { get; set; } = "";    // address / phone line under the name
+    public string ReceiptFooter { get; set; } = "";    // thank-you / policy line at the foot
+
     // Service settings. When true, approving an order auto-assigns the least-busy
     // waiter; when false (default) waiters take their own tables / a manager assigns.
     public bool WaiterAutoAssign { get; set; } = false;

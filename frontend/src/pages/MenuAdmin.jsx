@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, money } from '../api'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { TrashIcon, CloseIcon, ImageIcon, NoteIcon } from '../icons.jsx'
 
 // Owner/manager menu management: categories + items, with variants and modifiers.
 export default function MenuAdmin() {
@@ -44,7 +45,7 @@ export default function MenuAdmin() {
       <div className="row between">
         <div className="h" style={{ margin: 0 }}>Menu management</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => setImporting(true)}>⬆ Import menu</button>
+          <button onClick={() => setImporting(true)}>Import menu</button>
           <button onClick={addCategory}>+ Category</button>
           <button className="primary" onClick={() => setEditing('new')} disabled={cats.length === 0}>+ Item</button>
         </div>
@@ -73,7 +74,7 @@ export default function MenuAdmin() {
                   : it.emoji}</div>
                 <div style={{ flex: 1 }}>
                   <div className="name">{it.name} {!it.available && <span className="pill s-Served">out of stock</span>}
-                    {it.dealPrice != null && <span className="pill s-Cancelled">🏷 deal {money(it.dealPrice)}{it.dealActive ? '' : ' (scheduled)'}</span>}</div>
+                    {it.dealPrice != null && <span className="pill s-Cancelled">deal {money(it.dealPrice)}{it.dealActive ? '' : ' (scheduled)'}</span>}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {it.variants?.length ? it.variants.map((v) => `${v.name} ${money(v.price)}`).join(' · ') : money(it.price)}
                     {it.modifierGroups?.length ? ` · ${it.modifierGroups.length} option group(s)` : ''}
@@ -82,7 +83,7 @@ export default function MenuAdmin() {
                 <div className="row" style={{ gap: 6 }}>
                   <button className="ghost" onClick={() => toggle(it)}>{it.available ? 'Mark out' : 'Mark in'}</button>
                   <button onClick={() => setEditing(it)}>Edit</button>
-                  <button className="ghost" onClick={() => removeItem(it)}>🗑</button>
+                  <button className="ghost" onClick={() => removeItem(it)}><TrashIcon size={15} /></button>
                 </div>
               </div>
             ))}
@@ -186,7 +187,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal" style={{ maxWidth: 520 }}>
-        <div className="row between"><div className="big">{item ? 'Edit item' : 'New item'}</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">{item ? 'Edit item' : 'New item'}</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
 
         {item ? (
           <div className="row" style={{ gap: 12, margin: '10px 0' }}>
@@ -194,12 +195,12 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
               {photo ? <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} /> : (item.emoji || '🍽️')}
             </div>
             <label className="ghost" style={{ cursor: 'pointer', border: '1px solid var(--line)', padding: '8px 12px', borderRadius: 10 }}>
-              {uploading ? 'Uploading…' : '📷 Upload photo'}
+              {uploading ? 'Uploading…' : <><ImageIcon size={15} /> Upload photo</>}
               <input type="file" accept="image/*" style={{ display: 'none' }} onChange={uploadPhoto} disabled={uploading} />
             </label>
           </div>
         ) : (
-          <div className="muted" style={{ fontSize: 12, margin: '8px 0' }}>💡 Save the item first, then re-open it to add a photo.</div>
+          <div className="muted" style={{ fontSize: 12, margin: '8px 0' }}>Save the item first, then re-open it to add a photo.</div>
         )}
 
         <label className="muted" style={{ fontSize: 12 }}>Category</label>
@@ -263,7 +264,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
           <div key={i} className="row" style={{ gap: 8, marginBottom: 6 }}>
             <input placeholder="e.g. Half" value={v.name} onChange={(e) => setVariant(i, 'name', e.target.value)} style={{ flex: 2 }} />
             <input type="number" placeholder="Price" value={v.price} onChange={(e) => setVariant(i, 'price', e.target.value)} style={{ flex: 1 }} />
-            <button className="ghost" onClick={() => delVariant(i)}>✕</button>
+            <button className="ghost" onClick={() => delVariant(i)}><CloseIcon size={15} /></button>
           </div>
         ))}
         <button className="ghost" onClick={addVariant} style={{ marginBottom: 10 }}>+ size</button>
@@ -276,13 +277,13 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
               <input placeholder="Group name" value={g.name} onChange={(e) => setGroup(gi, 'name', e.target.value)} style={{ flex: 2 }} />
               <input type="number" title="min" value={g.minSelect} onChange={(e) => setGroup(gi, 'minSelect', e.target.value)} style={{ width: 56 }} />
               <input type="number" title="max" value={g.maxSelect} onChange={(e) => setGroup(gi, 'maxSelect', e.target.value)} style={{ width: 56 }} />
-              <button className="ghost" onClick={() => delGroup(gi)}>✕</button>
+              <button className="ghost" onClick={() => delGroup(gi)}><CloseIcon size={15} /></button>
             </div>
             {g.options.map((o, oi) => (
               <div key={oi} className="row" style={{ gap: 8, marginBottom: 4, paddingLeft: 12 }}>
                 <input placeholder="Option" value={o.name} onChange={(e) => setOption(gi, oi, 'name', e.target.value)} style={{ flex: 2 }} />
                 <input type="number" placeholder="+price" value={o.price} onChange={(e) => setOption(gi, oi, 'price', e.target.value)} style={{ flex: 1 }} />
-                <button className="ghost" onClick={() => delOption(gi, oi)}>✕</button>
+                <button className="ghost" onClick={() => delOption(gi, oi)}><CloseIcon size={15} /></button>
               </div>
             ))}
             <button className="ghost" onClick={() => addOption(gi)} style={{ marginLeft: 12 }}>+ option</button>
@@ -351,13 +352,13 @@ function MenuImportModal({ onClose, onImported }) {
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
       <div className="modal" style={{ maxWidth: 560 }}>
-        <div className="row between"><div className="big">Import menu</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">Import menu</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
 
         {!preview && (
           <>
             <div className="row" style={{ gap: 8, margin: '10px 0' }}>
-              <button className={mode === 'csv' ? 'primary' : ''} onClick={() => { setMode('csv'); setErr('') }}>📄 Spreadsheet</button>
-              <button className={mode === 'photo' ? 'primary' : ''} onClick={() => { setMode('photo'); setErr('') }}>📷 Photo</button>
+              <button className={mode === 'csv' ? 'primary' : ''} onClick={() => { setMode('csv'); setErr('') }}><NoteIcon size={15} /> Spreadsheet</button>
+              <button className={mode === 'photo' ? 'primary' : ''} onClick={() => { setMode('photo'); setErr('') }}><ImageIcon size={15} /> Photo</button>
             </div>
             {mode === 'csv' ? (
               <>
@@ -390,7 +391,7 @@ function MenuImportModal({ onClose, onImported }) {
                     <div key={ii} className="row" style={{ gap: 6, marginBottom: 4 }}>
                       <input value={it.name} onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
                       <input type="number" value={it.price} onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
-                      <button className="ghost" onClick={() => removeItem(ci, ii)}>🗑</button>
+                      <button className="ghost" onClick={() => removeItem(ci, ii)}><TrashIcon size={15} /></button>
                     </div>
                   ))}
                 </div>

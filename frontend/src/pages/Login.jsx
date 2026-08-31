@@ -4,7 +4,7 @@ import { auth } from '../auth'
 import { lookupRestaurant } from '../api'
 import { useForm, FormField, required } from '../forms.jsx'
 import { friendlyError } from '../errors'
-import DineInLogo from '../DineInLogo.jsx'
+import AuthBrand from '../AuthBrand.jsx'
 
 const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', Manager: '/admin/dashboard', Owner: '/admin/dashboard' }
 
@@ -49,10 +49,7 @@ export default function Login() {
   return (
     <div className="auth-split">
       {/* Brand panel */}
-      <aside className="auth-side">
-        <DineInLogo className="auth-logo" />
-        <div className="auth-side-tag">QR ordering, kitchen timing &amp; billing — all in one.</div>
-      </aside>
+      <AuthBrand />
 
       {/* Sign-in panel */}
       <main className="auth-main">

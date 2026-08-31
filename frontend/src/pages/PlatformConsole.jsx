@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { platform, money } from '../api'
 import { platformAuth } from '../auth'
 import { ui } from '../ui.jsx'
+import { BankIcon, CheckIcon, WarnIcon, CashIcon, ReceiptIcon, TrashIcon, CloseIcon } from '../icons.jsx'
 
 const FEATURES = [['ordering', 'Order'], ['kitchen', 'Kitchen'], ['waiter', 'Waiter'], ['billing', 'Billing'], ['inventory', 'Inventory'], ['reports', 'Reports']]
 
@@ -49,7 +50,7 @@ export default function PlatformConsole() {
   return (
     <div>
       <div className="topbar">
-        <span className="brand">◱ QrDine Operator</span>
+        <span className="brand">QrDine Operator</span>
         <span className="muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{admin?.displayName}</span>
         <button className="ghost" onClick={logout}>Sign out</button>
       </div>
@@ -58,11 +59,11 @@ export default function PlatformConsole() {
 
         {stats && (
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-            <Stat icon="🏪" num={stats.restaurants} label="Restaurants" />
-            <Stat icon="✅" num={stats.active} label="Active" />
-            <Stat icon="⛔" num={stats.suspended} label="Suspended" />
-            <Stat icon="💰" num={money(stats.totalSales)} label="Total sales" />
-            <Stat icon="🧾" num={stats.totalBills} label="Total bills" />
+            <Stat icon={<BankIcon size={20} />} num={stats.restaurants} label="Restaurants" />
+            <Stat icon={<CheckIcon size={20} />} num={stats.active} label="Active" />
+            <Stat icon={<WarnIcon size={20} />} num={stats.suspended} label="Suspended" />
+            <Stat icon={<CashIcon size={20} />} num={money(stats.totalSales)} label="Total sales" />
+            <Stat icon={<ReceiptIcon size={20} />} num={stats.totalBills} label="Total bills" />
           </div>
         )}
 
@@ -83,7 +84,7 @@ export default function PlatformConsole() {
               <div style={{ fontSize: 12 }}>{FEATURES.filter(([k]) => p[k]).map(([, l]) => l).join(' · ') || 'Menu only'}</div>
               <div className="row" style={{ gap: 6, marginTop: 10 }}>
                 <button className="ghost" onClick={() => setEditPlan(p)}>Edit</button>
-                <button className="ghost" onClick={() => delPlan(p)}>🗑</button>
+                <button className="ghost" onClick={() => delPlan(p)}><TrashIcon size={15} /></button>
               </div>
             </div>
           ))}
@@ -107,25 +108,25 @@ export default function PlatformConsole() {
                   <td style={{ fontSize: 13 }}>
                     <div>{money(r.monthlyPkr)}<span className="muted">/mo</span></div>
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {r.setupFeePaid ? '✓ setup paid' : `setup ${money(r.setupFeePkr)} due`}
+                      {r.setupFeePaid ? <><CheckIcon size={12} /> setup paid</> : `setup ${money(r.setupFeePkr)} due`}
                     </div>
                   </td>
                   <td>
                     {subBadge(r)}
-                    <button className="ghost" style={{ display: 'block', marginTop: 4, padding: '3px 8px', fontSize: 12 }} onClick={() => setPayFor(r)}>💳 Record payment</button>
+                    <button className="ghost" style={{ display: 'block', marginTop: 4, padding: '3px 8px', fontSize: 12 }} onClick={() => setPayFor(r)}><CashIcon size={14} /> Record payment</button>
                   </td>
                   <td>{money(r.sales)} <span className="muted" style={{ fontSize: 12 }}>· {r.bills}</span></td>
                   <td>
                     <button className={r.featureFbr ? 'primary' : 'ghost'} onClick={() => toggleFbr(r)} title="Grant/revoke FBR fiscal integration">
-                      {r.featureFbr ? '✓ On' : 'Off'}
+                      {r.featureFbr ? <><CheckIcon size={13} /> On</> : 'Off'}
                     </button>
                   </td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>
                       <button className={r.status === 'Active' ? 'ghost' : 'green'} onClick={() => toggle(r)}>
-                        {r.status === 'Active' ? '🔒 Lock' : '▶ Unlock'}
+                        {r.status === 'Active' ? 'Lock' : 'Unlock'}
                       </button>
-                      <button className="ghost" title="Delete restaurant and all its data" onClick={() => delRestaurant(r)}>🗑</button>
+                      <button className="ghost" title="Delete restaurant and all its data" onClick={() => delRestaurant(r)}><TrashIcon size={15} /></button>
                     </div>
                   </td>
                 </tr>
@@ -159,7 +160,7 @@ function PlanEditor({ plan, onClose, onSaved }) {
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal">
-        <div className="row between"><div className="big">{plan ? 'Edit plan' : 'New plan'}</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">{plan ? 'Edit plan' : 'New plan'}</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
         <input placeholder="Plan name" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ width: '100%', margin: '10px 0' }} />
         <input placeholder="Description" value={f.description} onChange={(e) => set('description', e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
         <div className="row" style={{ gap: 10, marginBottom: 10 }}>
@@ -225,7 +226,7 @@ function PaymentModal({ r, onClose, onSaved }) {
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onClose() }}>
       <div className="modal">
-        <div className="row between"><div className="big">Record payment — {r.name}</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">Record payment — {r.name}</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
         <div className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>
           {subBadge(r)} · Plan {r.plan} · {money(r.monthlyPkr)}/mo · setup {r.setupFeePaid ? 'paid' : money(r.setupFeePkr)}
         </div>

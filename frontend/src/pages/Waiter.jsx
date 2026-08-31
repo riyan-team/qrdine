@@ -2,11 +2,32 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { auth } from '../auth'
-import { ui } from '../ui.jsx'
+import { ui, toast } from '../ui.jsx'
+
+// A short chime for "food ready" alerts — synthesised, so there's no audio asset to
+// ship. Browsers need a prior user interaction before audio plays; staff have that.
+let _audioCtx
+function chime() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = _audioCtx
+    ;[880, 1175].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      const t = ctx.currentTime + i * 0.18
+      osc.type = 'sine'; osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3)
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.start(t); osc.stop(t + 0.32)
+    })
+  } catch { /* audio blocked — the toast still shows */ }
+}
 import {
   useCart, plusOrCustomize, cartToItems, MenuList, CartLines, Customizer,
   OrderActions, Spinner, catAnchor,
 } from '../ordering.jsx'
+import { NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon } from '../icons.jsx'
 
 // Waiter screen. Two jobs:
 //  • Board — get alerted when food is ready, take a table, advance/serve orders.
@@ -18,6 +39,28 @@ export default function Waiter() {
   const me = auth.getStaff()?.displayName || 'Waiter'
   const canOrder = auth.can('orders.create')
   const [tab, setTab] = useState('board')   // 'board' | 'order'
+  const [preTable, setPreTable] = useState(null)   // table to pre-select in Take order
+
+  // Live alerts: chime + toast when food becomes Ready, and a toast when a table is
+  // newly assigned to me. Diffs each live update against the previous snapshot.
+  const prevSnap = useRef(null)
+  useEffect(() => {
+    const snap = new Map(orders.map((o) => [o.id, { status: o.status, waiter: o.waiterName }]))
+    const before = prevSnap.current
+    if (before) {
+      for (const o of orders) {
+        const b = before.get(o.id)
+        if (!b) continue   // first time we see it — don't alert on initial load
+        if (o.status === 'Ready' && b.status !== 'Ready') { chime(); toast.success(`Ready to serve — ${o.tableName} · #${o.id}`) }
+        if (o.waiterName === me && b.waiter !== me) toast.info(`Assigned to you — ${o.tableName} · #${o.id}`)
+      }
+    }
+    prevSnap.current = snap
+  }, [orders, me])
+
+  // Jump straight into Take order for a table that already has a running tab —
+  // the extra items attach to the same open session and bill together.
+  const addItemsTo = (o) => { setPreTable({ code: o.tableCode, name: o.tableName }); setTab('order') }
 
   return (
     <div className="wrap ops ops-center">
@@ -28,25 +71,27 @@ export default function Waiter() {
         </div>
         {canOrder && (
           <div className="seg">
-            <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>📋 Board</button>
-            <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}>➕ Take order</button>
+            <button className={tab === 'board' ? 'on' : ''} onClick={() => { setTab('board'); setPreTable(null) }}><NoteIcon size={15} /> Board</button>
+            <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}><PlusIcon size={15} /> Take order</button>
           </div>
         )}
       </div>
 
-      {tab === 'order' && canOrder ? <TakeOrder orders={orders} /> : <Board orders={orders} me={me} />}
+      {tab === 'order' && canOrder
+        ? <TakeOrder orders={orders} initialTable={preTable} />
+        : <Board orders={orders} me={me} canOrder={canOrder} onAddItems={addItemsTo} />}
     </div>
   )
 }
 
 // ---- The live board: ready-to-serve + the tables you're handling ----
-function Board({ orders, me }) {
+function Board({ orders, me, canOrder, onAddItems }) {
   const ready = orders.filter((o) => o.status === 'Ready')
   const mine = orders.filter((o) => o.waiterName === me && o.status !== 'Ready')
 
   return (
     <>
-      <div className="cat-title">✅ Ready to serve now ({ready.length})</div>
+      <div className="cat-title"><CheckIcon size={15} /> Ready to serve now ({ready.length})</div>
       <div className="grid cols stagger">
         {ready.map((o) => (
           <div className="card lift fade-up" key={o.id}>
@@ -56,7 +101,7 @@ function Board({ orders, me }) {
             <div className="row" style={{ marginTop: 8, gap: 8 }}>
               {!o.waiterName && <button onClick={() => api.assign(o.id, me).catch((e) => ui.alert(e.message))}>Take table</button>}
               <button className="green" style={{ marginLeft: 'auto' }}
-                onClick={() => api.serve(o.id).catch((e) => ui.alert(e.message))}>🍽️ Mark served</button>
+                onClick={() => api.serve(o.id).catch((e) => ui.alert(e.message))}><CheckIcon size={15} /> Mark served</button>
             </div>
           </div>
         ))}
@@ -72,14 +117,18 @@ function Board({ orders, me }) {
               <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
             </div>
             <Lines o={o} />
-            <div className="row between" style={{ marginTop: 8 }}>
+            <div className="row between" style={{ marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
               <div className="row" style={{ gap: 8 }}>
                 <span className="muted">{money(o.total)}</span>
                 <CookTimer o={o} />
               </div>
-              {/* When the owner permits it, the waiter can advance the order here
-                  (kitchen-unavailable fallback) — same central endpoints, one button. */}
-              <OrderActions o={o} />
+              <div className="row" style={{ gap: 6 }}>
+                {/* Customer wants more after ordering — add items to this same tab. */}
+                {canOrder && <button className="ghost" title="Add more items to this table" onClick={() => onAddItems(o)}><PlusIcon size={15} /> Add items</button>}
+                {/* When the owner permits it, the waiter can advance the order here
+                    (kitchen-unavailable fallback) — same central endpoints, one button. */}
+                <OrderActions o={o} />
+              </div>
             </div>
           </div>
         ))}
@@ -100,13 +149,15 @@ function CookTimer({ o }) {
   if (o.status !== 'Cooking' || !o.acceptedAt) return null
   const left = Math.max(0, Math.round((new Date(o.acceptedAt).getTime() + o.etaMinutes * 60000 - now) / 1000))
   const label = left > 0 ? `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}` : 'Due'
-  return <span className="countdown" style={{ fontSize: 17 }} title="Time left to cook">⏱ {label}</span>
+  return <span className="countdown" style={{ fontSize: 17 }} title="Time left to cook">{label}</span>
 }
 
 // ---- Take an order on a table's behalf ----
-function TakeOrder({ orders }) {
+function TakeOrder({ orders, initialTable }) {
   const [tables, setTables] = useState(null)
-  const [table, setTable] = useState(null)   // { code, name }
+  const [table, setTable] = useState(initialTable || null)   // { code, name }
+  // If the screen is asked to pre-select a table (e.g. "Add items" from the board).
+  useEffect(() => { if (initialTable) setTable(initialTable) }, [initialTable])
   const [data, setData] = useState(null)      // { restaurant, menu }
   const cart = useCart()
   const [note, setNote] = useState('')
@@ -174,7 +225,7 @@ function TakeOrder({ orders }) {
           {tables.map((t) => (
             <div key={t.code} className="card tcard lift" onClick={() => { setPlaced(null); setTable(t) }}>
               {busyTables.has(t.code) && <span className="tbusy"><span className="dot" />busy</span>}
-              <div className="tico">🍽️</div>
+              <div className="tico"><TableIcon size={26} /></div>
               <div className="tname">{t.name}</div>
               <div className="tsub">{t.code}{t.branch ? ` · ${t.branch}` : ''}</div>
             </div>
@@ -194,9 +245,11 @@ function TakeOrder({ orders }) {
         <div className="row between">
           <div>
             <div className="muted" style={{ fontSize: 13 }}>Ordering for</div>
-            <div className="big">{table.name} <span className="muted" style={{ fontSize: 14 }}>· {table.code}</span></div>
+            <div className="big">{table.name} <span className="muted" style={{ fontSize: 14 }}>· {table.code}</span>
+              {busyTables.has(table.code) && <span className="pill s-Approved" style={{ marginLeft: 8, fontSize: 11 }}>running tab — adds to it</span>}
+            </div>
           </div>
-          <button onClick={() => { setTable(null); cart.clear(); setNote(''); setQuery('') }}>↩ Change table</button>
+          <button onClick={() => { setTable(null); cart.clear(); setNote(''); setQuery('') }}>Change table</button>
         </div>
       </div>
 
@@ -208,7 +261,7 @@ function TakeOrder({ orders }) {
       )}
 
       <div className="search" style={{ marginBottom: 4 }}>
-        <span className="s-ico">🔍</span>
+        <span className="s-ico"><SearchIcon size={16} /></span>
         <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
 

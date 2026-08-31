@@ -153,6 +153,17 @@ public class RestaurantAdminService
         if (s.Role == StaffRole.Owner && role != StaffRole.Owner &&
             await _db.Staff.CountAsync(x => x.Role == StaffRole.Owner, ct) <= 1)
             throw new DomainException("There must be at least one owner.");
+        // Optional rename of the sign-in username (unique, lower-cased).
+        if (!string.IsNullOrWhiteSpace(input.Username))
+        {
+            var uname = input.Username.Trim().ToLowerInvariant();
+            if (uname != s.Username)
+            {
+                if (await _db.Staff.AnyAsync(x => x.Username == uname && x.Id != id, ct))
+                    throw new DomainException($"Username '{uname}' is taken.");
+                s.Username = uname;
+            }
+        }
         s.DisplayName = input.DisplayName.Trim();
         s.Role = role;
         s.FbrPosId = input.FbrPosId;
@@ -179,6 +190,29 @@ public class RestaurantAdminService
         r.BusinessName = i.BusinessName?.Trim() ?? "";
         r.Ntn = i.Ntn?.Trim() ?? "";
         r.Strn = i.Strn?.Trim() ?? "";
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // ---------- receipt branding (logo + printed header/footer) ----------
+    public async Task<ReceiptSettingsDto> GetReceiptSettings(CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        return new ReceiptSettingsDto(r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.Name);
+    }
+
+    public async Task SetReceiptSettings(ReceiptSettingsInput i, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
+        if (i.LogoUrl is not null) r.LogoUrl = i.LogoUrl.Trim();   // "" clears the logo
+        r.ReceiptHeader = i.ReceiptHeader?.Trim() ?? "";
+        r.ReceiptFooter = i.ReceiptFooter?.Trim() ?? "";
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task SetLogoUrl(string url, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
+        r.LogoUrl = url;
         await _db.SaveChangesAsync(ct);
     }
 

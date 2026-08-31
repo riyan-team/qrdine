@@ -10,7 +10,8 @@ public record BillDto(
     IReadOnlyList<BillLineDto> Lines,
     decimal Subtotal, decimal ServiceChargePercent, decimal ServiceChargeAmount,
     decimal TaxPercent, decimal TaxAmount, decimal Total, bool HasOpenOrders,
-    decimal AmountPaid, decimal Remaining);
+    decimal AmountPaid, decimal Remaining,
+    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "");
 
 public record SettleRequest(string Method, decimal Discount);
 public record PayPartRequest(decimal Amount, string Method);
@@ -30,14 +31,16 @@ public record InvoiceDto(
     decimal Subtotal, decimal ServiceChargePercent, decimal ServiceChargeAmount,
     decimal TaxPercent, decimal TaxAmount, decimal DiscountAmount, decimal Total,
     string FiscalProvider, string FiscalStatus, string? FiscalNumber, string? FiscalQrPayload,
-    string? FiscalError)
+    string? FiscalError,
+    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "")
 {
-    public static InvoiceDto From(Invoice inv, string restaurantName, string currency) => new(
+    public static InvoiceDto From(Invoice inv, string restaurantName, string currency,
+        string logoUrl = "", string receiptHeader = "", string receiptFooter = "") => new(
         inv.Id, inv.FormattedNumber, restaurantName, currency, inv.TableCode, inv.TableName,
         inv.IssuedAt, inv.PaymentMethod,
         inv.Lines.Select(l => new BillLineDto(l.Name, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
         inv.Subtotal, inv.ServiceChargePercent, inv.ServiceChargeAmount,
         inv.TaxPercent, inv.TaxAmount, inv.DiscountAmount, inv.Total,
         inv.FiscalProvider, inv.FiscalStatus.ToString(), inv.FiscalNumber, inv.FiscalQrPayload,
-        inv.FiscalError);
+        inv.FiscalError, logoUrl, receiptHeader, receiptFooter);
 }

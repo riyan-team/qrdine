@@ -4,6 +4,7 @@ import { api, money, STATUS_LABEL } from '../api'
 import { useHub } from '../useHub'
 import { ui } from '../ui.jsx'
 import { useCart, plusOrCustomize, cartToItems, MenuList, CartLines, Customizer } from '../ordering.jsx'
+import { KitchenIcon, StarIcon, CheckIcon } from '../icons.jsx'
 
 export default function Menu() {
   const { slug, code } = useParams()
@@ -48,7 +49,7 @@ export default function Menu() {
             <div className="big">{data.restaurant.name}</div>
             <div className="muted">You are at <b>Table {code.replace('T', '')}</b> · scan-to-order</div>
           </div>
-          <div style={{ fontSize: 34 }}>🍽️</div>
+          <div style={{ fontSize: 34, color: 'var(--accent)' }}><KitchenIcon size={34} /></div>
         </div>
       </div>
 
@@ -100,7 +101,7 @@ function FeedbackCard({ slug, code }) {
 
   if (done) return (
     <div className="card" style={{ marginTop: 12, textAlign: 'center' }}>
-      <div style={{ fontSize: 28 }}>🙏</div>
+      <div style={{ fontSize: 28, color: 'var(--accent2)' }}><CheckIcon size={28} /></div>
       <b>Thanks for your feedback!</b>
       <div className="muted" style={{ fontSize: 13 }}>We hope to see you again.</div>
     </div>
@@ -113,7 +114,7 @@ function FeedbackCard({ slug, code }) {
         onMouseLeave={() => setHover(0)}>
         {[1, 2, 3, 4, 5].map((n) => (
           <span key={n} onClick={() => setRating(n)} onMouseEnter={() => setHover(n)}
-            style={{ filter: (hover || rating) >= n ? 'none' : 'grayscale(1) opacity(0.4)' }}>⭐</span>
+            style={{ display: 'inline-flex', color: 'var(--amber, #e0a500)', filter: (hover || rating) >= n ? 'none' : 'grayscale(1) opacity(0.4)' }}><StarIcon size={30} /></span>
         ))}
       </div>
       {rating > 0 && (
@@ -163,8 +164,8 @@ function TrackerRow({ o }) {
           <span className="muted">Ready in about</span><span className="countdown">{countdown}</span>
         </div>
       )}
-      {o.status === 'Ready' && <div style={{ color: 'var(--accent2)', fontWeight: 700 }}>✅ Ready — waiter is bringing it</div>}
-      {o.status === 'Served' && <div className="muted">Served. Enjoy! 🍽️</div>}
+      {o.status === 'Ready' && <div style={{ color: 'var(--accent2)', fontWeight: 700 }}><CheckIcon size={15} /> Ready — waiter is bringing it</div>}
+      {o.status === 'Served' && <div className="muted">Served. Enjoy!</div>}
       {o.waiterName && <div className="muted" style={{ fontSize: 12 }}>Waiter: {o.waiterName}</div>}
     </div>
   )

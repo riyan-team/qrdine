@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api, money } from './api'
 import { auth } from './auth'
 import { ui } from './ui.jsx'
+import { CheckIcon, KitchenIcon, BellIcon, CloseIcon } from './icons.jsx'
 
 // Shared ordering primitives used by BOTH the guest QR menu (Menu.jsx) and the
 // waiter's take-order screen (Waiter.jsx), so the cart/customizer/menu-rendering
@@ -83,7 +84,7 @@ export function MenuList({ menu, onPlus }) {
                       )}
                       {needsCustomizing(it) && <span className="muted" style={{ fontSize: 12 }}> · customizable</span>}
                     </div>
-                    {it.dealActive && it.dealDescription && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🏷 {it.dealDescription}</div>}
+                    {it.dealActive && it.dealDescription && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{it.dealDescription}</div>}
                   </div>
                   {it.available
                     ? <button className="primary" onClick={() => onPlus(it)}>{needsCustomizing(it) ? 'Choose' : '+'}</button>
@@ -143,10 +144,10 @@ export function OrderActions({ o, size = 'sm', onError }) {
   })
 
   let action = null
-  if (o.status === 'Placed' && can('orders.approve')) action = { fn: () => run(() => api.approve(o.id)), label: '✔ Approve', cls: size === 'lg' ? 'green' : 'ghost' }
-  else if (o.status === 'Approved' && can('orders.cook')) action = { fn: cook, label: '▶ Start cooking', cls: size === 'lg' ? 'primary' : 'ghost' }
-  else if (o.status === 'Cooking' && can('orders.cook')) action = { fn: () => run(() => api.ready(o.id)), label: '✓ Mark ready', cls: size === 'lg' ? 'primary' : 'ghost' }
-  else if (o.status === 'Ready' && can('orders.serve')) action = { fn: () => run(() => api.serve(o.id)), label: '🍽️ Mark served', cls: size === 'lg' ? 'green' : 'ghost' }
+  if (o.status === 'Placed' && can('orders.approve')) action = { fn: () => run(() => api.approve(o.id)), label: <><CheckIcon size={15} /> Approve</>, cls: size === 'lg' ? 'green' : 'ghost' }
+  else if (o.status === 'Approved' && can('orders.cook')) action = { fn: cook, label: <><KitchenIcon size={15} /> Start cooking</>, cls: size === 'lg' ? 'primary' : 'ghost' }
+  else if (o.status === 'Cooking' && can('orders.cook')) action = { fn: () => run(() => api.ready(o.id)), label: <><BellIcon size={15} /> Mark ready</>, cls: size === 'lg' ? 'primary' : 'ghost' }
+  else if (o.status === 'Ready' && can('orders.serve')) action = { fn: () => run(() => api.serve(o.id)), label: <><CheckIcon size={15} /> Mark served</>, cls: size === 'lg' ? 'green' : 'ghost' }
   if (!action) return null
 
   return (
@@ -191,7 +192,7 @@ export function Customizer({ item, onClose, onAdd }) {
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal">
-        <div className="row between"><div className="big">{item.name}</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">{item.name}</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
         <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>{item.description}</div>
 
         {item.variants?.length > 0 && (

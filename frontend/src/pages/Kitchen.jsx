@@ -3,6 +3,7 @@ import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { KitchenIcon, BellIcon, NoteIcon } from '../icons.jsx'
 
 // Run a status action, surfacing any failure as a toast (never silently).
 const run = (p) => Promise.resolve(p).catch((e) => toast.error(friendlyError(e)))
@@ -19,13 +20,13 @@ export default function Kitchen() {
       <div className="h">Kitchen display</div>
       <p className="muted">Approved orders appear here. Set how many minutes it will take — the customer sees a live countdown.</p>
 
-      <div className="cat-title">👨‍🍳 To start ({queue.length})</div>
+      <div className="cat-title"><KitchenIcon size={15} /> To start ({queue.length})</div>
       <div className="grid cols">
         {queue.map((o) => <CookCard key={o.id} o={o} />)}
         {queue.length === 0 && <div className="empty">Nothing waiting. Reception approves orders into this queue.</div>}
       </div>
 
-      <div className="cat-title" style={{ marginTop: 20 }}>🔥 Cooking ({cooking.length})</div>
+      <div className="cat-title" style={{ marginTop: 20 }}>Cooking ({cooking.length})</div>
       <div className="grid cols">
         {cooking.map((o) => (
           <div className="card" key={o.id}>
@@ -34,7 +35,7 @@ export default function Kitchen() {
             <Lines o={o} />
             <div className="muted">Promised: {o.etaMinutes} min</div>
             <button className="green" style={{ width: '100%', marginTop: 8 }}
-              onClick={() => run(api.ready(o.id))}>🔔 Mark ready</button>
+              onClick={() => run(api.ready(o.id))}><BellIcon size={15} /> Mark ready</button>
           </div>
         ))}
       </div>
@@ -72,7 +73,7 @@ function Lines({ o }) {
           {i.note ? <span className="muted"> — {i.note}</span> : ''}
         </div>
       ))}
-      {o.customerNote && <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>📝 {o.customerNote}</div>}
+      {o.customerNote && <div className="muted" style={{ fontSize: 13, marginTop: 4 }}><NoteIcon size={13} /> {o.customerNote}</div>}
     </div>
   )
 }

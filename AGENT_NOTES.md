@@ -55,8 +55,13 @@ moves throw a clean 400. Both **QR** and **Waiter** orders use the same pipeline
 - `frontend/src/pages/Waiter.jsx` — Board + **Take order** (search, category nav, bottom-sheet cart)
 - `frontend/src/pages/Cashier.jsx` — Reception (approve, bill/settle, source badge, fallback controls)
 - `frontend/src/pages/Kitchen.jsx` — KDS (cook time → countdown)
+- `frontend/src/pages/Landing.jsx` — public marketing homepage at `/` (hero, features, about, contact)
+- `frontend/src/pages/Settings.jsx` — account, **Receipt & branding** (logo/header/footer), branches
+  (edit + FBR-gated POS), tables, staff (edit incl. username), role permissions
+- `frontend/src/icons.jsx` — thin-line SVG icon set (replaced the app's decorative emoji)
 - `frontend/src/api.js`, `frontend/src/auth.js`, `frontend/src/useStaffOrders.js`, `frontend/src/useHub.js`
-- `frontend/src/styles.css` — design system (cream/maroon POS theme) + animations (bottom of file)
+- `frontend/src/styles.css` — design system (cream/maroon POS theme) + animations + 80mm receipt
+  print rules (`@page { size: 80mm auto }`) + the `.lp-*` landing styles (bottom of file)
 
 ## Run locally (two terminals)
 ```bash
@@ -123,6 +128,41 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-09-01** — Marketing landing page + waiter "add items to a running tab":
+  - **Landing page** (`frontend/src/pages/Landing.jsx`, styles under the `.lp-*` block in
+    `styles.css`): the app's public front door at **`/`** (was a redirect to `/login`).
+    Brand hero with an animated phone + receipt mock, features, how-it-works, about,
+    contact and footer; scroll-reveal via IntersectionObserver (JS-added class so no-JS
+    stays visible). CTAs go to `/signup` (Get started) and `/login` (Sign in). `/` is now
+    in `App.jsx`'s `isBare` list (no staff topbar).
+  - **Waiter add-items**: the Board's *My tables* cards gained an **Add items** button
+    that opens Take-order pre-selected to that table (`TakeOrder initialTable`). Placing
+    reuses the table's **open session** (already how `OrderService.Place` works), so the
+    extra items reach the kitchen as their own ticket but **bill together as one tab**.
+- **2026-09-01** — Receipt branding, edit-in-place, 80mm printing & professional icon pass:
+  - **Receipt branding**: new `Restaurant.LogoUrl/ReceiptHeader/ReceiptFooter` (migration
+    `AddReceiptBranding`). Settings → **Receipt & branding** card uploads a centred logo
+    (`POST /admin/logo`, PNG/JPG/WebP ≤2 MB, stored via `IFileStorage`) and edits the
+    printed header/footer (`GET/PUT /admin/receipt-settings`). Threaded into `BillDto` +
+    `InvoiceDto`; `Receipt.jsx` renders logo-top-centre, header line, custom footer.
+  - **80mm thermal printing**: print CSS now `@page { size: 80mm auto; margin: 0 }` +
+    `.receipt { width: 80mm }` so bills/kitchen tickets print at 80 mm and the roll
+    auto-cuts at content end (was full-page A4). Reception incoming cards gained direct
+    **Kitchen** / **Bill** print buttons (open the slip pre-set + auto-fire print).
+  - **Edit-in-place**: branches and staff are now editable (were create/delete only) via an
+    inline panel + **double-click** a row. Staff edit can rename the sign-in username
+    (`StaffUpdateInput.Username`, unique-checked). Tables keep rename+delete.
+  - **FBR POS gating**: the per-branch/-staff FBR POSID fields only show when FBR is on
+    (`featureFbr && fbrEnabled`) — hidden otherwise.
+  - **Restaurant name in header**: `AuthResponse.RestaurantName` (login + onboard); the
+    staff topbar shows the **DineIn logo** (same as the login page, not an emoji) + the
+    restaurant name.
+  - **Professional icon pass**: new `frontend/src/icons.jsx` thin-line SVG set replaces all
+    decorative emoji across every screen (food-item emoji *data* + the emoji picker kept).
+  - **Login (unchanged, answer to a FAQ)**: admin-created staff sign in on the **same**
+    `/login` page (restaurant name/address + their username + password); `HOME_FOR[role]`
+    routes them to their own screen and the nav is permission-gated, so they see only what
+    they need. They now see the restaurant name in the header.
 - **2026-08-31** — Security + auth/UX hardening pass:
   - **Login fixed**: name→slug lookup is now normalisation-tolerant (type the name OR
     the address, any spacing/casing), fields are clearly labelled with guidance, and a

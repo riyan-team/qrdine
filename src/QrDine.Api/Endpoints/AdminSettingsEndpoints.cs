@@ -2,6 +2,7 @@ using QrDine.Api.Auth;
 using QrDine.Api.Validation;
 using QrDine.Application.Admin;
 using QrDine.Application.Auth;
+using QrDine.Application.Common;
 
 namespace QrDine.Api.Endpoints;
 
@@ -37,6 +38,23 @@ public static class AdminSettingsEndpoints
         // Service settings (waiter auto-assignment).
         g.MapGet("/service-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetServiceSettings()));
         g.MapPut("/service-settings", async (ServiceSettingsInput body, RestaurantAdminService svc) => { await svc.SetServiceSettings(body); return Results.NoContent(); });
+
+        // Receipt branding — printed header/footer text + a centred logo.
+        g.MapGet("/receipt-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetReceiptSettings()));
+        g.MapPut("/receipt-settings", async (ReceiptSettingsInput body, RestaurantAdminService svc) => { await svc.SetReceiptSettings(body); return Results.NoContent(); });
+
+        // Logo upload (multipart). Max 2 MB, images only. Sets the restaurant's LogoUrl.
+        g.MapPost("/logo", async (IFormFile file, IFileStorage storage, RestaurantAdminService svc) =>
+        {
+            if (file is null || file.Length == 0) return Results.BadRequest(new { detail = "No file." });
+            if (file.Length > 2 * 1024 * 1024) return Results.BadRequest(new { detail = "Logo must be under 2 MB." });
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp")) return Results.BadRequest(new { detail = "Use a PNG, JPG or WebP image." });
+            await using var stream = file.OpenReadStream();
+            var url = await storage.Save(stream, ext, "logos");
+            await svc.SetLogoUrl(url);
+            return Results.Ok(new { logoUrl = url });
+        }).DisableAntiforgery();
 
         // FBR fiscal settings (owner enable + seller NTN/STRN). Branch POS config
         // rides on the branch endpoints above.

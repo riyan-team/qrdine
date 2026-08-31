@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { auth } from '../auth'
+import { PrintIcon, BankIcon } from '../icons.jsx'
 
 // Owner view: generates a printable QR per table. In real life you print these
 // and stick one on each table. Scanning opens that table's menu directly.
@@ -28,13 +29,13 @@ export default function Owner() {
         <br />Then open <b>Reception</b>, <b>Kitchen</b> and <b>Waiter</b> tabs to watch orders flow live.
       </p>
       <div className="row noprint" style={{ marginBottom: 12 }}>
-        <button className="primary" onClick={() => window.print()}>🖨️ Print all QR codes</button>
+        <button className="primary" onClick={() => window.print()}><PrintIcon size={15} /> Print all QR codes</button>
       </div>
 
       {groupByBranch(tables).map(([branch, list]) => (
         <div key={branch}>
           {tables.some((t) => t.branchName && t.branchName !== branch) || branch !== '' ? (
-            <div className="cat-title">🏢 {branch || 'Main Branch'}</div>
+            <div className="cat-title"><BankIcon size={15} /> {branch || 'Main Branch'}</div>
           ) : null}
           <div className="grid cols">
             {list.map((t) => (

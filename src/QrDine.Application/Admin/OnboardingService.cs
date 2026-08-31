@@ -108,6 +108,6 @@ public class OnboardingService
         var features = new FeaturesDto(restaurant.FeatureOrdering, restaurant.FeatureKitchen,
             restaurant.FeatureWaiter, restaurant.FeatureBilling, restaurant.FeatureInventory,
             restaurant.FeatureReports, restaurant.FeatureFbr);
-        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All, features);
+        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All, features, restaurant.Name);
     }
 }

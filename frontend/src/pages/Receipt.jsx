@@ -11,8 +11,10 @@ export default function Receipt({ bill, invoice }) {
   return (
     <div className="receipt">
       <div className="r-h">
-        <div style={{ fontWeight: 800, fontSize: 18 }}>{d.restaurantName}</div>
-        <div style={{ fontSize: 13 }}>{d.tableName}</div>
+        {d.logoUrl && <img className="r-logo" src={d.logoUrl} alt="" />}
+        <div className="r-name">{d.restaurantName}</div>
+        {d.receiptHeader && <div className="r-sub">{d.receiptHeader}</div>}
+        <div style={{ fontSize: 13, marginTop: 2 }}>{d.tableName}</div>
         {isInvoice && (
           <div style={{ fontSize: 12, marginTop: 4 }}>
             {d.number} · {new Date(d.issuedAt).toLocaleString('en-PK')}
@@ -46,7 +48,7 @@ export default function Receipt({ bill, invoice }) {
       {/* Fiscal block. The receipt ALWAYS prints; this only reflects the FBR state. */}
       {isInvoice && d.fiscalNumber && (
         <div style={{ textAlign: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px dashed #999' }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em' }}>✓ INTEGRATED WITH FBR</div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em' }}>INTEGRATED WITH FBR</div>
           <div style={{ background: '#fff', display: 'inline-block', padding: 4, marginTop: 4 }}>
             <QRCodeSVG value={d.fiscalQrPayload || d.fiscalNumber} size={92} level="M" />
           </div>
@@ -67,7 +69,9 @@ export default function Receipt({ bill, invoice }) {
       )}
 
       <div className="r-foot">
-        {isInvoice ? 'Thank you — please come again!' : 'Bill preview (not yet paid)'}
+        {isInvoice
+          ? (d.receiptFooter || 'Thank you — please come again!')
+          : 'Bill preview (not yet paid)'}
       </div>
     </div>
   )

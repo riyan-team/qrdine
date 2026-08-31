@@ -40,6 +40,7 @@ public class DbFileStorage : IFileStorage
         ".png" => "image/png",
         ".webp" => "image/webp",
         ".gif" => "image/gif",
+        ".svg" => "image/svg+xml",
         _ => "image/jpeg",
     };
 }

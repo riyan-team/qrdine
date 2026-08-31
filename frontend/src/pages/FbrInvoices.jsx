@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, money } from '../api'
 import { auth } from '../auth'
+import { RefreshIcon } from '../icons.jsx'
 
 // Owner/manager view of FBR filing: what's synced, what's pending/failed (with the
 // exact FBR error), and a MANUAL retry (never automatic). Retry is idempotent — an
@@ -40,7 +41,7 @@ export default function FbrInvoices() {
         <button className={tab === 'synced' ? 'primary' : 'ghost'} onClick={() => setTab('synced')}>
           Synced ({synced.length})
         </button>
-        <button className="ghost" style={{ marginLeft: 'auto' }} onClick={load}>↻ Refresh</button>
+        <button className="ghost" style={{ marginLeft: 'auto' }} onClick={load}><RefreshIcon size={15} /> Refresh</button>
       </div>
 
       {err && <div className="card" style={{ borderColor: 'var(--red)', color: 'var(--red)', marginBottom: 10 }}>{err}</div>}
@@ -73,14 +74,14 @@ export default function FbrInvoices() {
                 </Td>
                 {tab === 'pending' && canSync && (
                   <Td><button className="primary" disabled={busy === i.id} onClick={() => retry(i.id)}>
-                    {busy === i.id ? 'Filing…' : '↻ Retry'}
+                    {busy === i.id ? 'Filing…' : <><RefreshIcon size={15} /> Retry</>}
                   </button></Td>
                 )}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr><td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>
-                {tab === 'pending' ? 'Nothing pending — every invoice is filed. 🎉' : 'No synced invoices yet.'}
+                {tab === 'pending' ? 'Nothing pending — every invoice is filed.' : 'No synced invoices yet.'}
               </td></tr>
             )}
           </tbody>

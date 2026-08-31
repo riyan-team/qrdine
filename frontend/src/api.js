@@ -122,6 +122,11 @@ export const api = {
   setFbrSettings: (s) => staffPut(`/admin/fbr`, s),
   getServiceSettings: () => staffGet(`/admin/service-settings`),
   setServiceSettings: (s) => staffPut(`/admin/service-settings`, s),
+
+  // receipt branding (logo + printed header/footer)
+  getReceiptSettings: () => staffGet(`/admin/receipt-settings`),
+  setReceiptSettings: (s) => staffPut(`/admin/receipt-settings`, s),
+  uploadLogo: (file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/logo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
   changePassword: (currentPassword, newPassword) => staffPost(`/auth/change-password`, { currentPassword, newPassword }),
   fbrSynced: () => staffGet(`/admin/fbr/invoices/synced`),
   fbrPending: () => staffGet(`/admin/fbr/invoices/pending`),

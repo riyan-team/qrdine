@@ -3,17 +3,19 @@ import { useNavigate } from 'react-router-dom'
 import { api, money } from '../api'
 import { auth } from '../auth'
 import { ui } from '../ui.jsx'
+import { MenuIcon, BoxIcon, ReceiptIcon, KitchenIcon, UserIcon, QrIcon, GearIcon,
+  CashIcon, TrendIcon, CalcIcon, BankIcon, WarnIcon, RefreshIcon, PrintIcon, DownloadIcon, StarIcon } from '../icons.jsx'
 
 // Each tile shows only when the plan includes its feature AND the user has the
 // permission — so the Manage grid matches the top nav (no dead modules).
 const ACTIONS = [
-  { to: '/admin/menu', icon: '🍽️', name: 'Menu', sub: 'Items, prices, photos', show: () => auth.can('menu.manage') },
-  { to: '/admin/inventory', icon: '📦', name: 'Inventory', sub: 'Stock & recipes', show: () => auth.can('inventory.manage') && auth.hasFeature('inventory') },
-  { to: '/cashier', icon: '🧾', name: 'Reception', sub: 'Approve & bill', show: () => (auth.can('orders.approve') || auth.can('orders.pay')) && (auth.hasFeature('ordering') || auth.hasFeature('billing')) },
-  { to: '/kitchen', icon: '👨‍🍳', name: 'Kitchen', sub: 'Live tickets', show: () => auth.can('orders.cook') && auth.hasFeature('kitchen') },
-  { to: '/waiter', icon: '🧑‍🍳', name: 'Waiter', sub: 'Serve tables', show: () => auth.can('orders.serve') && auth.hasFeature('waiter') },
-  { to: '/owner', icon: '🔳', name: 'QR codes', sub: 'Print table QRs', show: () => auth.can('settings.manage') },
-  { to: '/admin/settings', icon: '⚙️', name: 'Settings', sub: 'Tables & staff', show: () => auth.can('settings.manage') },
+  { to: '/admin/menu', Icon: MenuIcon, name: 'Menu', sub: 'Items, prices, photos', show: () => auth.can('menu.manage') },
+  { to: '/admin/inventory', Icon: BoxIcon, name: 'Inventory', sub: 'Stock & recipes', show: () => auth.can('inventory.manage') && auth.hasFeature('inventory') },
+  { to: '/cashier', Icon: ReceiptIcon, name: 'Reception', sub: 'Approve & bill', show: () => (auth.can('orders.approve') || auth.can('orders.pay')) && (auth.hasFeature('ordering') || auth.hasFeature('billing')) },
+  { to: '/kitchen', Icon: KitchenIcon, name: 'Kitchen', sub: 'Live tickets', show: () => auth.can('orders.cook') && auth.hasFeature('kitchen') },
+  { to: '/waiter', Icon: UserIcon, name: 'Waiter', sub: 'Serve tables', show: () => auth.can('orders.serve') && auth.hasFeature('waiter') },
+  { to: '/owner', Icon: QrIcon, name: 'QR codes', sub: 'Print table QRs', show: () => auth.can('settings.manage') },
+  { to: '/admin/settings', Icon: GearIcon, name: 'Settings', sub: 'Tables & staff', show: () => auth.can('settings.manage') },
 ]
 
 export default function Dashboard() {
@@ -57,21 +59,21 @@ export default function Dashboard() {
               {d.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           )}
-          <button onClick={() => load()}>↻ Refresh</button>
-          <button className="primary" onClick={() => window.print()}>🖨️ Print report</button>
+          <button onClick={() => load()}><RefreshIcon size={15} /> Refresh</button>
+          <button className="primary" onClick={() => window.print()}><PrintIcon size={15} /> Print report</button>
         </div>
       </div>
 
       {/* KPI tiles */}
       <div className="grid noprint" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        <Stat icon="💰" num={money(d.todaySales)} label="Today's sales" delta={delta} />
-        <Stat icon="🧾" num={d.todayBills} label="Today's bills" />
-        <Stat icon="📈" num={money(d.periodSales)} label="7-day sales" />
-        <Stat icon="🧮" num={money(d.periodAvgBill)} label="Avg bill" />
-        <Stat icon="🏦" num={money((d.periodTax || 0) + (d.periodFurtherTax || 0))} label="Sales tax · 7d" />
+        <Stat Icon={CashIcon} num={money(d.todaySales)} label="Today's sales" delta={delta} />
+        <Stat Icon={ReceiptIcon} num={d.todayBills} label="Today's bills" />
+        <Stat Icon={TrendIcon} num={money(d.periodSales)} label="7-day sales" />
+        <Stat Icon={CalcIcon} num={money(d.periodAvgBill)} label="Avg bill" />
+        <Stat Icon={BankIcon} num={money((d.periodTax || 0) + (d.periodFurtherTax || 0))} label="Sales tax · 7d" />
         {auth.hasFeature('inventory') && (
           <div className="card stat" style={{ cursor: 'pointer' }} onClick={() => nav('/admin/inventory')}>
-            <div className="chip" style={d.lowStock > 0 ? { background: 'var(--amber-tint)', color: 'var(--amber)' } : {}}>⚠️</div>
+            <div className="chip" style={d.lowStock > 0 ? { background: 'var(--amber-tint)', color: 'var(--amber)' } : {}}><WarnIcon size={20} /></div>
             <div className="num" style={{ color: d.lowStock > 0 ? 'var(--amber)' : 'var(--ink)' }}>{d.lowStock}</div>
             <div className="lbl">Low stock</div>
           </div>
@@ -89,7 +91,7 @@ export default function Dashboard() {
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             <span className="muted">→</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            <button className="primary" disabled={dl} onClick={download}>{dl ? 'Preparing…' : '⬇ Download CSV'}</button>
+            <button className="primary" disabled={dl} onClick={download}>{dl ? 'Preparing…' : <><DownloadIcon size={15} /> Download CSV</>}</button>
           </div>
         </div>
       </div>
@@ -99,7 +101,7 @@ export default function Dashboard() {
       <div className="grid noprint" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
         {ACTIONS.filter((a) => a.show()).map((a) => (
           <div key={a.to} className="card tile" onClick={() => nav(a.to)}>
-            <div className="chip">{a.icon}</div>
+            <div className="chip"><a.Icon size={20} /></div>
             <div><div className="t-name">{a.name}</div><div className="t-sub">{a.sub}</div></div>
           </div>
         ))}
@@ -156,7 +158,9 @@ function FeedbackPanel({ fb }) {
       <div className="row" style={{ gap: 20, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
         <div style={{ textAlign: 'center' }}>
           <div className="big" style={{ color: 'var(--accent)', fontSize: 34 }}>{fb.average.toFixed(1)}</div>
-          <div style={{ fontSize: 16 }}>{'⭐'.repeat(Math.round(fb.average))}</div>
+          <div className="row" style={{ gap: 2, justifyContent: 'center', color: 'var(--amber, #e0a500)' }}>
+            {Array.from({ length: 5 }).map((_, i) => <StarIcon key={i} size={15} style={{ opacity: i < Math.round(fb.average) ? 1 : .25 }} />)}
+          </div>
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
           {[5, 4, 3, 2, 1].map((star) => (
@@ -175,7 +179,10 @@ function FeedbackPanel({ fb }) {
           <div className="cat-title" style={{ fontSize: 13 }}>Recent comments</div>
           {fb.recent.slice(0, 8).map((r) => (
             <div key={r.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontSize: 13 }}>{'⭐'.repeat(r.rating)} <span className="muted">· {r.tableCode || 'table'} · {new Date(r.createdAt).toLocaleDateString()}</span></div>
+              <div style={{ fontSize: 13 }}>
+                <span style={{ color: 'var(--amber, #e0a500)' }}>{Array.from({ length: r.rating }).map((_, i) => <StarIcon key={i} size={13} />)}</span>
+                <span className="muted"> · {r.tableCode || 'table'} · {new Date(r.createdAt).toLocaleDateString()}</span>
+              </div>
               <div style={{ fontSize: 14 }}>{r.comment}</div>
             </div>
           ))}
@@ -185,11 +192,11 @@ function FeedbackPanel({ fb }) {
   )
 }
 
-function Stat({ icon, num, label, delta }) {
+function Stat({ Icon, num, label, delta }) {
   return (
     <div className="card stat">
       {delta != null && <span className={'delta ' + (delta >= 0 ? 'up' : 'flat')}>{delta >= 0 ? '+' : ''}{delta}%</span>}
-      <div className="chip">{icon}</div>
+      <div className="chip">{Icon && <Icon size={20} />}</div>
       <div className="num">{num}</div>
       <div className="lbl">{label}</div>
     </div>

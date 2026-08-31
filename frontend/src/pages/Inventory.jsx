@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { WarnIcon, TrashIcon, CloseIcon } from '../icons.jsx'
 
 // Owner/manager inventory: stock levels, recipes (what each dish consumes), and
 // the movement log. Stock auto-deducts when orders are approved.
@@ -37,9 +38,19 @@ export default function Inventory() {
     <div className="wrap">
       <div className="row between">
         <div className="h" style={{ margin: 0 }}>Inventory</div>
-        {lowCount > 0 && <span className="pill s-Placed">⚠ {lowCount} low</span>}
+        {lowCount > 0 && <span className="pill s-Placed"><WarnIcon size={13} /> {lowCount} low</span>}
       </div>
       <p className="muted">Track ingredients and what each dish uses. Stock deducts automatically when an order is sent to the kitchen.</p>
+
+      {lowCount > 0 && (
+        <div className="alert-banner warn" role="alert">
+          <WarnIcon size={18} />
+          <div>
+            <b>{lowCount} item{lowCount > 1 ? 's' : ''} running low.</b> Reorder soon —{' '}
+            {stock.filter((s) => s.isLow).map((s) => `${s.name} (${s.quantity} ${s.unit})`).join(', ')}.
+          </div>
+        </div>
+      )}
 
       <div className="grid g2">
         <div className="card">
@@ -55,7 +66,7 @@ export default function Inventory() {
                   <button className="ghost" onClick={() => restock(s)}>+ Stock</button>
                   <button className="ghost" onClick={() => adjust(s)}>Count</button>
                   <button className="ghost" onClick={() => editThreshold(s)}>Alert</button>
-                  <button className="ghost" onClick={() => del(s)}>🗑</button>
+                  <button className="ghost" onClick={() => del(s)}><TrashIcon size={15} /></button>
                 </div>
               </div>
             ))}
@@ -129,7 +140,7 @@ function RecipeEditor({ item, stock, onClose }) {
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal">
-        <div className="row between"><div className="big">{item.name} — recipe</div><button className="ghost" onClick={onClose}>✕</button></div>
+        <div className="row between"><div className="big">{item.name} — recipe</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
         {stock.length === 0 && <div className="muted" style={{ margin: '10px 0' }}>Add stock items first.</div>}
         <div style={{ margin: '10px 0' }}>
           {lines.map((l, i) => (
@@ -138,7 +149,7 @@ function RecipeEditor({ item, stock, onClose }) {
                 {stock.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>)}
               </select>
               <input type="number" value={l.qtyPerServing} onChange={(e) => setLine(i, 'qtyPerServing', e.target.value)} style={{ width: 90 }} />
-              <button className="ghost" onClick={() => del(i)}>✕</button>
+              <button className="ghost" onClick={() => del(i)}><CloseIcon size={15} /></button>
             </div>
           ))}
         </div>

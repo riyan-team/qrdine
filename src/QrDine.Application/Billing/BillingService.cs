@@ -97,7 +97,7 @@ public class BillingService
         return new BillDto(r.Name, r.Currency, tableCode, table?.Name ?? tableCode,
             lines.Select(l => new BillLineDto(l.Name, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
             m.Subtotal, r.ServiceChargePercent, m.ServiceChargeAmount, r.TaxPercent, m.TaxAmount, m.Total, orders.Count > 0,
-            paid, Math.Max(0, m.Total - paid));
+            paid, Math.Max(0, m.Total - paid), r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
     }
 
     /// <summary>Settle the whole table in one go.</summary>
@@ -182,7 +182,7 @@ public class BillingService
         foreach (var o in orders)
             await _notifier.OrderChanged(Slug, OrderDto.From(o), ct);
 
-        var dto = InvoiceDto.From(invoice, r.Name, r.Currency);
+        var dto = InvoiceDto.From(invoice, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
         await _print.Dispatch(Slug, PrintJobs.Receipt(dto), ct);
         return dto;
     }
@@ -191,6 +191,6 @@ public class BillingService
     {
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
-        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency);
+        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
     }
 }

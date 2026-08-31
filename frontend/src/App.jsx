@@ -14,8 +14,10 @@ import Inventory from './pages/Inventory.jsx'
 import FbrInvoices from './pages/FbrInvoices.jsx'
 import PlatformLogin from './pages/PlatformLogin.jsx'
 import PlatformConsole from './pages/PlatformConsole.jsx'
+import Landing from './pages/Landing.jsx'
 import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
+import DineInLogo from './DineInLogo.jsx'
 
 // Guards a staff-only route: no token → bounce to /login, remembering where we were.
 function RequireStaff({ children }) {
@@ -57,9 +59,13 @@ function Nav() {
     : can('orders.cook') ? '/kitchen'
     : can('orders.serve') ? '/waiter'
     : can('menu.manage') ? '/admin/menu' : '/admin/settings'
+  const restaurantName = staff?.restaurantName
   return (
     <div className="topbar noprint">
-      <Link to={home} className="brand" style={{ textDecoration: 'none' }}>🍽️ QrDine</Link>
+      <Link to={home} className="brand" aria-label="QrDine home">
+        <DineInLogo className="brand-logo" />
+      </Link>
+      {restaurantName && <span className="brand-restaurant" title={restaurantName}>{restaurantName}</span>}
       {can('reports.view') && <NavLink to="/admin/dashboard" className={link}>Dashboard</NavLink>}
       {can('settings.manage') && <NavLink to="/owner" className={link}>QR codes</NavLink>}
       {can('menu.manage') && <NavLink to="/admin/menu" className={link}>Menu</NavLink>}
@@ -85,13 +91,13 @@ function Nav() {
 export default function App() {
   const loc = useLocation()
   const isPlatform = loc.pathname.startsWith('/platform')
-  // Auth + public menu screens carry their own branding — no staff topbar.
-  const isBare = ['/login', '/signup'].includes(loc.pathname)
+  // Landing + auth screens carry their own branding — no staff topbar.
+  const isBare = ['/', '/login', '/signup'].includes(loc.pathname)
   return (
     <ErrorBoundary>
       {!isPlatform && !isBare && <Nav />}
       <Routes>
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/owner" element={<RequireStaff><Owner /></RequireStaff>} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

@@ -940,6 +940,10 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime?>("LastPaymentAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<string>("LogoUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -962,6 +966,14 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("PlanName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReceiptFooter")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReceiptHeader")
                         .IsRequired()
                         .HasColumnType("text");
 
