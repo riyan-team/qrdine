@@ -39,19 +39,21 @@ public static class AdminSettingsEndpoints
         g.MapGet("/service-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetServiceSettings()));
         g.MapPut("/service-settings", async (ServiceSettingsInput body, RestaurantAdminService svc) => { await svc.SetServiceSettings(body); return Results.NoContent(); });
 
+        // Billing settings — Tax/GST on/off + rate, discount on/off, receipt on/off, stock
+        // tracking on/off. Gated to settings.manage (authorized users only).
+        g.MapGet("/billing-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetBillingSettings()));
+        g.MapPut("/billing-settings", async (BillingSettingsInput body, RestaurantAdminService svc) => { await svc.SetBillingSettings(body); return Results.NoContent(); });
+
         // Receipt branding — printed header/footer text + a centred logo.
         g.MapGet("/receipt-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetReceiptSettings()));
         g.MapPut("/receipt-settings", async (ReceiptSettingsInput body, RestaurantAdminService svc) => { await svc.SetReceiptSettings(body); return Results.NoContent(); });
 
-        // Logo upload (multipart). Max 2 MB, images only. Sets the restaurant's LogoUrl.
-        g.MapPost("/logo", async (IFormFile file, IFileStorage storage, RestaurantAdminService svc) =>
+        // Logo upload (multipart). Max 2 MB; validated by content, not filename.
+        g.MapPost("/logo", async (HttpRequest req, IFileStorage storage, RestaurantAdminService svc, CancellationToken ct) =>
         {
-            if (file is null || file.Length == 0) return Results.BadRequest(new { detail = "No file." });
-            if (file.Length > 2 * 1024 * 1024) return Results.BadRequest(new { detail = "Logo must be under 2 MB." });
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp")) return Results.BadRequest(new { detail = "Use a PNG, JPG or WebP image." });
-            await using var stream = file.OpenReadStream();
-            var url = await storage.Save(stream, ext, "logos");
+            var img = await ImageUpload.ReadAsync(req, 2 * 1024 * 1024, ct);
+            using var stream = new MemoryStream(img.Data);
+            var url = await storage.Save(stream, img.Extension, "logos", ct);
             await svc.SetLogoUrl(url);
             return Results.Ok(new { logoUrl = url });
         }).DisableAntiforgery();

@@ -184,6 +184,8 @@ public class AppDbContext : DbContext, IAppDbContext
         {
             e.Property(x => x.TaxPercent).HasPrecision(5, 2);
             e.Property(x => x.ServiceChargePercent).HasPrecision(5, 2);
+            e.Property(x => x.DiscountValue).HasPrecision(10, 2);
+            e.Property(x => x.TaxName).HasMaxLength(40);
             e.Property(x => x.BusinessName).HasMaxLength(150);
             e.Property(x => x.Ntn).HasMaxLength(15);
             e.Property(x => x.Strn).HasMaxLength(20);
@@ -201,13 +203,15 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.FiscalQrPayload).HasMaxLength(512);
             e.Property(x => x.FiscalError).HasMaxLength(1000);
             e.Property(x => x.CreatedByUsername).HasMaxLength(60);
+            e.Property(x => x.TaxLabel).HasMaxLength(60);
             e.Property(x => x.BuyerName).HasMaxLength(150);
             e.Property(x => x.BuyerNtn).HasMaxLength(15);
             e.Property(x => x.BuyerCnic).HasMaxLength(15);
             e.Property(x => x.BuyerPhone).HasMaxLength(20);
             foreach (var p in new[] { nameof(Invoice.Subtotal), nameof(Invoice.TaxPercent),
                 nameof(Invoice.TaxAmount), nameof(Invoice.FurtherTaxAmount), nameof(Invoice.ServiceChargePercent),
-                nameof(Invoice.ServiceChargeAmount), nameof(Invoice.DiscountAmount), nameof(Invoice.Total) })
+                nameof(Invoice.ServiceChargeAmount), nameof(Invoice.DiscountAmount), nameof(Invoice.Total),
+                nameof(Invoice.AmountTendered), nameof(Invoice.ChangeGiven) })
                 e.Property(p).HasPrecision(12, 2);
             e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.InvoiceId).OnDelete(DeleteBehavior.Cascade);
         });

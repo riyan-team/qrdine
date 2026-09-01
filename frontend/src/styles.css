@@ -705,3 +705,110 @@ a.lp-contact-row:hover { border-color: var(--accent); transform: translateX(3px)
   .lp-hero-cta .lp-btn { flex: 1; justify-content: center; }
   .lp-cta-inner { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---- Audit additions: dashboards, reports, billing & settings ---- */
+
+/* Segmented tabs already exist (.seg); ensure a consistent active look here too. */
+.seg .on, .seg button.on { background: var(--accent); color: #fff; border-color: transparent; }
+
+/* KPI row for the reception dashboard */
+.recept-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 8px; }
+
+/* Data tables (sales report, order/settled history) */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.data-table th, .data-table td { padding: 9px 10px; text-align: left; white-space: nowrap; }
+.data-table thead th { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--line); }
+.data-table tbody tr { border-bottom: 1px solid var(--line); transition: background .12s ease; }
+.data-table tbody tr:hover { background: var(--surface2); }
+.data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table tfoot td { padding: 10px; border-top: 2px solid var(--line); background: var(--surface2); font-variant-numeric: tabular-nums; }
+.data-table .empty-row { text-align: center; color: var(--muted); padding: 22px 10px; }
+
+/* Filter bar shared by report + history views */
+.hist-card { margin-top: 12px; }
+.hist-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search-box { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; flex: 1; min-width: 200px; color: var(--muted); }
+.search-box input { border: none; background: transparent; padding: 6px 2px; flex: 1; box-shadow: none !important; }
+.search-box input:focus { box-shadow: none; }
+
+/* Pager */
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.pager .muted { font-size: 13px; }
+
+/* Billing modal */
+.bill-modal { max-width: 460px; }
+.pay-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+.pay-grid label.muted { font-size: 13px; }
+.pay-grid input, .pay-grid select { width: 100%; }
+.change-box { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; background: var(--green-tint); color: var(--accent2); font-size: 15px; margin-bottom: 10px; animation: fade-up .2s ease; }
+.change-box b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.change-box.short { background: #fdf4f5; color: var(--red); }
+.split-wrap { border-top: 1px dashed var(--line); padding-top: 8px; margin-bottom: 4px; }
+.split-wrap summary { cursor: pointer; font-size: 13px; }
+
+/* Settings: billing toggles */
+.set-grid { display: grid; gap: 14px; }
+.set-block { background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.fld input, .fld select { min-width: 110px; }
+.switch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--ink); }
+.switch { position: relative; width: 42px; height: 24px; border-radius: 999px; background: #cfc7cc; flex: none; transition: background .18s ease; }
+.switch.on { background: var(--accent2); }
+.switch .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .18s ease; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.switch.on .knob { transform: translateX(18px); }
+
+.link-quiet:hover { color: var(--accent); }
+
+/* ---- Signup: column-wise plan cards ---- */
+.auth-card-plans { max-width: 960px; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 6px; text-align: left; }
+.plan-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 16px;
+  padding: 18px 16px 16px; cursor: pointer; text-align: left; align-items: stretch;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.plan-card:hover { transform: translateY(-4px); box-shadow: 0 14px 30px rgba(33,28,34,.12); border-color: var(--accent-tint); }
+.plan-card.sel { border-color: var(--accent); box-shadow: 0 10px 26px rgba(168,29,72,.18); }
+.plan-badge { position: absolute; top: -11px; right: 14px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
+.pc-name { font-weight: 800; font-size: 16px; color: var(--ink); }
+.pc-price { font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.pc-price small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.pc-setup { font-size: 12px; color: var(--muted); }
+.pc-desc { font-size: 13px; color: var(--muted); min-height: 34px; margin: 2px 0 4px; }
+.pc-feats { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+.pc-feat { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink); }
+.pc-feat svg { color: var(--accent2); flex: none; }
+.pc-feat.off { color: #b3aab0; }
+.pc-feat.off .pc-x { color: #cfc7cc; width: 13px; text-align: center; }
+.pc-select {
+  margin-top: 12px; text-align: center; font-size: 13.5px; font-weight: 700; padding: 9px;
+  border-radius: 11px; background: var(--surface2); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background .16s ease, color .16s ease;
+}
+.plan-card:hover .pc-select { background: var(--accent-tint); color: var(--accent-strong); }
+.plan-card.sel .pc-select { background: var(--accent); color: #fff; }
+
+/* Plan step goes full-width so plan cards sit side-by-side as columns. */
+.auth-split.plan-mode { grid-template-columns: 1fr; }
+.plan-mode .auth-main .auth-card,
+.plan-mode .auth-card-plans { max-width: 980px; }
+
+/* Password field with a show/hide eye toggle */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { width: 100%; padding-right: 40px; }
+.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--muted); padding: 6px; cursor: pointer; display: inline-flex; align-items: center; box-shadow: none; }
+.pw-eye:hover { color: var(--ink); background: transparent; box-shadow: none; }
+
+/* Settings tabbed navigation */
+.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
+.settings-nav button {
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; padding: 8px 16px; font-weight: 600; font-size: 13.5px;
+  transition: background .14s ease, color .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+.settings-nav button:hover { color: var(--ink); border-color: var(--accent-tint); box-shadow: none; }
+.settings-nav button.on { background: var(--accent); color: #fff; border-color: transparent; }
+.settings-panel { animation: qd-fade-in .2s ease; }

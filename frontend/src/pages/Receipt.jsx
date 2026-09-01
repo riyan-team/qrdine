@@ -7,6 +7,10 @@ export default function Receipt({ bill, invoice }) {
   const d = invoice || bill
   if (!d) return null
   const isInvoice = !!invoice
+  // Tax label: the snapshot on a settled invoice, or the current name on a preview.
+  const taxLabel = d.taxLabel || d.taxName || 'Tax'
+  // Show cash received + change for cash payments (or whenever change was given).
+  const showCash = (d.amountTendered > 0) && (d.changeGiven > 0 || /cash/i.test(d.paymentMethod || ''))
 
   return (
     <div className="receipt">
@@ -35,14 +39,18 @@ export default function Receipt({ bill, invoice }) {
 
       <div className="r-tot">
         <div className="r-line"><span>Subtotal</span><span>{money(d.subtotal)}</span></div>
+        {d.discountAmount > 0 &&
+          <div className="r-line"><span>Discount</span><span>− {money(d.discountAmount)}</span></div>}
         {d.serviceChargePercent > 0 &&
           <div className="r-line"><span>Service {d.serviceChargePercent}%</span><span>{money(d.serviceChargeAmount)}</span></div>}
-        {d.taxPercent > 0 &&
-          <div className="r-line"><span>GST {d.taxPercent}%</span><span>{money(d.taxAmount)}</span></div>}
-        {isInvoice && d.discountAmount > 0 &&
-          <div className="r-line"><span>Discount</span><span>− {money(d.discountAmount)}</span></div>}
+        {d.taxAmount > 0 &&
+          <div className="r-line"><span>{taxLabel}{d.taxPercent > 0 ? ` ${d.taxPercent}%` : ''}</span><span>{money(d.taxAmount)}</span></div>}
         <div className="r-line r-grand"><span>Total</span><span>{money(d.total)}</span></div>
         {isInvoice && <div className="r-line" style={{ fontSize: 13 }}><span>Paid via</span><span>{d.paymentMethod}</span></div>}
+        {isInvoice && showCash && <>
+          <div className="r-line" style={{ fontSize: 13 }}><span>Cash received</span><span>{money(d.amountTendered)}</span></div>
+          <div className="r-line" style={{ fontSize: 13 }}><span>Change</span><span>{money(d.changeGiven)}</span></div>
+        </>}
       </div>
 
       {/* Fiscal block. The receipt ALWAYS prints; this only reflects the FBR state. */}

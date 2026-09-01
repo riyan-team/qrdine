@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, money } from '../api'
 import { auth } from '../auth'
 import { ui } from '../ui.jsx'
-import { MenuIcon, BoxIcon, ReceiptIcon, KitchenIcon, UserIcon, QrIcon, GearIcon,
+import { friendlyError } from '../errors'
+import { MenuIcon, BoxIcon, ReceiptIcon, KitchenIcon, UserIcon, QrIcon, GearIcon, SearchIcon,
   CashIcon, TrendIcon, CalcIcon, BankIcon, WarnIcon, RefreshIcon, PrintIcon, DownloadIcon, StarIcon } from '../icons.jsx'
 
 // Each tile shows only when the plan includes its feature AND the user has the
@@ -23,18 +24,9 @@ export default function Dashboard() {
   const [d, setD] = useState(null)
   const [branchId, setBranchId] = useState('')
   const [err, setErr] = useState('')
-  const iso = (dt) => dt.toISOString().slice(0, 10)
-  const [from, setFrom] = useState(iso(new Date(Date.now() - 30 * 86400000)))
-  const [to, setTo] = useState(iso(new Date()))
-  const [dl, setDl] = useState(false)
   const [fb, setFb] = useState(null)
   const load = (bid = branchId) => api.dashboard(7, bid || null).then(setD).catch((e) => setErr(e.message))
   useEffect(() => { load(); api.getFeedback().then(setFb).catch(() => {}) }, [])
-  const download = async () => {
-    setDl(true)
-    try { await api.downloadInvoicesCsv(from, to, branchId || null) } catch (e) { ui.alert(e.message) }
-    setDl(false)
-  }
 
   if (!d) return <div className="empty">{err || 'Loading dashboard…'}</div>
 
@@ -80,21 +72,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Reports export */}
-      <div className="card noprint" style={{ marginTop: 16 }}>
-        <div className="row between" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <b>Sales &amp; tax report</b>
-            <div className="muted" style={{ fontSize: 13 }}>Download a CSV of every settled invoice with the sales-tax breakdown — ready for your tax return.</div>
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            <span className="muted">→</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            <button className="primary" disabled={dl} onClick={download}>{dl ? 'Preparing…' : <><DownloadIcon size={15} /> Download CSV</>}</button>
-          </div>
-        </div>
-      </div>
+      {/* Sales report — filters, search, totals, server-side pagination + CSV export */}
+      <SalesReport branches={d.branches} />
 
       {/* Quick actions */}
       <div className="cat-title noprint">Manage</div>
@@ -143,6 +122,109 @@ export default function Dashboard() {
       {fb && fb.count > 0 && <FeedbackPanel fb={fb} />}
 
       <PrintReport d={d} greet={greet} name={name} />
+    </div>
+  )
+}
+
+const isoDay = (dt) => dt.toISOString().slice(0, 10)
+
+// Full sales report: date range + branch + method + search, server-side paginated,
+// with a totals bar and a CSV export of the exact same filtered set.
+function SalesReport({ branches }) {
+  const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 86400000)))
+  const [to, setTo] = useState(isoDay(new Date()))
+  const [branchId, setBranchId] = useState('')
+  const [method, setMethod] = useState('')
+  const [q, setQ] = useState('')
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState(null)
+  const [dl, setDl] = useState(false)
+  const [err, setErr] = useState('')
+  const timer = useRef(null)
+
+  const load = (p = page) => api.salesReport({ from, to, branchId: branchId || null, q, method, page: p, pageSize: 15 })
+    .then(setData).catch((e) => setErr(friendlyError(e)))
+  useEffect(() => { setPage(1); load(1) }, [from, to, branchId, method])
+  const onSearch = (v) => { setQ(v); setPage(1); clearTimeout(timer.current); timer.current = setTimeout(() => load(1), 300) }
+  const go = (p) => { setPage(p); load(p) }
+  const download = async () => {
+    setDl(true)
+    try { await api.downloadInvoicesCsv(from, to, branchId || null, q, method) } catch (e) { ui.alert(friendlyError(e)) }
+    setDl(false)
+  }
+
+  const rows = data?.rows ?? []
+  const cur = data?.currency || 'Rs'
+  return (
+    <div className="card noprint sales-report" style={{ marginTop: 16 }}>
+      <div className="row between" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <b>Sales &amp; tax report</b>
+          <div className="muted" style={{ fontSize: 13 }}>Every settled invoice with its tax breakdown. The CSV exports exactly what you filter here.</div>
+        </div>
+        <button className="primary" disabled={dl} onClick={download}>{dl ? 'Preparing…' : <><DownloadIcon size={15} /> Download CSV</>}</button>
+      </div>
+
+      <div className="hist-filters" style={{ marginTop: 12 }}>
+        <div className="search-box">
+          <SearchIcon size={15} />
+          <input placeholder="Search bill #, table, cashier…" value={q} onChange={(e) => onSearch(e.target.value)} />
+        </div>
+        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+        <span className="muted">→</span>
+        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+        <select value={method} onChange={(e) => setMethod(e.target.value)}>
+          <option value="">All payments</option>
+          {['Cash', 'Card', 'JazzCash', 'Easypaisa'].map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {branches?.length > 1 && (
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <option value="">All branches</option>
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      <div className="table-scroll" style={{ marginTop: 10 }}>
+        <table className="data-table">
+          <thead>
+            <tr><th>Bill</th><th>Date</th><th>Table</th><th>Payment</th><th>Cashier</th>
+              <th className="num">Net</th><th className="num">Discount</th><th className="num">Tax</th><th className="num">Total</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td>{r.number}</td>
+                <td className="muted">{new Date(r.issuedAt).toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                <td>{r.table}</td>
+                <td>{r.paymentMethod}</td>
+                <td className="muted">{r.cashier || '—'}</td>
+                <td className="num">{money(r.subtotal)}</td>
+                <td className="num">{r.discount > 0 ? '− ' + money(r.discount) : '—'}</td>
+                <td className="num">{money(r.tax)}</td>
+                <td className="num"><b>{money(r.total)}</b></td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">{err || 'No sales in this range.'}</td></tr>}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={5}><b>Totals ({data.total})</b></td>
+                <td className="num"><b>{money(data.sumNet)}</b></td>
+                <td className="num"><b>{money(data.sumDiscount)}</b></td>
+                <td className="num"><b>{money(data.sumTax)}</b></td>
+                <td className="num"><b>{money(data.sumSales)}</b></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      <div className="pager">
+        <button disabled={(data?.page ?? 1) <= 1} onClick={() => go(page - 1)}>← Prev</button>
+        <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.total ?? 0} bills</span>
+        <button disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)} onClick={() => go(page + 1)}>Next →</button>
+      </div>
     </div>
   )
 }

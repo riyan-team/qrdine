@@ -27,7 +27,8 @@ import {
   useCart, plusOrCustomize, cartToItems, MenuList, CartLines, Customizer,
   OrderActions, Spinner, catAnchor,
 } from '../ordering.jsx'
-import { NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon } from '../icons.jsx'
+import { OrderHistory } from '../history.jsx'
+import { NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon, ReceiptIcon } from '../icons.jsx'
 
 // Waiter screen. Two jobs:
 //  • Board — get alerted when food is ready, take a table, advance/serve orders.
@@ -69,15 +70,16 @@ export default function Waiter() {
           <div className="h" style={{ margin: 0 }}>Waiter</div>
           <span className="muted" style={{ fontSize: 13 }}>· {me}</span>
         </div>
-        {canOrder && (
-          <div className="seg">
-            <button className={tab === 'board' ? 'on' : ''} onClick={() => { setTab('board'); setPreTable(null) }}><NoteIcon size={15} /> Board</button>
-            <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}><PlusIcon size={15} /> Take order</button>
-          </div>
-        )}
+        <div className="seg">
+          <button className={tab === 'board' ? 'on' : ''} onClick={() => { setTab('board'); setPreTable(null) }}><NoteIcon size={15} /> Board</button>
+          {canOrder && <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}><PlusIcon size={15} /> Take order</button>}
+          <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}><ReceiptIcon size={15} /> History</button>
+        </div>
       </div>
 
-      {tab === 'order' && canOrder
+      {tab === 'history'
+        ? <OrderHistory statuses={['', 'Placed', 'Approved', 'Cooking', 'Ready', 'Served', 'Paid', 'Cancelled']} />
+        : tab === 'order' && canOrder
         ? <TakeOrder orders={orders} initialTable={preTable} />
         : <Board orders={orders} me={me} canOrder={canOrder} onAddItems={addItemsTo} />}
     </div>

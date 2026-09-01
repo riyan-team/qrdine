@@ -3,6 +3,7 @@ import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { OrderHistory } from '../history.jsx'
 import { KitchenIcon, BellIcon, NoteIcon } from '../icons.jsx'
 
 // Run a status action, surfacing any failure as a toast (never silently).
@@ -12,33 +13,58 @@ const run = (p) => Promise.resolve(p).catch((e) => toast.error(friendlyError(e))
 // then mark ready. The time you set drives the countdown on the customer's phone.
 export default function Kitchen() {
   const orders = useStaffOrders()
+  const [tab, setTab] = useState('live')
   const queue = orders.filter((o) => o.status === 'Approved')
   const cooking = orders.filter((o) => o.status === 'Cooking')
+  const ready = orders.filter((o) => o.status === 'Ready')
 
   return (
     <div className="wrap ops ops-center">
       <div className="h">Kitchen display</div>
       <p className="muted">Approved orders appear here. Set how many minutes it will take — the customer sees a live countdown.</p>
 
-      <div className="cat-title"><KitchenIcon size={15} /> To start ({queue.length})</div>
-      <div className="grid cols">
-        {queue.map((o) => <CookCard key={o.id} o={o} />)}
-        {queue.length === 0 && <div className="empty">Nothing waiting. Reception approves orders into this queue.</div>}
+      <div className="seg noprint">
+        <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live ({queue.length + cooking.length})</button>
+        <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>Order history</button>
       </div>
 
-      <div className="cat-title" style={{ marginTop: 20 }}>Cooking ({cooking.length})</div>
-      <div className="grid cols">
-        {cooking.map((o) => (
-          <div className="card" key={o.id}>
-            <div className="row between"><b>{o.tableName} · #{o.id}</b>
-              <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span></div>
-            <Lines o={o} />
-            <div className="muted">Promised: {o.etaMinutes} min</div>
-            <button className="green" style={{ width: '100%', marginTop: 8 }}
-              onClick={() => run(api.ready(o.id))}><BellIcon size={15} /> Mark ready</button>
+      {tab === 'history' ? (
+        <OrderHistory statuses={['', 'Approved', 'Cooking', 'Ready', 'Served', 'Paid', 'Cancelled']} />
+      ) : (<>
+        <div className="cat-title"><KitchenIcon size={15} /> To start ({queue.length})</div>
+        <div className="grid cols">
+          {queue.map((o) => <CookCard key={o.id} o={o} />)}
+          {queue.length === 0 && <div className="empty">Nothing waiting. Reception approves orders into this queue.</div>}
+        </div>
+
+        <div className="cat-title" style={{ marginTop: 20 }}>Cooking ({cooking.length})</div>
+        <div className="grid cols">
+          {cooking.map((o) => (
+            <div className="card" key={o.id}>
+              <div className="row between"><b>{o.tableName} · #{o.id}</b>
+                <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span></div>
+              <Lines o={o} />
+              <div className="muted">Promised: {o.etaMinutes} min</div>
+              <button className="green" style={{ width: '100%', marginTop: 8 }}
+                onClick={() => run(api.ready(o.id))}><BellIcon size={15} /> Mark ready</button>
+            </div>
+          ))}
+          {cooking.length === 0 && <div className="empty">Nothing cooking right now.</div>}
+        </div>
+
+        {ready.length > 0 && <>
+          <div className="cat-title" style={{ marginTop: 20 }}>Ready to serve ({ready.length})</div>
+          <div className="grid cols">
+            {ready.map((o) => (
+              <div className="card" key={o.id}>
+                <div className="row between"><b>{o.tableName} · #{o.id}</b>
+                  <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span></div>
+                <Lines o={o} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>}
+      </>)}
     </div>
   )
 }

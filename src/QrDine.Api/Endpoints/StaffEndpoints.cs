@@ -16,6 +16,12 @@ public static class StaffEndpoints
         g.MapGet("/staff/orders", async (OrderService svc) => Results.Ok(await svc.StaffOrders()))
             .RequireAuthorization(Policies.StaffAny);
 
+        // Order history for the Kitchen/Waiter/Reception dashboards (paginated, filterable).
+        g.MapGet("/staff/orders/history", async (string? status, DateTime? from, DateTime? to, string? q,
+                int? page, int? pageSize, OrderService svc)
+                => Results.Ok(await svc.OrdersHistory(status, from, to, q, page ?? 1, pageSize ?? 20)))
+            .RequireAuthorization(Policies.StaffAny);
+
         g.MapPost("/orders/{id:int}/approve", async (int id, OrderService svc) => Results.Ok(await svc.Approve(id)))
             .RequireAuthorization(Policies.CanApprove);
         g.MapPost("/orders/{id:int}/cook", async (int id, CookRequest body, OrderService svc) => Results.Ok(await svc.Cook(id, body.EtaMinutes)))

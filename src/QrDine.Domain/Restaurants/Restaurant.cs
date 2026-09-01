@@ -27,6 +27,22 @@ public class Restaurant : Entity
     public decimal TaxPercent { get; set; } = 0;      // default GST when an item has no own rate
     public decimal ServiceChargePercent { get; set; } = 0;
 
+    // ---- Tax / GST billing settings (owner-managed in Settings) ----
+    // When TaxEnabled is off, tax is neither shown nor calculated on bills.
+    public bool TaxEnabled { get; set; } = false;
+    public string TaxName { get; set; } = "GST";       // label printed on the bill (e.g. GST, Sales Tax)
+
+    // ---- Discount billing settings ----
+    // When DiscountEnabled is on, the configured discount is pre-applied to every bill
+    // (the cashier can still adjust it). Percentage of subtotal, or a fixed Rs amount.
+    public bool DiscountEnabled { get; set; } = false;
+    public bool DiscountIsPercent { get; set; } = true;
+    public decimal DiscountValue { get; set; } = 0;    // percent (0–100) or fixed amount
+
+    // ---- Receipt / stock behaviour ----
+    public bool ReceiptEnabled { get; set; } = true;   // print/show a receipt after settlement
+    public bool StockTrackingEnabled { get; set; } = true;  // deduct recipe stock + low-stock alerts
+
     // ---- Receipt branding (printed on 80mm thermal receipts) ----
     public string LogoUrl { get; set; } = "";          // logo shown centred at the top of the receipt
     public string ReceiptHeader { get; set; } = "";    // address / phone line under the name

@@ -124,9 +124,14 @@ public class OrderService
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
         await _print.Dispatch(Slug, PrintJobs.KitchenTicket(dto), ct);
-        await _inventory.ApplyOrderConsumption(Lines(order), restore: false, ct);
+        if (await StockEnabled(ct))
+            await _inventory.ApplyOrderConsumption(Lines(order), restore: false, ct);
         return dto;
     }
+
+    // Whether recipe-based stock deduction is switched on for this restaurant.
+    private async Task<bool> StockEnabled(CancellationToken ct) =>
+        (await _db.Restaurants.AsNoTracking().FirstAsync(r => r.Id == TenantId, ct)).StockTrackingEnabled;
 
     /// <summary>If the restaurant runs auto-assignment, give this order to the
     /// waiter currently handling the fewest active orders. No-op in manual mode
@@ -165,7 +170,8 @@ public class OrderService
         order.Cancel(reason ?? "unspecified");
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
-        if (wasConsumed) await _inventory.ApplyOrderConsumption(Lines(order), restore: true, ct);
+        if (wasConsumed && await StockEnabled(ct))
+            await _inventory.ApplyOrderConsumption(Lines(order), restore: true, ct);
         return dto;
     }
 
@@ -185,6 +191,37 @@ public class OrderService
             .Where(o => o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
             .OrderBy(o => o.CreatedAt).ToListAsync(ct);
         return orders.Select(OrderDto.From).ToList();
+    }
+
+    /// <summary>Paginated order history for staff dashboards — filter by status, date
+    /// range and a search term (table or waiter). Newest first.</summary>
+    public async Task<OrderHistoryPage> OrdersHistory(string? status, DateTime? fromUtc, DateTime? toUtc,
+        string? q, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers).AsQueryable();
+        if (Enum.TryParse<OrderStatus>(status, true, out var st)) query = query.Where(o => o.Status == st);
+        if (fromUtc is DateTime f) query = query.Where(o => o.CreatedAt >= f);
+        if (toUtc is DateTime t)
+        {
+            // A date with no time component means "up to the end of that day".
+            if (t.TimeOfDay == TimeSpan.Zero) t = t.AddDays(1).AddSeconds(-1);
+            query = query.Where(o => o.CreatedAt <= t);
+        }
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(o => o.TableCode.Contains(term) || o.TableName.Contains(term)
+                || (o.WaiterName != null && o.WaiterName.Contains(term)));
+        }
+
+        var total = await query.CountAsync(ct);
+        var orders = await query.OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+        return new OrderHistoryPage(orders.Select(OrderDto.From).ToList(), page, pageSize, total, totalPages);
     }
 
     public async Task<IReadOnlyList<OrderDto>> TableOrders(string tableCode, CancellationToken ct = default)

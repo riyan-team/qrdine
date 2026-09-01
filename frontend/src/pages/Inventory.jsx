@@ -12,13 +12,19 @@ export default function Inventory() {
   const [moves, setMoves] = useState([])
   const [ns, setNs] = useState({ name: '', unit: 'kg', quantity: '', lowThreshold: '' })
   const [recipeFor, setRecipeFor] = useState(null)
+  const [recipesOn, setRecipesOn] = useState(false)   // driven by the stock-tracking setting
   const [err, setErr] = useState('')
 
   const load = () => {
     api.listStock().then(setStock).catch((e) => setErr(e.message))
     api.movements().then(setMoves).catch(() => {})
   }
-  useEffect(() => { load(); api.adminMenu().then((m) => setMenu(m.menu)).catch(() => {}) }, [])
+  useEffect(() => {
+    load()
+    api.adminMenu().then((m) => setMenu(m.menu)).catch(() => {})
+    // Recipes only make sense when stock tracking is on — mirror the setting here.
+    api.getBillingSettings().then((s) => setRecipesOn(!!s.stockTrackingEnabled)).catch(() => {})
+  }, [])
 
   const add = async () => {
     setErr('')
@@ -40,7 +46,9 @@ export default function Inventory() {
         <div className="h" style={{ margin: 0 }}>Inventory</div>
         {lowCount > 0 && <span className="pill s-Placed"><WarnIcon size={13} /> {lowCount} low</span>}
       </div>
-      <p className="muted">Track ingredients and what each dish uses. Stock deducts automatically when an order is sent to the kitchen.</p>
+      <p className="muted">{recipesOn
+        ? 'Track ingredients and what each dish uses. Stock deducts automatically when an order is sent to the kitchen.'
+        : 'Track your ingredient stock levels. Turn on stock tracking in Settings to link dishes to ingredients (recipes).'}</p>
 
       {lowCount > 0 && (
         <div className="alert-banner warn" role="alert">
@@ -52,7 +60,7 @@ export default function Inventory() {
         </div>
       )}
 
-      <div className="grid g2">
+      <div className={recipesOn ? 'grid g2' : ''}>
         <div className="card">
           <b>Stock</b>
           <div style={{ margin: '10px 0' }}>
@@ -85,7 +93,7 @@ export default function Inventory() {
           {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
         </div>
 
-        <div className="card">
+        {recipesOn && <div className="card">
           <b>Recipes</b>
           <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>Set what each dish consumes per serving.</p>
           {menu.map((c) => (
@@ -99,7 +107,7 @@ export default function Inventory() {
               ))}
             </div>
           ))}
-        </div>
+        </div>}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>

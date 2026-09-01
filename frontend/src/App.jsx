@@ -17,6 +17,7 @@ import PlatformConsole from './pages/PlatformConsole.jsx'
 import Landing from './pages/Landing.jsx'
 import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
+import { roleLabel } from './api'
 import DineInLogo from './DineInLogo.jsx'
 
 // Guards a staff-only route: no token → bounce to /login, remembering where we were.
@@ -78,7 +79,7 @@ function Nav() {
       <span style={{ marginLeft: 'auto' }} />
       {staff ? (
         <span className="row" style={{ gap: 8, fontSize: 13 }}>
-          <span className="muted">{staff.displayName} · {staff.role}</span>
+          <span className="muted">{staff.displayName} · {roleLabel(staff.role)}</span>
           <button className="ghost" onClick={() => { auth.clearStaff(); location.href = '/login' }}>Sign out</button>
         </span>
       ) : (

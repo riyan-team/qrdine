@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api'
+import { api, roleLabel } from '../api'
 import { auth } from '../auth'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { PasswordInput } from '../forms.jsx'
 import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon } from '../icons.jsx'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
@@ -26,22 +27,41 @@ const PERM_FEATURE = {
 }
 const permInPlan = (perm) => { const f = PERM_FEATURE[perm]; return !f || auth.hasFeature(f) }
 
-// Owner/manager settings: manage tables, staff and (owner-only) permissions.
+// Owner/manager settings, grouped into tabs so related settings sit together
+// instead of one long, confusing list.
+const SETTINGS_TABS = [
+  { id: 'billing', label: 'Billing & tax' },
+  { id: 'receipt', label: 'Receipt & branding' },
+  { id: 'venue', label: 'Branches & tables' },
+  { id: 'staff', label: 'Staff & roles' },
+  { id: 'service', label: 'Service' },
+  { id: 'fbr', label: 'FBR / tax filing' },
+  { id: 'account', label: 'Your account' },
+]
+
 export default function Settings() {
   const isOwner = auth.role() === 'Owner'
+  const [tab, setTab] = useState('billing')
   return (
     <div className="wrap">
       <div className="h">Settings</div>
-      <AccountSettings />
-      <ReceiptSettings />
-      <ServiceSettings />
-      <FbrSettings />
-      <Branches />
-      <div className="grid g2">
-        <Tables />
-        <Staff />
+      <p className="muted" style={{ marginTop: -4 }}>Pick a section — related settings are grouped together.</p>
+
+      <div className="settings-nav">
+        {SETTINGS_TABS.map((t) => (
+          <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
       </div>
-      {isOwner && <Permissions />}
+
+      <div className="settings-panel">
+        {tab === 'billing' && <BillingSettings />}
+        {tab === 'receipt' && <ReceiptSettings />}
+        {tab === 'venue' && <><Branches /><Tables /></>}
+        {tab === 'staff' && <><Staff />{isOwner && <Permissions />}</>}
+        {tab === 'service' && <ServiceSettings />}
+        {tab === 'fbr' && <FbrSettings />}
+        {tab === 'account' && <AccountSettings />}
+      </div>
     </div>
   )
 }
@@ -62,15 +82,109 @@ function AccountSettings() {
   }
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <div className="row between"><b>Your account</b><span className="muted" style={{ fontSize: 13 }}>{staff?.displayName} · {staff?.role}</span></div>
+      <div className="row between"><b>Your account</b><span className="muted" style={{ fontSize: 13 }}>{staff?.displayName} · {roleLabel(staff?.role)}</span></div>
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>Change your own password.</p>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <input type="password" placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
-        <input type="password" placeholder="New password (6+)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        <PasswordInput placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        <PasswordInput placeholder="New password (6+)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
         <button className="primary" disabled={busy || !cur || nw.length < 6} onClick={save}>{msg || 'Update password'}</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
+  )
+}
+
+// Billing rules: Tax/GST on/off + name + rate, discount on/off (%/fixed), receipt
+// on/off and stock tracking on/off. These drive every bill automatically. Only
+// reachable by staff with settings.manage (route-gated + server-enforced).
+function BillingSettings() {
+  const [s, setS] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { api.getBillingSettings().then(setS).catch((e) => setErr(friendlyError(e))) }, [])
+  if (!s) return null
+  const set = (k, v) => setS((x) => ({ ...x, [k]: v }))
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 1500) }
+
+  const save = async () => {
+    setErr(''); setBusy(true)
+    try {
+      await api.setBillingSettings({
+        taxEnabled: !!s.taxEnabled, taxName: (s.taxName || 'GST').trim(),
+        taxPercent: Number(s.taxPercent) || 0, serviceChargePercent: Number(s.serviceChargePercent) || 0,
+        discountEnabled: !!s.discountEnabled, discountIsPercent: !!s.discountIsPercent,
+        discountValue: Number(s.discountValue) || 0,
+        receiptEnabled: !!s.receiptEnabled, stockTrackingEnabled: !!s.stockTrackingEnabled,
+      })
+      flash('Saved.')
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between"><b>Billing, tax &amp; receipt</b>{msg && <span className="muted" style={{ fontSize: 13 }}>{msg}</span>}</div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>These apply to every bill automatically: Items → Subtotal → Discount → Tax → Total.</p>
+
+      <div className="set-grid">
+        {/* Tax / GST */}
+        <div className="set-block">
+          <Toggle label="Charge Tax / GST" checked={s.taxEnabled} onChange={(v) => set('taxEnabled', v)} />
+          {s.taxEnabled && (
+            <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <label className="fld"><span>Tax name</span>
+                <input value={s.taxName || ''} placeholder="GST" onChange={(e) => set('taxName', e.target.value)} /></label>
+              <label className="fld"><span>Rate %</span>
+                <input type="number" min="0" max="100" step="0.01" value={s.taxPercent} onChange={(e) => set('taxPercent', e.target.value)} /></label>
+              <label className="fld"><span>Service %</span>
+                <input type="number" min="0" max="100" step="0.01" value={s.serviceChargePercent} onChange={(e) => set('serviceChargePercent', e.target.value)} /></label>
+            </div>
+          )}
+        </div>
+
+        {/* Discount */}
+        <div className="set-block">
+          <Toggle label="Apply a discount" checked={s.discountEnabled} onChange={(v) => set('discountEnabled', v)} />
+          {s.discountEnabled && (
+            <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label className="fld"><span>Type</span>
+                <select value={s.discountIsPercent ? 'pct' : 'fixed'} onChange={(e) => set('discountIsPercent', e.target.value === 'pct')}>
+                  <option value="pct">Percentage</option>
+                  <option value="fixed">Fixed ({s.currency || 'Rs'})</option>
+                </select></label>
+              <label className="fld"><span>{s.discountIsPercent ? 'Percent %' : `Amount (${s.currency || 'Rs'})`}</span>
+                <input type="number" min="0" step="0.01" value={s.discountValue} onChange={(e) => set('discountValue', e.target.value)} /></label>
+            </div>
+          )}
+        </div>
+
+        {/* Receipt + stock */}
+        <div className="set-block">
+          <Toggle label="Show / print receipt after settlement" checked={s.receiptEnabled} onChange={(v) => set('receiptEnabled', v)} />
+          <div style={{ height: 8 }} />
+          <Toggle label="Track stock (deduct recipe ingredients on orders)" checked={s.stockTrackingEnabled} onChange={(v) => set('stockTrackingEnabled', v)} />
+        </div>
+      </div>
+
+      {err && <div className="form-err" style={{ marginTop: 8 }}>{err}</div>}
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save billing settings'}</button>
+      </div>
+    </div>
+  )
+}
+
+// A small on/off switch (accessible label + checkbox).
+function Toggle({ label, checked, onChange }) {
+  return (
+    <label className="switch-row">
+      <span className={'switch' + (checked ? ' on' : '')} onClick={(e) => { e.preventDefault(); onChange(!checked) }}>
+        <span className="knob" />
+      </span>
+      <span>{label}</span>
+      <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} style={{ display: 'none' }} />
+    </label>
   )
 }
 
@@ -390,7 +504,7 @@ function Permissions() {
       <div style={{ overflowX: 'auto' }}>
         <table className="tbl" style={{ minWidth: 560 }}>
           <thead>
-            <tr><th>Permission</th>{roles.map((r) => <th key={r} style={{ textAlign: 'center' }}>{r}</th>)}</tr>
+            <tr><th>Permission</th>{roles.map((r) => <th key={r} style={{ textAlign: 'center' }}>{roleLabel(r)}</th>)}</tr>
           </thead>
           <tbody>
             {matrix.all.filter(permInPlan).map((perm) => (
@@ -409,7 +523,7 @@ function Permissions() {
       <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {roles.map((r) => (
           <button key={r} className="primary" onClick={() => save(r)}>
-            {savedRole === r ? '✓ Saved' : `Save ${r}`}
+            {savedRole === r ? '✓ Saved' : `Save ${roleLabel(r)}`}
           </button>
         ))}
       </div>
@@ -526,7 +640,7 @@ function Staff() {
               <StaffEdit s={s} fbrOn={fbrOn} onDone={() => { setEditFor(null); load() }} onCancel={() => setEditFor(null)} />
             ) : (
               <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(s.id)} title="Double-click to edit">
-                <span><b>{s.displayName}</b> <span className="muted">· {s.username} · {s.role}
+                <span><b>{s.displayName}</b> <span className="muted">· {s.username} · {roleLabel(s.role)}
                   {fbrOn && s.fbrPosId ? ` · POS ${s.fbrPosId}` : ''}</span></span>
                 <div className="row" style={{ gap: 4 }}>
                   <button className="ghost icon-btn" title="Edit member" onClick={() => setEditFor(s.id)}><EditIcon /></button>
@@ -545,8 +659,8 @@ function Staff() {
         <input placeholder="Display name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1 }} />
       </div>
       <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
-        <input placeholder="Password" type="password" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
+        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
+        <PasswordInput placeholder="Password" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
       </div>
       {fbrOn && (
         <div className="row" style={{ gap: 8, marginBottom: 6 }}>
@@ -583,7 +697,7 @@ function StaffEdit({ s, fbrOn, onDone, onCancel }) {
       <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <input autoFocus placeholder="Username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
         <input placeholder="Display name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
-        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
+        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
       </div>
       {fbrOn && (
         <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>

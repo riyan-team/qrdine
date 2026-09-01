@@ -94,13 +94,13 @@ export default function Signup() {
   const stepIndex = STEP_ORDER.indexOf(step)
 
   return (
-    <div className="auth-split">
-      {/* Brand panel */}
-      <AuthBrand />
+    <div className={'auth-split' + (step === 'plan' ? ' plan-mode' : '')}>
+      {/* Brand panel — hidden on the wide plan-picker step */}
+      {step !== 'plan' && <AuthBrand />}
 
       {/* Sign-up panel */}
       <main className="auth-main auth-scroll">
-        <div className="auth-card auth-card-wide">
+        <div className={'auth-card auth-card-wide' + (step === 'plan' ? ' auth-card-plans' : '')}>
           <div className="h" style={{ marginTop: 0, marginBottom: 2 }}>Create your restaurant</div>
           <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>
             {step === 'plan' ? 'Pick a plan — you can change it anytime.'
@@ -121,27 +121,28 @@ export default function Signup() {
           {/* Step 1 — choose a plan */}
           {step === 'plan' && (
             <>
-              <div className="plan-list">
-                {plans.map((p) => (
-                  <button type="button" key={p.id} className={'plan-row' + (planId === p.id ? ' sel' : '')} onClick={() => setPlanId(p.id)}>
-                    <span className="plan-check" aria-hidden="true">{planId === p.id ? <CheckIcon size={14} /> : ''}</span>
-                    <span className="plan-body">
-                      <span className="plan-top">
-                        <b>{p.name}</b>
-                        <span className="plan-price">{p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}<span className="muted">{p.pricePkr > 0 ? '/mo' : ''}</span></span>
-                      </span>
-                      <span className="plan-desc">{p.description}{p.setupFeePkr > 0 ? ` · + ${money(p.setupFeePkr)} setup` : ''}</span>
-                      <span className="plan-feats">
-                        {FEATURES.filter(([k]) => p[k]).map(([k, label]) => (
-                          <span key={k} className="plan-feat"><CheckIcon size={12} /> {label}</span>
-                        ))}
-                      </span>
+              <div className="plan-grid">
+                {plans.map((p, i) => (
+                  <button type="button" key={p.id} className={'plan-card fade-up' + (planId === p.id ? ' sel' : '')}
+                    style={{ animationDelay: `${i * 60}ms` }} onClick={() => setPlanId(p.id)}>
+                    {i === 2 && <span className="plan-badge">Most popular</span>}
+                    <span className="pc-name">{p.name}</span>
+                    <span className="pc-price">{p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}{p.pricePkr > 0 && <small>/mo</small>}</span>
+                    <span className="pc-setup">{p.setupFeePkr > 0 ? `+ ${money(p.setupFeePkr)} one-time setup` : 'No setup fee'}</span>
+                    <span className="pc-desc">{p.description}</span>
+                    <span className="pc-feats">
+                      {FEATURES.map(([k, label]) => (
+                        <span key={k} className={'pc-feat' + (p[k] ? '' : ' off')}>
+                          {p[k] ? <CheckIcon size={13} /> : <span className="pc-x">×</span>} {label}
+                        </span>
+                      ))}
                     </span>
+                    <span className="pc-select">{planId === p.id ? <><CheckIcon size={14} /> Selected</> : 'Choose plan'}</span>
                   </button>
                 ))}
                 {plans.length === 0 && <div className="empty">Loading plans…</div>}
               </div>
-              <button className="primary" disabled={!planId} style={{ width: '100%', marginTop: 14 }} onClick={() => setStep('details')}>Continue →</button>
+              <button className="primary" disabled={!planId} style={{ width: '100%', marginTop: 16 }} onClick={() => setStep('details')}>Continue →</button>
             </>
           )}
 

@@ -18,7 +18,8 @@ public class SettleRequestValidator : AbstractValidator<SettleRequest>
     public SettleRequestValidator()
     {
         RuleFor(x => x.Method).NotEmpty().MaximumLength(30);
-        RuleFor(x => x.Discount).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.Discount).GreaterThanOrEqualTo(0).WithMessage("Discount can't be negative.");
+        RuleFor(x => x.AmountTendered).GreaterThanOrEqualTo(0).WithMessage("Amount received can't be negative.");
     }
 }
 

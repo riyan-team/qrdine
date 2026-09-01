@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { OrderActions } from '../ordering.jsx'
 import { toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import Receipt from './Receipt.jsx'
-import { BellIcon, TableIcon, SearchIcon, PrintIcon, ReceiptIcon, KitchenIcon, CheckIcon, CashIcon, QrIcon, UserIcon } from '../icons.jsx'
+import { BellIcon, TableIcon, SearchIcon, PrintIcon, ReceiptIcon, KitchenIcon, CheckIcon, CashIcon, QrIcon, UserIcon, TrendIcon } from '../icons.jsx'
 
 // Run a status action, surfacing any failure as a toast (never silently).
 const run = (p) => Promise.resolve(p).catch((e) => toast.error(friendlyError(e)))
@@ -16,6 +16,8 @@ export default function Cashier() {
   const [billFor, setBillFor] = useState(null)   // table code being billed
   const [detailFor, setDetailFor] = useState(null)   // order being viewed
   const [detailInit, setDetailInit] = useState(null)   // { mode, autoPrint } for the detail modal
+  const [tab, setTab] = useState('live')
+  const [sum, setSum] = useState(null)
   // Open the order slip in a given mode, optionally firing the print dialog at once.
   const openDetail = (o, mode = 'kitchen', autoPrint = false) => { setDetailInit({ mode, autoPrint }); setDetailFor(o) }
 
@@ -27,11 +29,28 @@ export default function Cashier() {
   for (const o of active) (tables[o.tableCode] ??= { code: o.tableCode, name: o.tableName, orders: [] }).orders.push(o)
   const tableList = Object.values(tables)
 
+  // Live takings summary — reloads whenever the live orders change (a settle removes one).
+  useEffect(() => { api.receptionDashboard('', 1, 1).then(setSum).catch(() => {}) }, [orders.length, billFor])
+
   return (
     <div className="wrap ops ops-center">
       <div className="h">Reception</div>
       <p className="muted">Approve new orders to send them to the kitchen. Bill and settle each table when the guests are done.</p>
 
+      <div className="grid recept-kpis">
+        <Kpi Icon={CashIcon} num={money(sum?.todaySales ?? 0)} label="Today's sales" />
+        <Kpi Icon={ReceiptIcon} num={sum?.todayBills ?? 0} label="Today's bills" />
+        <Kpi Icon={TableIcon} num={tableList.length} label="Pending tables" />
+        <Kpi Icon={TrendIcon} num={money(sum?.totalSales ?? 0)} label="Total sales" />
+      </div>
+
+      <div className="seg noprint" style={{ marginTop: 14 }}>
+        <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live floor</button>
+        <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>Sales history</button>
+      </div>
+
+      {tab === 'history' && <ReceptionHistory />}
+      {tab === 'live' && <>
       <div className="cat-title"><BellIcon size={15} /> New — waiting for approval ({incoming.length})</div>
       <div className="grid cols">
         {incoming.map((o) => (
@@ -79,6 +98,7 @@ export default function Cashier() {
         })}
         {tableList.length === 0 && <div className="empty">No occupied tables. Approved orders appear here by table.</div>}
       </div>
+      </>}
 
       {billFor && <BillModal code={billFor} onClose={() => setBillFor(null)} />}
       {detailFor && <OrderDetail order={detailFor} init={detailInit} onClose={() => { setDetailFor(null); setDetailInit(null) }} />}
@@ -152,20 +172,34 @@ function BillModal({ code, onClose }) {
   const [bill, setBill] = useState(null)
   const [invoice, setInvoice] = useState(null)
   const [method, setMethod] = useState('Cash')
-  const [discount, setDiscount] = useState(0)
+  const [discount, setDiscount] = useState('')       // '' → use the settings default
+  const [tendered, setTendered] = useState('')
   const [ways, setWays] = useState(2)
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const timer = useRef(null)
 
-  const reload = () => api.getBill(code).then(setBill).catch((e) => setErr(e.message))
-  useEffect(() => { reload() }, [code])
+  // Load the bill; an explicit discount override re-prices server-side (tax on net).
+  const load = (d) => api.getBill(code, d).then((b) => {
+    setBill(b)
+    if (d == null && discount === '') setDiscount(b.discountEnabled ? String(b.discountAmount) : '')
+  }).catch((e) => setErr(e.message))
+  useEffect(() => { load() }, [code])
+
+  // Re-price (debounced) when the cashier edits the discount.
+  const onDiscount = (v) => {
+    setDiscount(v)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => load(Number(v) || 0), 300)
+  }
 
   const settle = async () => {
     setBusy(true); setErr('')
     try {
-      const inv = await api.settle(code, method, Number(discount) || 0)
-      setInvoice(inv); setTimeout(() => window.print(), 300)
+      const inv = await api.settle(code, method, Number(discount) || 0, Number(tendered) || 0)
+      setInvoice(inv)
+      if (inv.receiptEnabled) setTimeout(() => window.print(), 300)
     } catch (e) { setErr(e.message) }
     setBusy(false)
   }
@@ -174,22 +208,30 @@ function BillModal({ code, onClose }) {
     setBusy(true); setErr('')
     try {
       const res = await api.payPart(code, Number(amt), method)
-      if (res.settled) { setInvoice(res.invoice); setTimeout(() => window.print(), 300) }
-      else { await reload(); setAmount('') }
+      if (res.settled) { setInvoice(res.invoice); if (res.invoice.receiptEnabled) setTimeout(() => window.print(), 300) }
+      else { await load(Number(discount) || null); setAmount('') }
     } catch (e) { setErr(e.message) }
     setBusy(false)
   }
 
+  const total = bill?.total ?? 0
   const remaining = bill?.remaining ?? 0
   const share = ways > 0 ? Math.ceil((remaining / ways) * 100) / 100 : 0
+  const isCash = /cash/i.test(method)
+  const tenderedNum = Number(tendered) || 0
+  const change = Math.max(0, tenderedNum - total)
+  const short = isCash && tenderedNum > 0 && tenderedNum < total
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
-      <div className="modal">
-        <Receipt bill={invoice ? null : bill} invoice={invoice} />
+      <div className="modal bill-modal">
+        {/* Pre-settle: always show the working bill. Post-settle: show the receipt
+            only when receipts are enabled (item 8: OFF → don't show/print). */}
+        {!invoice && <Receipt bill={bill} />}
+        {invoice && invoice.receiptEnabled && <Receipt invoice={invoice} />}
 
         {!invoice ? (
-          <div className="noprint" style={{ marginTop: 14 }}>
+          <div className="noprint bill-pay" style={{ marginTop: 14 }}>
             {bill?.amountPaid > 0 && (
               <div className="card" style={{ padding: 10, marginBottom: 10 }}>
                 <div className="row between" style={{ fontSize: 14 }}><span>Paid so far</span><b>{money(bill.amountPaid)}</b></div>
@@ -199,45 +241,150 @@ function BillModal({ code, onClose }) {
                 </div>
               </div>
             )}
-            <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <span className="muted" style={{ fontSize: 13 }}>Pay via</span>
+
+            <div className="pay-grid">
+              <label className="muted">Pay via</label>
               <select value={method} onChange={(e) => setMethod(e.target.value)}>
                 {['Cash', 'Card', 'JazzCash', 'Easypaisa'].map((m) => <option key={m}>{m}</option>)}
               </select>
-              <span className="muted" style={{ fontSize: 13, marginLeft: 'auto' }}>Discount</span>
-              <input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} style={{ width: 80 }} />
+
+              {bill?.discountEnabled && <>
+                <label className="muted">Discount (Rs)</label>
+                <input type="number" min="0" value={discount} onChange={(e) => onDiscount(e.target.value)} />
+              </>}
+
+              {isCash && <>
+                <label className="muted">Amount received</label>
+                <input type="number" min="0" inputMode="decimal" placeholder={money(total)} value={tendered}
+                  onChange={(e) => setTendered(e.target.value)} />
+              </>}
             </div>
+
+            {/* Live change / balance for cash */}
+            {isCash && tenderedNum > 0 && (
+              <div className={'change-box' + (short ? ' short' : '')}>
+                <span>{short ? 'Still due' : 'Change to return'}</span>
+                <b>{money(short ? total - tenderedNum : change)}</b>
+              </div>
+            )}
 
             {/* Split-bill */}
-            <div className="cat-title" style={{ fontSize: 13, marginTop: 4 }}>Split the bill</div>
-            <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <span className="muted" style={{ fontSize: 13 }}>Evenly into</span>
-              <input type="number" min="2" value={ways} onChange={(e) => setWays(Number(e.target.value))} style={{ width: 60 }} />
-              <span className="muted" style={{ fontSize: 13 }}>= {money(share)}/each</span>
-              <button disabled={busy || remaining <= 0} onClick={() => pay(share)}>Pay 1 share</button>
-            </div>
-            <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <input type="number" placeholder="Custom amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1, minWidth: 120 }} />
-              <button disabled={busy || !amount || Number(amount) <= 0} onClick={() => pay(amount)}>Pay amount</button>
-            </div>
+            <details className="split-wrap">
+              <summary className="muted">Split the bill</summary>
+              <div className="row" style={{ gap: 8, margin: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="muted" style={{ fontSize: 13 }}>Evenly into</span>
+                <input type="number" min="2" value={ways} onChange={(e) => setWays(Number(e.target.value))} style={{ width: 60 }} />
+                <span className="muted" style={{ fontSize: 13 }}>= {money(share)}/each</span>
+                <button disabled={busy || remaining <= 0} onClick={() => pay(share)}>Pay 1 share</button>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <input type="number" placeholder="Custom amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1, minWidth: 120 }} />
+                <button disabled={busy || !amount || Number(amount) <= 0} onClick={() => pay(amount)}>Pay amount</button>
+              </div>
+            </details>
 
-            {err && <div style={{ color: 'var(--red)', fontSize: 14 }}>{err}</div>}
-            <div className="row" style={{ gap: 8, marginTop: 6 }}>
+            {err && <div className="form-err" style={{ marginTop: 8 }}>{err}</div>}
+            <div className="row" style={{ gap: 8, marginTop: 12 }}>
               <button onClick={onClose}>Cancel</button>
               <button onClick={() => window.print()} disabled={!bill}><PrintIcon size={15} /> Print bill</button>
-              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !bill?.hasOpenOrders} onClick={settle}>
-                {busy ? 'Settling…' : <><CashIcon size={15} /> {bill?.amountPaid > 0 ? 'Settle rest' : 'Settle full'}</>}
+              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !bill?.hasOpenOrders || short} onClick={settle}>
+                {busy ? 'Settling…' : <><CashIcon size={15} /> {bill?.amountPaid > 0 ? 'Settle rest' : 'Settle'}</>}
               </button>
             </div>
           </div>
         ) : (
-          <div className="noprint row" style={{ marginTop: 14, gap: 8, alignItems: 'center' }}>
-            <div className="paid-badge"><CheckIcon size={15} /> Paid — {invoice.number}</div>
-            <button style={{ marginLeft: 'auto' }} onClick={onClose}>Done</button>
-            <button className="blue" onClick={() => window.print()}><PrintIcon size={15} /> Reprint</button>
+          <div className="noprint" style={{ marginTop: 14 }}>
+            <div className="paid-badge" style={{ marginBottom: 10 }}><CheckIcon size={15} /> Paid — {invoice.number}
+              {invoice.changeGiven > 0 && <span style={{ marginLeft: 8 }}>· change {money(invoice.changeGiven)}</span>}</div>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <button style={{ marginLeft: 'auto' }} onClick={onClose}>Done</button>
+              {invoice.receiptEnabled && <button className="blue" onClick={() => window.print()}><PrintIcon size={15} /> Reprint</button>}
+            </div>
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function Kpi({ Icon, num, label }) {
+  return (
+    <div className="card stat">
+      <div className="chip">{Icon && <Icon size={20} />}</div>
+      <div className="num">{num}</div>
+      <div className="lbl">{label}</div>
+    </div>
+  )
+}
+
+// Settled-bills history: searchable, paginated, with reprint. Data comes from the
+// reception dashboard endpoint (gated to the reception's own permission).
+function ReceptionHistory() {
+  const [q, setQ] = useState('')
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const [view, setView] = useState(null)   // invoice being reprinted
+  const timer = useRef(null)
+
+  const load = (query = q, p = page) => api.receptionDashboard(query, p, 12).then(setData).catch((e) => setErr(friendlyError(e)))
+  useEffect(() => { load('', 1) }, [])
+  const onSearch = (v) => {
+    setQ(v); setPage(1)
+    clearTimeout(timer.current); timer.current = setTimeout(() => load(v, 1), 300)
+  }
+  const go = (p) => { setPage(p); load(q, p) }
+  const openInvoice = async (id) => { try { setView(await api.invoice(id)) } catch (e) { toast.error(friendlyError(e)) } }
+
+  const rows = data?.history ?? []
+  return (
+    <div className="card hist-card">
+      <div className="hist-filters">
+        <div className="search-box">
+          <SearchIcon size={15} />
+          <input placeholder="Search bill #, table, cashier…" value={q} onChange={(e) => onSearch(e.target.value)} />
+        </div>
+      </div>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr><th>Bill</th><th>Table</th><th>Payment</th><th>Total</th><th>Received</th><th>Change</th><th>Cashier</th><th>Time</th><th></th></tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => (
+              <tr key={b.id}>
+                <td>{b.number}</td>
+                <td>{b.tableName}</td>
+                <td>{b.paymentMethod}</td>
+                <td>{money(b.total)}</td>
+                <td>{b.amountTendered > 0 ? money(b.amountTendered) : '—'}</td>
+                <td>{b.changeGiven > 0 ? money(b.changeGiven) : '—'}</td>
+                <td className="muted">{b.cashier || '—'}</td>
+                <td className="muted">{new Date(b.issuedAt).toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                <td><button className="ghost" onClick={() => openInvoice(b.id)}><PrintIcon size={14} /></button></td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">{err || 'No settled bills yet.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div className="pager">
+        <button disabled={page <= 1} onClick={() => go(page - 1)}>← Prev</button>
+        <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.historyTotal ?? 0} bills</span>
+        <button disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)} onClick={() => go(page + 1)}>Next →</button>
+      </div>
+
+      {view && (
+        <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') setView(null) }}>
+          <div className="modal">
+            <Receipt invoice={view} />
+            <div className="noprint row" style={{ marginTop: 12, gap: 8 }}>
+              <button onClick={() => setView(null)}>Close</button>
+              <button className="blue" style={{ marginLeft: 'auto' }} onClick={() => window.print()}><PrintIcon size={15} /> Reprint</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

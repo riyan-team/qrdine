@@ -230,6 +230,32 @@ public class RestaurantAdminService
         await _db.SaveChangesAsync(ct);
     }
 
+    // ---------- billing settings (tax/GST, discount, receipt, stock) ----------
+    public async Task<BillingSettingsDto> GetBillingSettings(CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        return new BillingSettingsDto(r.TaxEnabled, string.IsNullOrWhiteSpace(r.TaxName) ? "GST" : r.TaxName,
+            r.TaxPercent, r.ServiceChargePercent,
+            r.DiscountEnabled, r.DiscountIsPercent, r.DiscountValue,
+            r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency);
+    }
+
+    public async Task SetBillingSettings(BillingSettingsInput i, CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
+        r.TaxEnabled = i.TaxEnabled;
+        r.TaxName = string.IsNullOrWhiteSpace(i.TaxName) ? "GST" : i.TaxName.Trim();
+        r.TaxPercent = Math.Clamp(i.TaxPercent, 0, 100);
+        r.ServiceChargePercent = Math.Clamp(i.ServiceChargePercent, 0, 100);
+        r.DiscountEnabled = i.DiscountEnabled;
+        r.DiscountIsPercent = i.DiscountIsPercent;
+        // A percentage is capped at 100; a fixed amount is a plain non-negative number.
+        r.DiscountValue = i.DiscountIsPercent ? Math.Clamp(i.DiscountValue, 0, 100) : Math.Max(0, i.DiscountValue);
+        r.ReceiptEnabled = i.ReceiptEnabled;
+        r.StockTrackingEnabled = i.StockTrackingEnabled;
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task ResetPassword(int id, string password, bool callerIsOwner, CancellationToken ct = default)
     {
         var s = await _db.Staff.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("Staff not found.");

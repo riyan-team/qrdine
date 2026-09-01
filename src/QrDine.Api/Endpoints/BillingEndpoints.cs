@@ -13,9 +13,13 @@ public static class BillingEndpoints
     {
         var g = app.MapGroup("/api/r/{slug}").RequireAuthorization(Policies.CanPay).AddEndpointFilter<ValidationFilter>();
 
-        // Live bill preview for a table.
-        g.MapGet("/tables/{code}/bill", async (string code, BillingService svc)
-            => Results.Ok(await svc.GetBill(code)));
+        // Reception dashboard: today's takings, pending bills, totals + settled history.
+        g.MapGet("/reception/dashboard", async (string? q, int? page, int? pageSize, BillingService svc)
+            => Results.Ok(await svc.ReceptionDashboard(q, page ?? 1, pageSize ?? 20)));
+
+        // Live bill preview for a table (optional discount override for the cashier).
+        g.MapGet("/tables/{code}/bill", async (string code, decimal? discount, BillingService svc)
+            => Results.Ok(await svc.GetBill(code, discount)));
 
         // Settle the table → numbered invoice; closes the session. The settling cashier
         // is passed through so an FBR filing is stamped with their POSID/token.

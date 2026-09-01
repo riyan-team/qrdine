@@ -65,9 +65,21 @@ export const api = {
   cancel: (id) => staffPost(`/orders/${id}/cancel`),
 
   // billing
-  getBill: (code) => staffGet(`/tables/${code}/bill`),
-  settle: (code, method, discount) => staffPost(`/tables/${code}/settle`, { method, discount }),
+  getBill: (code, discount = null) => staffGet(`/tables/${code}/bill${discount != null ? `?discount=${discount}` : ''}`),
+  settle: (code, method, discount, amountTendered = 0) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered }),
   payPart: (code, amount, method) => staffPost(`/tables/${code}/pay-part`, { amount, method }),
+  invoice: (id) => staffGet(`/invoices/${id}`),
+
+  // reception dashboard (today's takings, pending bills, settled history)
+  receptionDashboard: (q = '', page = 1, pageSize = 20) =>
+    staffGet(`/reception/dashboard?page=${page}&pageSize=${pageSize}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+
+  // staff order history (kitchen / waiter / reception)
+  ordersHistory: ({ status = '', from = '', to = '', q = '', page = 1, pageSize = 20 } = {}) => {
+    const p = new URLSearchParams({ page, pageSize })
+    if (status) p.set('status', status); if (from) p.set('from', from); if (to) p.set('to', to); if (q) p.set('q', q)
+    return staffGet(`/staff/orders/history?${p}`)
+  },
 
   // menu admin
   adminMenu: () => staffGet(`/admin/menu`),
@@ -87,11 +99,19 @@ export const api = {
 
   // dashboard
   dashboard: (days = 7, branchId = null) => staffGet(`/admin/dashboard?days=${days}${branchId ? `&branchId=${branchId}` : ''}`),
-  downloadInvoicesCsv: async (from, to, branchId = null) => {
+  // paginated sales report (filters + search + server-side paging)
+  salesReport: ({ from = '', to = '', branchId = null, q = '', method = '', page = 1, pageSize = 20 } = {}) => {
+    const p = new URLSearchParams({ page, pageSize })
+    if (from) p.set('from', from); if (to) p.set('to', to); if (branchId) p.set('branchId', branchId)
+    if (q) p.set('q', q); if (method) p.set('method', method)
+    return staffGet(`/admin/reports/sales?${p}`)
+  },
+  downloadInvoicesCsv: async (from, to, branchId = null, q = '', method = '') => {
     const qs = new URLSearchParams()
     if (from) qs.set('from', from); if (to) qs.set('to', to); if (branchId) qs.set('branchId', branchId)
+    if (q) qs.set('q', q); if (method) qs.set('method', method)
     const res = await fetch(`/api/r/${S()}/admin/reports/invoices.csv?${qs}`, { headers: staffAuth() })
-    if (!res.ok) throw new Error('Could not download the report.')
+    if (!res.ok) throw await parseError(res)
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = `invoices_${from || 'all'}_${to || 'now'}.csv`
@@ -122,6 +142,10 @@ export const api = {
   setFbrSettings: (s) => staffPut(`/admin/fbr`, s),
   getServiceSettings: () => staffGet(`/admin/service-settings`),
   setServiceSettings: (s) => staffPut(`/admin/service-settings`, s),
+
+  // billing settings (tax/GST, discount, receipt, stock)
+  getBillingSettings: () => staffGet(`/admin/billing-settings`),
+  setBillingSettings: (s) => staffPut(`/admin/billing-settings`, s),
 
   // receipt branding (logo + printed header/footer)
   getReceiptSettings: () => staffGet(`/admin/receipt-settings`),
@@ -194,3 +218,8 @@ export const STATUS_LABEL = {
   Placed: 'Sent to reception', Approved: 'Approved', Cooking: 'Being cooked',
   Ready: 'Ready to serve', Served: 'Served', Paid: 'Paid', Cancelled: 'Cancelled',
 }
+
+// The "Cashier" role is presented as "Reception" everywhere in the UI (the stored
+// role value stays "Cashier" for tokens/DB compatibility).
+export const ROLE_LABEL = { Cashier: 'Reception' }
+export const roleLabel = (r) => ROLE_LABEL[r] || r

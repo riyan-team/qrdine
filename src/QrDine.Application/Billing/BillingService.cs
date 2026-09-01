@@ -67,6 +67,10 @@ public class BillingService
             .Select(g =>
             {
                 menu.TryGetValue(g.Key.MenuItemId, out var mi);
+                // Tax OFF → no tax at all. Tax ON → the item's own rate if it has one,
+                // otherwise the restaurant's default GST rate applies to the item.
+                var itemRate = mi?.TaxRate ?? 0;
+                var taxRate = !r.TaxEnabled ? 0 : (itemRate > 0 ? itemRate : r.TaxPercent);
                 return new InvoiceLine
                 {
                     ItemCode = g.Key.MenuItemId.ToString(),
@@ -74,15 +78,15 @@ public class BillingService
                     PctCode = mi?.PctCode ?? "",
                     UnitPrice = g.Key.Price,
                     Qty = g.Sum(i => i.Qty),
-                    TaxRate = mi?.TaxRate ?? r.TaxPercent,
-                    FurtherTaxRate = mi?.FurtherTaxRate ?? 0,
+                    TaxRate = taxRate,
+                    FurtherTaxRate = r.TaxEnabled ? (mi?.FurtherTaxRate ?? 0) : 0,
                 };
             })
             .OrderBy(l => l.Name)
             .ToList();
     }
 
-    public async Task<BillDto> GetBill(string tableCode, CancellationToken ct = default)
+    public async Task<BillDto> GetBill(string tableCode, decimal? discountOverride = null, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         var sessionId = await OpenSessionId(tableCode, ct);
@@ -90,14 +94,27 @@ public class BillingService
         var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode, ct);
 
         var lines = await BuildLines(orders, r, ct);
-        var m = Invoice.Price(lines, r.ServiceChargePercent, 0);
+        var subtotal = lines.Sum(l => l.UnitPrice * l.Qty);
+        // The cashier can override the discount on screen; otherwise use the settings default.
+        var discount = discountOverride is decimal d ? Math.Clamp(d, 0, subtotal) : SettingsDiscount(r, subtotal);
+        var m = Invoice.Price(lines, r.ServiceChargePercent, discount);
 
         decimal paid = sessionId is int s2 ? await _db.Payments.Where(p => p.TableSessionId == s2).SumAsync(p => (decimal?)p.Amount, ct) ?? 0 : 0;
 
         return new BillDto(r.Name, r.Currency, tableCode, table?.Name ?? tableCode,
             lines.Select(l => new BillLineDto(l.Name, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
             m.Subtotal, r.ServiceChargePercent, m.ServiceChargeAmount, r.TaxPercent, m.TaxAmount, m.Total, orders.Count > 0,
-            paid, Math.Max(0, m.Total - paid), r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
+            paid, Math.Max(0, m.Total - paid),
+            r.TaxEnabled, r.TaxName, r.DiscountEnabled, m.DiscountAmount, r.ReceiptEnabled,
+            r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
+    }
+
+    /// <summary>The discount to pre-apply from the restaurant's settings (0 when off).</summary>
+    private static decimal SettingsDiscount(Restaurant r, decimal subtotal)
+    {
+        if (!r.DiscountEnabled || r.DiscountValue <= 0 || subtotal <= 0) return 0;
+        var d = r.DiscountIsPercent ? subtotal * r.DiscountValue / 100m : r.DiscountValue;
+        return Math.Round(Math.Clamp(d, 0, subtotal), 2, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>Settle the whole table in one go.</summary>
@@ -105,8 +122,13 @@ public class BillingService
     {
         var (r, session, orders) = await LoadOpen(tableCode, ct);
         var lines = await BuildLines(orders, r, ct);
-        return await Finalize(r, session, orders, tableCode, lines, req.Discount, req.Method, operatorUsername, ct);
+        // The applied discount is what the cashier confirmed on screen (pre-filled from
+        // settings, but editable) — negative/oversized values are clamped in Price().
+        return await Finalize(r, session, orders, tableCode, lines, req.Discount, req.Method,
+            req.AmountTendered, operatorUsername, ct);
     }
+
+    private static string TaxLabelFor(Restaurant r) => r.TaxEnabled ? r.TaxName : "";
 
     /// <summary>
     /// Split-bill: record a partial payment. When the running total covers the bill,
@@ -129,7 +151,7 @@ public class BillingService
             // Fully covered — settle. Method reflects all the split methods used.
             var methods = await _db.Payments.Where(p => p.TableSessionId == session.Id).Select(p => p.Method).ToListAsync(ct);
             var method = methods.Distinct().Count() > 1 ? "Split (" + string.Join("+", methods.Distinct()) + ")" : methods.FirstOrDefault() ?? req.Method;
-            var invoice = await Finalize(r, session, orders, tableCode, lines, 0, method, operatorUsername, ct);
+            var invoice = await Finalize(r, session, orders, tableCode, lines, 0, method, paid, operatorUsername, ct);
             return new PayPartResult(true, paid, 0, invoice);
         }
         return new PayPartResult(false, paid, total - paid, null);
@@ -148,10 +170,10 @@ public class BillingService
     // Creates the invoice, marks orders paid, closes the session, files with FBR, prints.
     private async Task<InvoiceDto> Finalize(Restaurant r, Domain.Tables.TableSession session,
         List<Order> orders, string tableCode, List<InvoiceLine> lines, decimal discount, string method,
-        string? operatorUsername, CancellationToken ct)
+        decimal amountTendered, string? operatorUsername, CancellationToken ct)
     {
         var invoice = Invoice.Create(TenantId, session.Id, tableCode, session.TableName,
-            lines, r.ServiceChargePercent, discount, method, 0, "");
+            lines, r.ServiceChargePercent, discount, method, 0, "", amountTendered, TaxLabelFor(r));
         invoice.BranchId = session.BranchId;
         invoice.CreatedByUsername = operatorUsername ?? "";
 
@@ -182,15 +204,66 @@ public class BillingService
         foreach (var o in orders)
             await _notifier.OrderChanged(Slug, OrderDto.From(o), ct);
 
-        var dto = InvoiceDto.From(invoice, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
-        await _print.Dispatch(Slug, PrintJobs.Receipt(dto), ct);
+        var dto = InvoiceDto.From(invoice, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled);
+        // Only auto-print/dispatch a receipt when the owner has receipts turned on.
+        if (r.ReceiptEnabled)
+            await _print.Dispatch(Slug, PrintJobs.Receipt(dto), ct);
         return dto;
+    }
+
+    private const int PktOffsetHours = 5;
+
+    /// <summary>The Reception dashboard: today's takings, open (pending) tables, lifetime
+    /// totals and a paginated, searchable history of settled bills.</summary>
+    public async Task<ReceptionDashboardDto> ReceptionDashboard(string? q, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+
+        var todayStartUtc = DateTime.UtcNow.AddHours(PktOffsetHours).Date.AddHours(-PktOffsetHours);
+        var todaySales = await _db.Invoices.AsNoTracking().Where(i => i.IssuedAt >= todayStartUtc).SumAsync(i => (decimal?)i.Total, ct) ?? 0;
+        var todayBills = await _db.Invoices.AsNoTracking().CountAsync(i => i.IssuedAt >= todayStartUtc, ct);
+        var totalSales = await _db.Invoices.AsNoTracking().SumAsync(i => (decimal?)i.Total, ct) ?? 0;
+        var totalBills = await _db.Invoices.AsNoTracking().CountAsync(ct);
+
+        // Pending = open sessions that still have unsettled orders (a running bill).
+        var openSessions = await _db.Sessions.AsNoTracking().Where(s => s.IsOpen).ToListAsync(ct);
+        var pending = new List<OpenTableDto>();
+        foreach (var s in openSessions)
+        {
+            var open = await OpenOrders(s.Id, ct);
+            if (open.Count == 0) continue;
+            var amount = open.SelectMany(o => o.Items).Sum(i => i.Price * i.Qty);
+            pending.Add(new OpenTableDto(s.TableCode, s.TableName, open.Count, amount, s.OpenedAt));
+        }
+        pending = pending.OrderBy(p => p.OpenedAt).ToList();
+
+        // Settled-bills history (searchable, newest first).
+        var hq = _db.Invoices.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            var digits = new string(term.Where(char.IsDigit).ToArray());
+            int? num = int.TryParse(digits, out var n) ? n : null;
+            hq = hq.Where(i => i.TableName.Contains(term) || i.PaymentMethod.Contains(term)
+                || i.CreatedByUsername.Contains(term) || (num != null && i.Number == num));
+        }
+        var historyTotal = await hq.CountAsync(ct);
+        var invoices = await hq.OrderByDescending(i => i.Number)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var history = invoices.Select(i => new SettledBillDto(i.Id, i.FormattedNumber, i.IssuedAt, i.TableName,
+            i.PaymentMethod, i.Total, i.AmountTendered, i.ChangeGiven, i.CreatedByUsername)).ToList();
+        var totalPages = (int)Math.Ceiling(historyTotal / (double)pageSize);
+
+        return new ReceptionDashboardDto(r.Currency, todaySales, todayBills, totalSales, totalBills,
+            pending, history, page, pageSize, historyTotal, totalPages);
     }
 
     public async Task<InvoiceDto?> GetInvoice(int id, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
-        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter);
+        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled);
     }
 }

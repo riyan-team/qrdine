@@ -34,30 +34,22 @@ public static class MenuAdminEndpoints
         g.MapPost("/items/{id:int}/availability", async (int id, AvailabilityInput body, MenuAdminService svc) => { await svc.SetAvailability(id, body.Available); return Results.NoContent(); });
         g.MapDelete("/items/{id:int}", async (int id, MenuAdminService svc) => { await svc.DeleteItem(id); return Results.NoContent(); });
 
-        // Photo upload (multipart). Max 5 MB, images only.
-        g.MapPost("/items/{id:int}/photo", async (int id, IFormFile file, IFileStorage storage, MenuAdminService svc) =>
+        // Photo upload (multipart). Max 5 MB; validated by content, not filename.
+        g.MapPost("/items/{id:int}/photo", async (int id, HttpRequest req, IFileStorage storage, MenuAdminService svc, CancellationToken ct) =>
         {
-            if (file is null || file.Length == 0) return Results.BadRequest(new { detail = "No file." });
-            if (file.Length > 5 * 1024 * 1024) return Results.BadRequest(new { detail = "Image must be under 5 MB." });
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp")) return Results.BadRequest(new { detail = "Use a JPG, PNG or WebP image." });
-            await using var stream = file.OpenReadStream();
-            var url = await storage.Save(stream, ext, $"menu");
+            var img = await ImageUpload.ReadAsync(req, 5 * 1024 * 1024, ct);
+            using var stream = new MemoryStream(img.Data);
+            var url = await storage.Save(stream, img.Extension, "menu", ct);
             await svc.SetItemPhoto(id, url);
             return Results.Ok(new { imageUrl = url });
         }).DisableAntiforgery();
 
         // ---- Bulk menu import (review before saving) ----
         // Read a menu from a photo (Gemini). Returns a preview; nothing is saved yet.
-        g.MapPost("/menu/import/photo", async (IFormFile file, IMenuVisionExtractor vision) =>
+        g.MapPost("/menu/import/photo", async (HttpRequest req, IMenuVisionExtractor vision, CancellationToken ct) =>
         {
-            if (file is null || file.Length == 0) return Results.BadRequest(new { detail = "No file." });
-            if (file.Length > 8 * 1024 * 1024) return Results.BadRequest(new { detail = "Image must be under 8 MB." });
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var mime = ext switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
-            using var ms = new MemoryStream();
-            await file.CopyToAsync(ms);
-            return Results.Ok(await vision.Extract(ms.ToArray(), mime));
+            var img = await ImageUpload.ReadAsync(req, 8 * 1024 * 1024, ct);
+            return Results.Ok(await vision.Extract(img.Data, img.ContentType, ct));
         }).DisableAntiforgery();
 
         // Parse a pasted/uploaded CSV (Category, Item, Price). Returns a preview.
@@ -84,18 +76,36 @@ public static class MenuAdminEndpoints
                 => Results.Ok(await svc.GetDashboard(days ?? 7, branchId)))
             .RequireAuthorization(Policies.CanViewReports);
 
-        // Downloadable invoice report / sales-tax return (CSV) for a date window.
-        app.MapGet("/api/r/{slug}/admin/reports/invoices.csv", async (DateTime? from, DateTime? to, int? branchId, ReportsService svc) =>
+        // Paginated sales report (Owner/Manager) — filters, search, server-side paging.
+        app.MapGet("/api/r/{slug}/admin/reports/sales", async (DateTime? from, DateTime? to, int? branchId,
+                string? q, string? method, int? page, int? pageSize, ReportsService svc) =>
             {
-                var fromUtc = from ?? DateTime.UtcNow.AddDays(-31);
-                var toUtc = to ?? DateTime.UtcNow;
-                if (toUtc.TimeOfDay == TimeSpan.Zero) toUtc = toUtc.AddDays(1).AddSeconds(-1);  // include the whole end day
-                var rows = await svc.ExportInvoices(fromUtc, toUtc, branchId);
-                var csv = ReportsCsv.Build(rows);
-                var name = $"invoices_{fromUtc:yyyyMMdd}_{toUtc:yyyyMMdd}.csv";
-                return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", name);
+                var (fromUtc, toUtc) = Window(from, to);
+                return Results.Ok(await svc.GetSales(fromUtc, toUtc, branchId, q, method, page ?? 1, pageSize ?? 20));
             })
             .RequireAuthorization(Policies.CanViewReports);
+
+        // Downloadable invoice report / sales-tax return (CSV) — same filters as the report.
+        app.MapGet("/api/r/{slug}/admin/reports/invoices.csv", async (DateTime? from, DateTime? to, int? branchId,
+                string? q, string? method, ReportsService svc) =>
+            {
+                var (fromUtc, toUtc) = Window(from, to);
+                var rows = await svc.ExportInvoices(fromUtc, toUtc, branchId, q, method);
+                var csv = ReportsCsv.Build(rows);
+                var name = $"invoices_{fromUtc:yyyyMMdd}_{toUtc:yyyyMMdd}.csv";
+                return Results.File(new System.Text.UTF8Encoding(true).GetBytes(csv), "text/csv", name);
+            })
+            .RequireAuthorization(Policies.CanViewReports);
+    }
+
+    // Normalise a date window: default to the last 31 days; extend an end-date with no
+    // time component to the end of that day so the whole day is included.
+    private static (DateTime from, DateTime to) Window(DateTime? from, DateTime? to)
+    {
+        var fromUtc = from ?? DateTime.UtcNow.AddDays(-31);
+        var toUtc = to ?? DateTime.UtcNow;
+        if (toUtc.TimeOfDay == TimeSpan.Zero) toUtc = toUtc.AddDays(1).AddSeconds(-1);
+        return (fromUtc, toUtc);
     }
 }
 
@@ -105,15 +115,16 @@ internal static class ReportsCsv
     public static string Build(IReadOnlyList<Application.Reports.InvoiceReportRow> rows)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Invoice,Date,Branch,Table,Payment,NetSales,ServiceCharge,SalesTax,FurtherTax,Discount,Total,FiscalStatus,FiscalNumber");
+        sb.AppendLine("Invoice,Date,Branch,Table,Payment,Cashier,NetSales,ServiceCharge,SalesTax,FurtherTax,Discount,Total,Tendered,Change,FiscalStatus,FiscalNumber");
         foreach (var r in rows)
             sb.AppendLine(string.Join(",",
-                $"INV-{r.Number:D5}", Q(r.IssuedAt.ToString("yyyy-MM-dd HH:mm")), Q(r.Branch), Q(r.Table), Q(r.PaymentMethod),
-                r.NetSales, r.ServiceCharge, r.SalesTax, r.FurtherTax, r.Discount, r.Total, r.FiscalStatus, Q(r.FiscalNumber)));
+                $"INV-{r.Number:D5}", Q(r.IssuedAt.ToString("yyyy-MM-dd HH:mm")), Q(r.Branch), Q(r.Table), Q(r.PaymentMethod), Q(r.Cashier),
+                r.NetSales, r.ServiceCharge, r.SalesTax, r.FurtherTax, r.Discount, r.Total, r.AmountTendered, r.ChangeGiven, r.FiscalStatus, Q(r.FiscalNumber)));
         // Totals row — the numbers a sales-tax return needs at a glance.
-        sb.AppendLine(string.Join(",", "TOTAL", "", "", "", "",
+        sb.AppendLine(string.Join(",", "TOTAL", "", "", "", "", "",
             rows.Sum(r => r.NetSales), rows.Sum(r => r.ServiceCharge), rows.Sum(r => r.SalesTax),
-            rows.Sum(r => r.FurtherTax), rows.Sum(r => r.Discount), rows.Sum(r => r.Total), "", ""));
+            rows.Sum(r => r.FurtherTax), rows.Sum(r => r.Discount), rows.Sum(r => r.Total),
+            rows.Sum(r => r.AmountTendered), rows.Sum(r => r.ChangeGiven), "", ""));
         return sb.ToString();
     }
 

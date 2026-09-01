@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { EyeIcon, EyeOffIcon } from './icons.jsx'
 
 // Small, dependency-free form toolkit used across the app for consistent validation:
 //  - validate on blur and on submit (never aggressively while first typing)
@@ -93,20 +94,52 @@ export function useForm(initial, schema = {}) {
 
 // A labelled input with an inline error (red border + message below) or a hint.
 // Works for text, password, email, etc. Pass `as="textarea"` for a textarea.
+// Password fields automatically get a show/hide eye toggle.
 export function FormField({
   label, hint, error, inputRef, as = 'input', className = '', style, ...rest
 }) {
   const invalid = !!error
   const cls = `${invalid ? 'invalid' : ''} ${className}`.trim()
+  const isPassword = rest.type === 'password'
+  const [show, setShow] = useState(false)
   const Tag = as
+  const inputType = isPassword ? (show ? 'text' : 'password') : rest.type
   return (
     <div className="field" style={style}>
       {label && <label className="field-label">{label}</label>}
-      <Tag ref={inputRef} className={cls} aria-invalid={invalid || undefined}
-        {...rest} />
+      {isPassword ? (
+        <div className="pw-wrap">
+          <Tag ref={inputRef} className={cls} aria-invalid={invalid || undefined} {...rest} type={inputType} />
+          <EyeToggle show={show} onToggle={() => setShow((s) => !s)} />
+        </div>
+      ) : (
+        <Tag ref={inputRef} className={cls} aria-invalid={invalid || undefined} {...rest} />
+      )}
       {error
         ? <div className="field-error" role="alert">{error}</div>
         : hint ? <div className="field-hint">{hint}</div> : null}
+    </div>
+  )
+}
+
+// A show/hide eye button, absolutely positioned inside a .pw-wrap.
+export function EyeToggle({ show, onToggle }) {
+  return (
+    <button type="button" className="pw-eye" onClick={onToggle} tabIndex={-1}
+      aria-label={show ? 'Hide password' : 'Show password'} title={show ? 'Hide password' : 'Show password'}>
+      {show ? <EyeOffIcon size={17} /> : <EyeIcon size={17} />}
+    </button>
+  )
+}
+
+// A standalone password input with a built-in eye toggle (for plain, non-FormField
+// usages). Forwards all the usual input props (value, onChange, placeholder, style…).
+export function PasswordInput({ className = '', style, ...rest }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="pw-wrap" style={style}>
+      <input {...rest} type={show ? 'text' : 'password'} className={className} />
+      <EyeToggle show={show} onToggle={() => setShow((s) => !s)} />
     </div>
   )
 }

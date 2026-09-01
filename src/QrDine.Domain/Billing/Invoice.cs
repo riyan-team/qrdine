@@ -27,6 +27,12 @@ public class Invoice : Entity, ITenantOwned
     public decimal DiscountAmount { get; set; }
     public decimal Total { get; set; }
 
+    // Cash handling — snapshotted so a historical bill always shows what was tendered
+    // and the change given back, regardless of later settings changes.
+    public decimal AmountTendered { get; set; }        // cash/amount received from the customer
+    public decimal ChangeGiven { get; set; }           // change returned = max(0, tendered - total)
+    public string TaxLabel { get; set; } = "";         // e.g. "GST 15%" — snapshot of the tax name+rate
+
     public string PaymentMethod { get; set; } = "Cash";
     public int InvoiceType { get; set; } = 1;       // FBR: 1 = New
     public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
@@ -98,9 +104,10 @@ public class Invoice : Entity, ITenantOwned
     /// <summary>
     /// Price a set of lines that already carry their resolved TaxRate / FurtherTaxRate.
     /// Mutates each line's SaleValue / DiscountAmount / TaxAmount / FurtherTaxAmount /
-    /// TotalAmount and returns the invoice totals. Tax is on the sale value (FBR:
-    /// exclusive of discount); the discount reduces the total, not the tax base. The
-    /// service charge is added at invoice level and is untaxed.
+    /// TotalAmount and returns the invoice totals. Calculation order (per spec):
+    /// Items → Subtotal → Discount → Tax/GST → Grand Total. Tax is charged on the
+    /// discounted (net) line value, so a discount reduces both the base and the tax.
+    /// The service charge is added at invoice level on the net subtotal and is untaxed.
     /// </summary>
     public static BillMath Price(IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount)
     {
@@ -120,9 +127,11 @@ public class Invoice : Entity, ITenantOwned
             else if (i == lines.Count - 1) l.DiscountAmount = Round(discount - allocated);
             else { l.DiscountAmount = Round(discount * (l.SaleValue / subtotal)); allocated += l.DiscountAmount; }
 
-            l.TaxAmount = Round(l.SaleValue * l.TaxRate / 100m);
-            l.FurtherTaxAmount = Round(l.SaleValue * l.FurtherTaxRate / 100m);
-            l.TotalAmount = Round(l.SaleValue + l.TaxAmount + l.FurtherTaxAmount - l.DiscountAmount);
+            // Tax is charged on the net (post-discount) value of the line.
+            var net = l.SaleValue - l.DiscountAmount;
+            l.TaxAmount = Round(net * l.TaxRate / 100m);
+            l.FurtherTaxAmount = Round(net * l.FurtherTaxRate / 100m);
+            l.TotalAmount = Round(net + l.TaxAmount + l.FurtherTaxAmount);
         }
 
         var tax = Round(lines.Sum(l => l.TaxAmount));
@@ -135,9 +144,13 @@ public class Invoice : Entity, ITenantOwned
     /// <summary>Build a settled invoice from priced lines (see <see cref="Price"/>).</summary>
     public static Invoice Create(int restaurantId, int sessionId, string tableCode, string tableName,
         IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount,
-        string method, int number, string usin)
+        string method, int number, string usin,
+        decimal amountTendered = 0, string taxLabel = "")
     {
         var m = Price(lines, serviceChargePercent, discount);
+        // Change is only meaningful for cash: never negative, and 0 when the exact
+        // amount (or no explicit tender) was recorded.
+        var change = amountTendered > m.Total ? Round(amountTendered - m.Total) : 0;
         return new Invoice
         {
             RestaurantId = restaurantId,
@@ -150,11 +163,16 @@ public class Invoice : Entity, ITenantOwned
             Subtotal = m.Subtotal,
             ServiceChargePercent = serviceChargePercent,
             ServiceChargeAmount = m.ServiceChargeAmount,
-            TaxPercent = m.Subtotal > 0 ? Round(m.TaxAmount / m.Subtotal * 100m) : 0,
+            // Display rate is tax over the net (post-discount) base it was charged on,
+            // so the receipt shows the real GST rate (e.g. 10%), not a discount-blended one.
+            TaxPercent = (m.Subtotal - m.DiscountAmount) > 0 ? Round(m.TaxAmount / (m.Subtotal - m.DiscountAmount) * 100m) : 0,
             TaxAmount = m.TaxAmount,
             FurtherTaxAmount = m.FurtherTaxAmount,
             DiscountAmount = m.DiscountAmount,
             Total = m.Total,
+            AmountTendered = amountTendered > 0 ? Round(amountTendered) : Round(m.Total),
+            ChangeGiven = change,
+            TaxLabel = taxLabel,
             PaymentMethod = string.IsNullOrWhiteSpace(method) ? "Cash" : method,
             InvoiceType = 1,
             IssuedAt = DateTime.UtcNow,

@@ -30,6 +30,10 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal>("AmountTendered")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<int>("BranchId")
                         .HasColumnType("integer");
 
@@ -52,6 +56,10 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<decimal>("ChangeGiven")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<string>("CreatedByUsername")
                         .IsRequired()
@@ -139,6 +147,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<decimal>("TaxAmount")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("TaxLabel")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<decimal>("TaxPercent")
                         .HasPrecision(12, 2)
@@ -913,6 +926,16 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("DiscountEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("DiscountIsPercent")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
                     b.Property<bool>("FbrEnabled")
                         .HasColumnType("boolean");
 
@@ -969,6 +992,9 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("ReceiptEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ReceiptFooter")
                         .IsRequired()
                         .HasColumnType("text");
@@ -994,10 +1020,21 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<bool>("StockTrackingEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Strn")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("TaxEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TaxName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<decimal>("TaxPercent")
                         .HasPrecision(5, 2)

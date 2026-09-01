@@ -35,5 +35,15 @@ public record FbrSettingsInput(bool FbrEnabled, string BusinessName, string Ntn,
 public record ServiceSettingsDto(bool WaiterAutoAssign);
 public record ServiceSettingsInput(bool WaiterAutoAssign);
 
+// Billing settings: Tax/GST, discount, receipt and stock behaviour. Owner-managed.
+public record BillingSettingsDto(
+    bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
+    bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
+    bool ReceiptEnabled, bool StockTrackingEnabled, string Currency);
+public record BillingSettingsInput(
+    bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
+    bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
+    bool ReceiptEnabled, bool StockTrackingEnabled);
+
 // Onboarding
 public record OnboardRequest(string RestaurantName, string Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);

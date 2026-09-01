@@ -36,3 +36,6 @@ public record OrderDto(
 
 public record OrderItemDto(string Name, string? VariantName, decimal Price, int Qty, string? Note,
     IReadOnlyList<string> Modifiers);
+
+/// <summary>A page of orders for the Kitchen/Waiter/Reception history views.</summary>
+public record OrderHistoryPage(IReadOnlyList<OrderDto> Rows, int Page, int PageSize, int Total, int TotalPages);
