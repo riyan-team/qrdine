@@ -6,7 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
-      "port": 5173
+      "port": 5173,
+    },
+    {
+      "name": "qrdine-api",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-Command", "$env:ASPNETCORE_ENVIRONMENT='Development'; $env:Jwt__Secret='dev-only-super-secret-change-me-32chars!!'; $env:Jwt__Issuer='qrdine'; $env:Jwt__Audience='qrdine'; $env:Jwt__StaffHours='12'; $env:Jwt__GuestHours='6'; $env:ConnectionStrings__Default='Data Source=C:/Users/SCS/Desktop/qrdriven/src/QrDine.Api/qrdine.db'; $env:PlatformAdmin__Username='platform'; $env:PlatformAdmin__Password='platform123'; dotnet 'C:/Users/SCS/Desktop/qrdriven/src/QrDine.Api/bin/Debug/net9.0/QrDine.Api.dll' --urls 'http://localhost:5099'"],
+      "port": 5099
     }
   ]
 }

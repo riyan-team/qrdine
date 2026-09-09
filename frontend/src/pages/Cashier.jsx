@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { OrderActions } from '../ordering.jsx'
-import { toast } from '../ui.jsx'
+import { toast, playBell } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import Receipt from './Receipt.jsx'
 import { BellIcon, TableIcon, SearchIcon, PrintIcon, ReceiptIcon, KitchenIcon, CheckIcon, CashIcon, QrIcon, UserIcon, TrendIcon } from '../icons.jsx'
@@ -18,8 +18,48 @@ export default function Cashier() {
   const [detailInit, setDetailInit] = useState(null)   // { mode, autoPrint } for the detail modal
   const [tab, setTab] = useState('live')
   const [sum, setSum] = useState(null)
+  const [unreadReady, setUnreadReady] = useState(() => new Set())
+  const prevSnap = useRef(null)
+
+  // Listen for order status changes and trigger sound / notifications
+  useEffect(() => {
+    const snap = new Map(orders.map((o) => [o.id, o.status]))
+    const before = prevSnap.current
+    if (before) {
+      for (const o of orders) {
+        const bStatus = before.get(o.id)
+        if (!bStatus) {
+          if (o.status === 'Placed') {
+            playBell()
+            toast.info(`New order #${o.id} for ${o.tableName} awaiting approval`)
+          }
+          continue
+        }
+        if (o.status === 'Ready' && bStatus !== 'Ready') {
+          playBell()
+          toast.success(`Order #${o.id} (${o.tableName}) is READY to serve! 🔔`)
+          setUnreadReady((prev) => new Set([...prev, o.id]))
+        }
+      }
+    }
+    prevSnap.current = snap
+  }, [orders])
+
+  const ackReady = (orderId) => {
+    setUnreadReady((prev) => {
+      if (!prev.has(orderId)) return prev
+      const next = new Set(prev)
+      next.delete(orderId)
+      return next
+    })
+  }
+
   // Open the order slip in a given mode, optionally firing the print dialog at once.
-  const openDetail = (o, mode = 'kitchen', autoPrint = false) => { setDetailInit({ mode, autoPrint }); setDetailFor(o) }
+  const openDetail = (o, mode = 'kitchen', autoPrint = false) => {
+    ackReady(o.id)
+    setDetailInit({ mode, autoPrint })
+    setDetailFor(o)
+  }
 
   const incoming = orders.filter((o) => o.status === 'Placed')
   const active = orders.filter((o) => o.status !== 'Placed')
@@ -83,6 +123,12 @@ export default function Cashier() {
                       <SearchIcon size={13} /> #{o.id} · {o.items.reduce((s, i) => s + i.qty, 0)} items <SourceBadge source={o.source} />
                     </span>
                     <span className="row" style={{ gap: 6 }}>
+                      {unreadReady.has(o.id) && (
+                        <span className="pill s-Ready" style={{ cursor: 'pointer', background: 'var(--accent2)', color: '#fff', fontWeight: 800 }}
+                          onClick={() => ackReady(o.id)} title="Order is ready! Click to acknowledge">
+                          🔔 Ready! (Acknowledge)
+                        </span>
+                      )}
                       <OrderActions o={o} />
                       <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
                     </span>
@@ -361,7 +407,11 @@ function ReceptionHistory() {
                 <td>{b.changeGiven > 0 ? money(b.changeGiven) : '—'}</td>
                 <td className="muted">{b.cashier || '—'}</td>
                 <td className="muted">{new Date(b.issuedAt).toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                <td><button className="ghost" onClick={() => openInvoice(b.id)}><PrintIcon size={14} /></button></td>
+                <td>
+                  <button className="ghost btn-sm" onClick={() => openInvoice(b.id)} title="Reprint invoice" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <PrintIcon size={14} /> Reprint
+                  </button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={9} className="empty-row">{err || 'No settled bills yet.'}</td></tr>}
@@ -380,7 +430,7 @@ function ReceptionHistory() {
             <Receipt invoice={view} />
             <div className="noprint row" style={{ marginTop: 12, gap: 8 }}>
               <button onClick={() => setView(null)}>Close</button>
-              <button className="blue" style={{ marginLeft: 'auto' }} onClick={() => window.print()}><PrintIcon size={15} /> Reprint</button>
+              <button className="blue" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => window.print()}><PrintIcon size={15} /> Reprint Invoice</button>
             </div>
           </div>
         </div>

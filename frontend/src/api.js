@@ -43,6 +43,31 @@ export const api = {
       method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify(body),
     }).then(j)
   },
+  getOrder: async (slugOrId, maybeId) => {
+    let slug, id
+    if (maybeId !== undefined) {
+      slug = slugOrId
+      id = maybeId
+    } else {
+      slug = auth.staffSlug()
+      id = slugOrId
+    }
+    const token = auth.staffToken || await auth.guestToken(slug, '')
+    const headers = token ? json({ Authorization: `Bearer ${token}` }) : json()
+    return fetch(`/api/r/${slug}/orders/${id}`, { headers }).then(j)
+  },
+  cancelOrder: async (slug, id, reason) => {
+    const token = auth.staffToken || await auth.guestToken(slug, '')
+    return fetch(`/api/r/${slug}/orders/${id}/cancel`, {
+      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify({ reason }),
+    }).then(j)
+  },
+  reorder: async (slug, id) => {
+    const token = auth.staffToken || await auth.guestToken(slug, '')
+    return fetch(`/api/r/${slug}/orders/${id}/reorder`, {
+      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }),
+    }).then(j)
+  },
   submitFeedback: (slug, body) => fetch(`/api/r/${slug}/feedback`, {
     method: 'POST', headers: json(), body: JSON.stringify(body),
   }).then(j),

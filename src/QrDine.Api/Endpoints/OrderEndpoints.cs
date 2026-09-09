@@ -43,5 +43,49 @@ public static class OrderEndpoints
         // Reading a table's own live orders stays public (the customer just scanned it).
         g.MapGet("/tables/{code}/orders", async (string code, OrderService svc)
             => Results.Ok(await svc.TableOrders(code)));
+
+        // Read single order (for customer order-details screen or staff)
+        g.MapGet("/orders/{id:int}", async (int id, OrderService svc)
+            => Results.Ok(await svc.GetOrder(id)));
+
+        // Cancel order (staff with permission OR guest for their table)
+        g.MapPost("/orders/{id:int}/cancel", async (int id, CancelRequest? body, ClaimsPrincipal user, OrderService svc) =>
+        {
+            var type = user.FindFirst(AppClaims.TokenType)?.Value;
+            var order = await svc.GetOrder(id);
+            if (type == AppClaims.TypeStaff)
+            {
+                var canCancel = user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCancel);
+                if (!canCancel)
+                    return Results.Problem(detail: "You don't have permission to cancel orders.", statusCode: 403);
+                return Results.Ok(await svc.Cancel(id, body?.Reason));
+            }
+            if (type == AppClaims.TypeGuest)
+            {
+                var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
+                if (!string.IsNullOrEmpty(tokenTable) && !string.Equals(tokenTable, order.TableCode, StringComparison.OrdinalIgnoreCase))
+                    return Results.Problem(detail: "This order is not for your table.", statusCode: 403);
+
+                if (order.Status is "Ready" or "Served" or "Paid" or "Cancelled")
+                    return Results.Problem(detail: $"Order cannot be cancelled when it is {order.Status.ToLower()}.", statusCode: 400);
+
+                return Results.Ok(await svc.Cancel(id, body?.Reason ?? "Cancelled by customer"));
+            }
+            return Results.Problem(detail: "This session can't cancel orders.", statusCode: 403);
+        }).RequireAuthorization(Policies.GuestOrStaff);
+
+        // Reorder (guest or staff)
+        g.MapPost("/orders/{id:int}/reorder", async (int id, ClaimsPrincipal user, OrderService svc) =>
+        {
+            var type = user.FindFirst(AppClaims.TokenType)?.Value;
+            if (type == AppClaims.TypeGuest)
+            {
+                var order = await svc.GetOrder(id);
+                var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
+                if (!string.IsNullOrEmpty(tokenTable) && !string.Equals(tokenTable, order.TableCode, StringComparison.OrdinalIgnoreCase))
+                    return Results.Problem(detail: "This order is not for your table.", statusCode: 403);
+            }
+            return Results.Ok(await svc.Reorder(id));
+        }).RequireAuthorization(Policies.GuestOrStaff);
     }
 }

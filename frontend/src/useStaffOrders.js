@@ -15,7 +15,7 @@ export function useStaffOrders() {
       if (o.status === 'Paid' || o.status === 'Cancelled') return others
       return [...others, o].sort((a, b) => a.id - b.id)
     })
-  })
+  }, null)
 
   return orders
 }

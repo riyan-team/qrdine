@@ -184,6 +184,74 @@ public class OrderService
         return await Publish(order, ct);
     }
 
+    public async Task<OrderDto> GetOrder(int id, CancellationToken ct = default)
+    {
+        var order = await LoadOrder(id, ct);
+        return await Publish(order, ct);
+    }
+
+    public async Task<OrderDto> Reorder(int id, CancellationToken ct = default)
+    {
+        var original = await LoadOrder(id, ct);
+        if (original.Status is not (OrderStatus.Served or OrderStatus.Paid or OrderStatus.Cancelled))
+            throw new DomainException("Can only reorder completed or cancelled orders.");
+
+        var restaurant = await _db.Restaurants.FirstAsync(r => r.Id == TenantId, ct);
+        if (!restaurant.FeatureOrdering)
+            throw new DomainException("Online ordering isn't enabled for this restaurant.");
+
+        var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == original.TableCode, ct)
+            ?? throw new DomainException("Unknown table.");
+
+        var session = await _db.Sessions
+            .Where(s => s.DiningTableId == table.Id && s.IsOpen)
+            .OrderByDescending(s => s.OpenedAt)
+            .FirstOrDefaultAsync(ct);
+        if (session is null)
+        {
+            session = TableSession.Open(table);
+            _db.Sessions.Add(session);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
+        var newOrder = Order.Place(TenantId,
+            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName),
+            original.CustomerNote, OrderSource.Qr);
+
+        var menu = await _db.MenuItems.AsNoTracking().ToListAsync(ct);
+        var addedCount = 0;
+        var unavailableNames = new List<string>();
+
+        foreach (var item in original.Items)
+        {
+            var mi = menu.FirstOrDefault(m => m.Id == item.MenuItemId);
+            if (mi is null || !mi.Available)
+            {
+                unavailableNames.Add(item.Name);
+                continue;
+            }
+
+            newOrder.AddItem(item.MenuItemId, item.Name, item.VariantName, item.Price, item.Qty, item.Note,
+                item.Modifiers.Select(m => (m.Name, m.Price)));
+            addedCount++;
+        }
+
+        if (addedCount == 0)
+        {
+            var msg = unavailableNames.Count > 0
+                ? $"The following item(s) are currently unavailable: {string.Join(", ", unavailableNames.Distinct())}."
+                : "None of the items from this order are currently available.";
+            throw new DomainException(msg);
+        }
+
+        newOrder.ConfirmPlaced();
+
+        _db.Orders.Add(newOrder);
+        await _db.SaveChangesAsync(ct);
+        return await Publish(newOrder, ct);
+    }
+
     // ---------- queries ----------
     public async Task<IReadOnlyList<OrderDto>> StaffOrders(CancellationToken ct = default)
     {

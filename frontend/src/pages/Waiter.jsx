@@ -2,27 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
 import { auth } from '../auth'
-import { ui, toast } from '../ui.jsx'
-
-// A short chime for "food ready" alerts — synthesised, so there's no audio asset to
-// ship. Browsers need a prior user interaction before audio plays; staff have that.
-let _audioCtx
-function chime() {
-  try {
-    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)()
-    const ctx = _audioCtx
-    ;[880, 1175].forEach((freq, i) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain()
-      const t = ctx.currentTime + i * 0.18
-      osc.type = 'sine'; osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.0001, t)
-      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3)
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.start(t); osc.stop(t + 0.32)
-    })
-  } catch { /* audio blocked — the toast still shows */ }
-}
+import { ui, toast, playBell } from '../ui.jsx'
 import {
   useCart, plusOrCustomize, cartToItems, MenuList, CartLines, Customizer,
   OrderActions, Spinner, catAnchor,
@@ -41,6 +21,7 @@ export default function Waiter() {
   const canOrder = auth.can('orders.create')
   const [tab, setTab] = useState('board')   // 'board' | 'order'
   const [preTable, setPreTable] = useState(null)   // table to pre-select in Take order
+  const [unreadReady, setUnreadReady] = useState(() => new Set())
 
   // Live alerts: chime + toast when food becomes Ready, and a toast when a table is
   // newly assigned to me. Diffs each live update against the previous snapshot.
@@ -52,12 +33,33 @@ export default function Waiter() {
       for (const o of orders) {
         const b = before.get(o.id)
         if (!b) continue   // first time we see it — don't alert on initial load
-        if (o.status === 'Ready' && b.status !== 'Ready') { chime(); toast.success(`Ready to serve — ${o.tableName} · #${o.id}`) }
-        if (o.waiterName === me && b.waiter !== me) toast.info(`Assigned to you — ${o.tableName} · #${o.id}`)
+        if (o.status === 'Ready' && b.status !== 'Ready') {
+          const isMyOrder = !o.waiterName || o.waiterName.toLowerCase() === me.toLowerCase()
+          if (isMyOrder) {
+            playBell()
+            toast.success(`Ready to serve — ${o.tableName} · #${o.id} 🔔`)
+            setUnreadReady((prev) => new Set([...prev, o.id]))
+          } else {
+            toast.info(`Ready to serve — ${o.tableName} · #${o.id} (${o.waiterName})`)
+          }
+        }
+        if (o.waiterName === me && b.waiter !== me) {
+          playBell()
+          toast.info(`Assigned to you — ${o.tableName} · #${o.id}`)
+        }
       }
     }
     prevSnap.current = snap
   }, [orders, me])
+
+  const ackReady = (orderId) => {
+    setUnreadReady((prev) => {
+      if (!prev.has(orderId)) return prev
+      const next = new Set(prev)
+      next.delete(orderId)
+      return next
+    })
+  }
 
   // Jump straight into Take order for a table that already has a running tab —
   // the extra items attach to the same open session and bill together.
@@ -81,13 +83,13 @@ export default function Waiter() {
         ? <OrderHistory statuses={['', 'Placed', 'Approved', 'Cooking', 'Ready', 'Served', 'Paid', 'Cancelled']} />
         : tab === 'order' && canOrder
         ? <TakeOrder orders={orders} initialTable={preTable} />
-        : <Board orders={orders} me={me} canOrder={canOrder} onAddItems={addItemsTo} />}
+        : <Board orders={orders} me={me} canOrder={canOrder} onAddItems={addItemsTo} unreadReady={unreadReady} ackReady={ackReady} />}
     </div>
   )
 }
 
 // ---- The live board: ready-to-serve + the tables you're handling ----
-function Board({ orders, me, canOrder, onAddItems }) {
+function Board({ orders, me, canOrder, onAddItems, unreadReady, ackReady }) {
   const ready = orders.filter((o) => o.status === 'Ready')
   const mine = orders.filter((o) => o.waiterName === me && o.status !== 'Ready')
 
@@ -96,14 +98,24 @@ function Board({ orders, me, canOrder, onAddItems }) {
       <div className="cat-title"><CheckIcon size={15} /> Ready to serve now ({ready.length})</div>
       <div className="grid cols stagger">
         {ready.map((o) => (
-          <div className="card lift fade-up" key={o.id}>
-            <div className="row between"><b>{o.tableName} · #{o.id}</b>
-              <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span></div>
+          <div className="card lift fade-up" key={o.id} style={unreadReady?.has(o.id) ? { borderColor: 'var(--accent2)', boxShadow: '0 0 0 2px var(--green-tint)' } : {}}>
+            <div className="row between">
+              <b>{o.tableName} · #{o.id}</b>
+              <span className="row" style={{ gap: 6 }}>
+                {unreadReady?.has(o.id) && (
+                  <span className="pill s-Ready" style={{ background: 'var(--accent2)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}
+                    onClick={() => ackReady?.(o.id)} title="Newly ready! Click to acknowledge">
+                    🔔 New!
+                  </span>
+                )}
+                <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
+              </span>
+            </div>
             <Lines o={o} />
             <div className="row" style={{ marginTop: 8, gap: 8 }}>
-              {!o.waiterName && <button onClick={() => api.assign(o.id, me).catch((e) => ui.alert(e.message))}>Take table</button>}
+              {!o.waiterName && <button onClick={() => { ackReady?.(o.id); api.assign(o.id, me).catch((e) => ui.alert(e.message)) }}>Take table</button>}
               <button className="green" style={{ marginLeft: 'auto' }}
-                onClick={() => api.serve(o.id).catch((e) => ui.alert(e.message))}><CheckIcon size={15} /> Mark served</button>
+                onClick={() => { ackReady?.(o.id); api.serve(o.id).catch((e) => ui.alert(e.message)) }}><CheckIcon size={15} /> Mark served</button>
             </div>
           </div>
         ))}

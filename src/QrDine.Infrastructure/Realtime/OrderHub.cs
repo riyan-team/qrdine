@@ -16,4 +16,10 @@ public class OrderHub : Hub
     public Task JoinStaff(string slug) => Groups.AddToGroupAsync(Context.ConnectionId, StaffGroup(slug));
     public Task JoinTable(string slug, string tableCode) => Groups.AddToGroupAsync(Context.ConnectionId, TableGroup(slug, tableCode));
     public Task JoinPrinters(string slug) => Groups.AddToGroupAsync(Context.ConnectionId, PrintGroup(slug));
+
+    /// <summary>Broadcast a timer tick so all devices see the same remaining time.</summary>
+    public async Task TimerTick(string slug, string tableCode)
+    {
+        await Clients.Group(TableGroup(slug, tableCode)).SendAsync("timerTick", DateTime.UtcNow);
+    }
 }

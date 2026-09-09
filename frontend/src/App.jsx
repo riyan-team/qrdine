@@ -15,6 +15,7 @@ import FbrInvoices from './pages/FbrInvoices.jsx'
 import PlatformLogin from './pages/PlatformLogin.jsx'
 import PlatformConsole from './pages/PlatformConsole.jsx'
 import Landing from './pages/Landing.jsx'
+import OrderDetails from './pages/OrderDetails.jsx'
 import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
 import { roleLabel } from './api'
@@ -92,8 +93,8 @@ function Nav() {
 export default function App() {
   const loc = useLocation()
   const isPlatform = loc.pathname.startsWith('/platform')
-  // Landing + auth screens carry their own branding — no staff topbar.
-  const isBare = ['/', '/login', '/signup'].includes(loc.pathname)
+  // Landing, customer menu (/r/*) and auth screens carry their own branding — no staff topbar.
+  const isBare = ['/', '/login', '/signup'].includes(loc.pathname) || loc.pathname.startsWith('/r/')
   return (
     <ErrorBoundary>
       {!isPlatform && !isBare && <Nav />}
@@ -105,6 +106,8 @@ export default function App() {
         <Route path="/platform/login" element={<PlatformLogin />} />
         <Route path="/platform" element={<PlatformConsole />} />
         <Route path="/r/:slug/t/:code" element={<Menu />} />
+        <Route path="/r/:slug/order/:id" element={<OrderDetails />} />
+        <Route path="/r/:slug/t/:code/order/:id" element={<OrderDetails />} />
         <Route path="/admin/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />
         <Route path="/admin/menu" element={<RequireStaff><MenuAdmin /></RequireStaff>} />
         <Route path="/admin/inventory" element={<RequireStaff><Inventory /></RequireStaff>} />

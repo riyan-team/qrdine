@@ -3,9 +3,11 @@ import * as signalr from '@microsoft/signalr'
 
 // Subscribe to live order changes for a restaurant.
 // group: 'staff' (all staff screens) or a table code (a single customer's phone).
-export function useHub(slug, group, onOrderChanged) {
+export function useHub(slug, group, onOrderChanged, onTimerTick) {
   const cb = useRef(onOrderChanged)
+  const tickCb = useRef(onTimerTick)
   cb.current = onOrderChanged
+  tickCb.current = onTimerTick
 
   useEffect(() => {
     if (!slug || !group) return
@@ -13,6 +15,7 @@ export function useHub(slug, group, onOrderChanged) {
       .withUrl('/hub/orders').withAutomaticReconnect().build()
 
     conn.on('orderChanged', (o) => cb.current && cb.current(o))
+    conn.on('timerTick', (serverTime) => tickCb && tickCb.current(serverTime))
 
     const join = async () => {
       if (group === 'staff') await conn.invoke('JoinStaff', slug)

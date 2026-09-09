@@ -17,6 +17,35 @@ export const ui = {
   alert: (opts) => new Promise((resolve) => emit({ kind: 'alert', ...norm(opts), resolve })),
 }
 
+// Synthesised service bell / chime
+let _audioCtx = null
+export function playBell() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)()
+    if (_audioCtx.state === 'suspended') _audioCtx.resume()
+    const ctx = _audioCtx
+    const now = ctx.currentTime
+    const notes = [
+      { freq: 880, start: 0, dur: 0.55, gain: 0.25 },
+      { freq: 1175, start: 0.15, dur: 0.55, gain: 0.22 },
+      { freq: 1318, start: 0.32, dur: 0.75, gain: 0.28 }
+    ]
+    notes.forEach(({ freq, start, dur, gain: vol }) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, now + start)
+      gain.gain.setValueAtTime(0.0001, now + start)
+      gain.gain.exponentialRampToValueAtTime(vol, now + start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now + start)
+      osc.stop(now + start + dur)
+    })
+  } catch { /* browser autoplay block */ }
+}
+
 // Transient corner notifications for background/non-form actions (a save that
 // succeeded, an action that failed) — so nothing fails silently.
 const toastListeners = new Set()

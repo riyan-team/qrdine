@@ -4,6 +4,7 @@ import { api, money } from '../api'
 import { auth } from '../auth'
 import { ui } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import Receipt from './Receipt.jsx'
 import { MenuIcon, BoxIcon, ReceiptIcon, KitchenIcon, UserIcon, QrIcon, GearIcon, SearchIcon,
   CashIcon, TrendIcon, CalcIcon, BankIcon, WarnIcon, RefreshIcon, PrintIcon, DownloadIcon, StarIcon } from '../icons.jsx'
 
@@ -153,6 +154,15 @@ function SalesReport({ branches }) {
     setDl(false)
   }
 
+  const [viewInvoice, setViewInvoice] = useState(null)
+  const openInvoice = async (id) => {
+    try {
+      setViewInvoice(await api.invoice(id))
+    } catch (e) {
+      ui.alert(friendlyError(e))
+    }
+  }
+
   const rows = data?.rows ?? []
   const cur = data?.currency || 'Rs'
   return (
@@ -189,7 +199,7 @@ function SalesReport({ branches }) {
         <table className="data-table">
           <thead>
             <tr><th>Bill</th><th>Date</th><th>Table</th><th>Payment</th><th>Cashier</th>
-              <th className="num">Net</th><th className="num">Discount</th><th className="num">Tax</th><th className="num">Total</th></tr>
+              <th className="num">Net</th><th className="num">Discount</th><th className="num">Tax</th><th className="num">Total</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
@@ -203,9 +213,14 @@ function SalesReport({ branches }) {
                 <td className="num">{r.discount > 0 ? '− ' + money(r.discount) : '—'}</td>
                 <td className="num">{money(r.tax)}</td>
                 <td className="num"><b>{money(r.total)}</b></td>
+                <td>
+                  <button className="ghost btn-sm" onClick={() => openInvoice(r.id)} title="Reprint invoice" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <PrintIcon size={13} /> Print
+                  </button>
+                </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={9} className="empty-row">{err || 'No sales in this range.'}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={10} className="empty-row">{err || 'No sales in this range.'}</td></tr>}
           </tbody>
           {rows.length > 0 && (
             <tfoot>
@@ -215,6 +230,7 @@ function SalesReport({ branches }) {
                 <td className="num"><b>{money(data.sumDiscount)}</b></td>
                 <td className="num"><b>{money(data.sumTax)}</b></td>
                 <td className="num"><b>{money(data.sumSales)}</b></td>
+                <td></td>
               </tr>
             </tfoot>
           )}
@@ -225,6 +241,20 @@ function SalesReport({ branches }) {
         <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.total ?? 0} bills</span>
         <button disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)} onClick={() => go(page + 1)}>Next →</button>
       </div>
+
+      {viewInvoice && (
+        <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') setViewInvoice(null) }}>
+          <div className="modal">
+            <Receipt invoice={viewInvoice} />
+            <div className="noprint row" style={{ marginTop: 12, gap: 8 }}>
+              <button onClick={() => setViewInvoice(null)}>Close</button>
+              <button className="blue" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => window.print()}>
+                <PrintIcon size={15} /> Reprint Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

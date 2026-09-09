@@ -34,7 +34,5 @@ public static class StaffEndpoints
             .RequireAuthorization(Policies.CanServe);
         g.MapPost("/orders/{id:int}/pay", async (int id, OrderService svc) => Results.Ok(await svc.Pay(id)))
             .RequireAuthorization(Policies.CanPay);
-        g.MapPost("/orders/{id:int}/cancel", async (int id, CancelRequest body, OrderService svc) => Results.Ok(await svc.Cancel(id, body.Reason)))
-            .RequireAuthorization(Policies.CanCancel);
     }
 }

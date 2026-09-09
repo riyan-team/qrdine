@@ -34,13 +34,43 @@ export const auth = {
   setSession(session, slug) { this.setStaff({ ...session, slug }) },
 
   _guestTokens: {},
+  rememberTable(slug, tableCode) {
+    if (slug && tableCode) {
+      try { sessionStorage.setItem(`qrdine.table.${slug}`, tableCode) } catch {}
+    }
+  },
+  getTable(slug) {
+    try { return sessionStorage.getItem(`qrdine.table.${slug}`) || '' } catch { return '' }
+  },
   async guestToken(slug, tableCode) {
-    const key = `${slug}:${tableCode}`
+    const code = tableCode || this.getTable(slug)
+    if (!code) {
+      const cached = Object.keys(this._guestTokens).find(k => k.startsWith(`${slug}:`))
+      if (cached && this._guestTokens[cached]) return this._guestTokens[cached]
+      try {
+        const stored = sessionStorage.getItem(`qrdine.guestToken.${slug}`)
+        if (stored) return stored
+      } catch {}
+      return ''
+    }
+    this.rememberTable(slug, code)
+    const key = `${slug}:${code}`
     if (this._guestTokens[key]) return this._guestTokens[key]
-    const res = await fetch(`/api/r/${slug}/tables/${tableCode}/session`, { method: 'POST' })
+    try {
+      const stored = sessionStorage.getItem(`qrdine.guestToken.${key}`)
+      if (stored) {
+        this._guestTokens[key] = stored
+        return stored
+      }
+    } catch {}
+    const res = await fetch(`/api/r/${slug}/tables/${code}/session`, { method: 'POST' })
     if (!res.ok) throw new Error('Could not start table session')
     const { token } = await res.json()
     this._guestTokens[key] = token
+    try {
+      sessionStorage.setItem(`qrdine.guestToken.${slug}`, token)
+      sessionStorage.setItem(`qrdine.guestToken.${key}`, token)
+    } catch {}
     return token
   },
 }
