@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, money, STATUS_LABEL } from '../api'
 import { useStaffOrders } from '../useStaffOrders'
-import { toast } from '../ui.jsx'
+import { toast, playBell } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { OrderHistory } from '../history.jsx'
 import { KitchenIcon, BellIcon, NoteIcon } from '../icons.jsx'
@@ -17,6 +17,24 @@ export default function Kitchen() {
   const queue = orders.filter((o) => o.status === 'Approved')
   const cooking = orders.filter((o) => o.status === 'Cooking')
   const ready = orders.filter((o) => o.status === 'Ready')
+
+  // Chime + toast when a new order lands in the cook queue (or an order is sent back
+  // to Approved), so the kitchen never misses a ticket while looking away. Diffs each
+  // live update against the previous snapshot; silent on the very first load.
+  const prevSnap = useRef(null)
+  useEffect(() => {
+    const snap = new Map(orders.map((o) => [o.id, o.status]))
+    const before = prevSnap.current
+    if (before) {
+      for (const o of orders) {
+        if (o.status === 'Approved' && before.get(o.id) !== 'Approved') {
+          playBell()
+          toast.info(`New order to cook — ${o.tableName} · #${o.id} 🔔`)
+        }
+      }
+    }
+    prevSnap.current = snap
+  }, [orders])
 
   return (
     <div className="wrap ops ops-center">

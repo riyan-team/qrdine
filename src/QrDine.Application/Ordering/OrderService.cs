@@ -68,7 +68,12 @@ public class OrderService
         if (source == OrderSource.Waiter && !string.IsNullOrWhiteSpace(waiterName))
             order.AssignWaiter(waiterName.Trim());
 
+        // Only load the handful of items actually on this order (not the whole menu),
+        // read-only — we project prices/names and never mutate the menu here.
+        var wantedIds = req.Items.Select(i => i.MenuItemId).Distinct().ToList();
         var menu = await _db.MenuItems
+            .AsNoTracking()
+            .Where(m => wantedIds.Contains(m.Id))
             .Include(m => m.Variants)
             .Include(m => m.ModifierGroups).ThenInclude(g => g.Options)
             .ToListAsync(ct);
@@ -255,7 +260,7 @@ public class OrderService
     // ---------- queries ----------
     public async Task<IReadOnlyList<OrderDto>> StaffOrders(CancellationToken ct = default)
     {
-        var orders = await _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers)
+        var orders = await _db.Orders.AsNoTracking().Include(o => o.Items).ThenInclude(i => i.Modifiers)
             .Where(o => o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
             .OrderBy(o => o.CreatedAt).ToListAsync(ct);
         return orders.Select(OrderDto.From).ToList();
@@ -269,7 +274,7 @@ public class OrderService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var query = _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers).AsQueryable();
+        var query = _db.Orders.AsNoTracking().Include(o => o.Items).ThenInclude(i => i.Modifiers).AsQueryable();
         if (Enum.TryParse<OrderStatus>(status, true, out var st)) query = query.Where(o => o.Status == st);
         if (fromUtc is DateTime f) query = query.Where(o => o.CreatedAt >= f);
         if (toUtc is DateTime t)
@@ -294,7 +299,7 @@ public class OrderService
 
     public async Task<IReadOnlyList<OrderDto>> TableOrders(string tableCode, CancellationToken ct = default)
     {
-        var orders = await _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers)
+        var orders = await _db.Orders.AsNoTracking().Include(o => o.Items).ThenInclude(i => i.Modifiers)
             .Where(o => o.TableCode == tableCode
                 && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
             .OrderBy(o => o.CreatedAt).ToListAsync(ct);

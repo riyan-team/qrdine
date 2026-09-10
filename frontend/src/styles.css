@@ -334,16 +334,40 @@ input.invalid:focus, select.invalid:focus, textarea.invalid:focus {
 /* ---------- printable receipt (80 mm thermal) ----------
    On screen it reads as a slip; on paper it prints at exactly 80 mm and the roll
    auto-cuts at the end of the content (see @page below). */
-.receipt { background: #fff; color: #111; border-radius: 12px; padding: 18px 20px; width: 320px; max-width: 100%; margin: 0 auto; }
+.receipt { background: #fff; color: #111; border-radius: 12px; padding: 18px 20px; width: 320px; max-width: 100%; margin: 0 auto;
+  font-variant-numeric: tabular-nums; }
 .receipt .r-h { text-align: center; border-bottom: 1px dashed #bbb; padding-bottom: 10px; margin-bottom: 10px; }
 .receipt .r-logo { display: block; max-width: 150px; max-height: 90px; width: auto; height: auto; margin: 0 auto 8px; object-fit: contain; }
-.receipt .r-name { font-weight: 800; font-size: 18px; line-height: 1.2; }
-.receipt .r-sub { font-size: 12px; color: #444; margin-top: 2px; white-space: pre-line; }
+.receipt .r-name { font-weight: 800; font-size: 18px; line-height: 1.2; word-break: break-word; }
+.receipt .r-sub { font-size: 12px; color: #444; margin-top: 2px; white-space: pre-line; word-break: break-word; }
+.receipt .r-doc { font-size: 11px; font-weight: 700; letter-spacing: .12em; color: #555; margin-top: 6px; }
+/* Meta grid (table / invoice no / date) — label left, value right, always aligned. */
+.receipt .r-meta { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #bbb; }
+.receipt .r-meta-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 1px 0; }
+.receipt .r-meta-row span:first-child { color: #777; }
+.receipt .r-meta-row span:last-child { font-weight: 600; text-align: right; word-break: break-word; }
 .receipt .r-line { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
 .receipt .r-tot { border-top: 1px dashed #bbb; margin-top: 8px; padding-top: 8px; }
-.receipt .r-grand { font-weight: 800; font-size: 18px; }
-.receipt .r-foot { text-align: center; margin-top: 12px; font-size: 12px; color: #666; white-space: pre-line; }
+.receipt .r-grand { font-weight: 800; font-size: 18px; border-top: 1px solid #333; margin-top: 4px; padding-top: 6px; }
+.receipt .r-pay { font-size: 13px; color: #444; }
+.receipt .r-fbr { text-align: center; margin-top: 12px; padding-top: 10px; border-top: 1px dashed #999; }
+.receipt .r-foot { text-align: center; margin-top: 12px; font-size: 12px; color: #666; white-space: pre-line; word-break: break-word; }
+.receipt .r-brand { text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #ccc;
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; color: #555; }
 .receipt table { width: 100%; border-collapse: collapse; }
+/* Itemised lines: fixed columns so amounts right-align and long names wrap under Item. */
+.receipt table.r-items { table-layout: fixed; margin: 2px 0 2px; }
+.receipt .r-items col.c-qty { width: 30px; }
+.receipt .r-items col.c-amt { width: 74px; }
+.receipt .r-items thead th { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: #888; border-bottom: 1px solid #ccc; padding: 0 0 4px; }
+.receipt .r-items td { vertical-align: top; padding: 4px 0; font-size: 13.5px; }
+.receipt .r-items th.r-qty, .receipt .r-items td.r-qty { text-align: left; white-space: nowrap; }
+.receipt .r-items th.r-item, .receipt .r-items td.r-item { text-align: left; padding-left: 6px; padding-right: 6px;
+  word-break: break-word; overflow-wrap: anywhere; }
+.receipt .r-items th.r-amt, .receipt .r-items td.r-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.receipt .r-item-name { display: block; line-height: 1.25; }
+.receipt .r-item-rate { display: block; font-size: 11px; color: #888; margin-top: 1px; }
 /* When two slips print together (kitchen + bill), separate them on screen. */
 .slip-break { margin-top: 18px; padding-top: 16px; border-top: 2px dashed #bbb; }
 
@@ -367,9 +391,18 @@ input.invalid:focus, select.invalid:focus, textarea.invalid:focus {
   /* Second slip starts on a fresh page → the thermal printer cuts between them. */
   .slip-break { page-break-before: always; break-before: page; margin-top: 0; padding-top: 2mm; border-top: none; }
   .receipt .r-name { font-size: 15px; }
-  .receipt .r-grand { font-size: 15px; }
+  .receipt .r-grand { font-size: 14px; }
   .receipt .r-line { font-size: 12px; }
   .receipt .r-logo { max-height: 70px; }
+  .receipt .r-doc { color: #000; }
+  .receipt .r-meta-row { font-size: 11px; }
+  .receipt .r-meta-row span:first-child { color: #333; }
+  .receipt .r-items td { font-size: 12px; padding: 3px 0; }
+  .receipt .r-items thead th { color: #000; }
+  .receipt .r-items col.c-amt { width: 22mm; }
+  .receipt .r-items col.c-qty { width: 8mm; }
+  .receipt .r-item-rate { color: #333; }
+  .receipt .r-brand { color: #000; font-size: 10px; }
 }
 
 .paid-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 9px;

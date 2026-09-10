@@ -275,6 +275,8 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RestaurantId", "TableSessionId");
+
                     b.ToTable("Payments");
                 });
 
@@ -786,6 +788,14 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RestaurantId", "CreatedAt");
+
+                    b.HasIndex("RestaurantId", "Status");
+
+                    b.HasIndex("RestaurantId", "TableCode");
+
+                    b.HasIndex("RestaurantId", "TableSessionId");
+
                     b.ToTable("Orders");
                 });
 
@@ -1217,6 +1227,10 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "DiningTableId", "IsOpen");
+
+                    b.HasIndex("RestaurantId", "TableCode", "IsOpen");
 
                     b.ToTable("Sessions");
                 });

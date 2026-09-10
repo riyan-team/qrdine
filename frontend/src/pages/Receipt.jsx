@@ -3,6 +3,8 @@ import { money } from '../api'
 
 // Renders a bill/invoice in receipt form. Works for both a live preview (no
 // number/date) and a settled invoice. Only this element prints (see styles.css).
+// Layout is a fixed 3-column grid (Qty · Item · Amount) so amounts always line up
+// on the right edge and long item names wrap cleanly under their own column.
 export default function Receipt({ bill, invoice }) {
   const d = invoice || bill
   if (!d) return null
@@ -18,20 +20,35 @@ export default function Receipt({ bill, invoice }) {
         {d.logoUrl && <img className="r-logo" src={d.logoUrl} alt="" />}
         <div className="r-name">{d.restaurantName}</div>
         {d.receiptHeader && <div className="r-sub">{d.receiptHeader}</div>}
-        <div style={{ fontSize: 13, marginTop: 2 }}>{d.tableName}</div>
-        {isInvoice && (
-          <div style={{ fontSize: 12, marginTop: 4 }}>
-            {d.number} · {new Date(d.issuedAt).toLocaleString('en-PK')}
-          </div>
-        )}
+        <div className="r-doc">{isInvoice ? 'TAX INVOICE' : 'BILL — NOT PAID'}</div>
       </div>
 
-      <table>
+      {/* Meta: table, invoice number & date — a label/value grid so it stays aligned. */}
+      <div className="r-meta">
+        <div className="r-meta-row"><span>Table</span><span>{d.tableName}</span></div>
+        {isInvoice && <>
+          <div className="r-meta-row"><span>Invoice</span><span>{d.number}</span></div>
+          <div className="r-meta-row"><span>Date</span><span>{new Date(d.issuedAt).toLocaleString('en-PK')}</span></div>
+        </>}
+      </div>
+
+      <table className="r-items">
+        <colgroup>
+          <col className="c-qty" /><col className="c-item" /><col className="c-amt" />
+        </colgroup>
+        <thead>
+          <tr><th className="r-qty">Qty</th><th className="r-item">Item</th><th className="r-amt">Amount</th></tr>
+        </thead>
         <tbody>
           {d.lines.map((l, i) => (
             <tr key={i}>
-              <td style={{ padding: '3px 0' }}>{l.qty}× {l.name}</td>
-              <td style={{ textAlign: 'right' }}>{money(l.lineTotal)}</td>
+              <td className="r-qty">{l.qty}</td>
+              <td className="r-item">
+                <span className="r-item-name">{l.name}</span>
+                {l.qty > 1 && l.unitPrice > 0 &&
+                  <span className="r-item-rate">@ {money(l.unitPrice)}</span>}
+              </td>
+              <td className="r-amt">{money(l.lineTotal)}</td>
             </tr>
           ))}
         </tbody>
@@ -46,16 +63,16 @@ export default function Receipt({ bill, invoice }) {
         {d.taxAmount > 0 &&
           <div className="r-line"><span>{taxLabel}{d.taxPercent > 0 ? ` ${d.taxPercent}%` : ''}</span><span>{money(d.taxAmount)}</span></div>}
         <div className="r-line r-grand"><span>Total</span><span>{money(d.total)}</span></div>
-        {isInvoice && <div className="r-line" style={{ fontSize: 13 }}><span>Paid via</span><span>{d.paymentMethod}</span></div>}
+        {isInvoice && <div className="r-line r-pay"><span>Paid via</span><span>{d.paymentMethod}</span></div>}
         {isInvoice && showCash && <>
-          <div className="r-line" style={{ fontSize: 13 }}><span>Cash received</span><span>{money(d.amountTendered)}</span></div>
-          <div className="r-line" style={{ fontSize: 13 }}><span>Change</span><span>{money(d.changeGiven)}</span></div>
+          <div className="r-line r-pay"><span>Cash received</span><span>{money(d.amountTendered)}</span></div>
+          <div className="r-line r-pay"><span>Change</span><span>{money(d.changeGiven)}</span></div>
         </>}
       </div>
 
       {/* Fiscal block. The receipt ALWAYS prints; this only reflects the FBR state. */}
       {isInvoice && d.fiscalNumber && (
-        <div style={{ textAlign: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px dashed #999' }}>
+        <div className="r-fbr">
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em' }}>INTEGRATED WITH FBR</div>
           <div style={{ background: '#fff', display: 'inline-block', padding: 4, marginTop: 4 }}>
             <QRCodeSVG value={d.fiscalQrPayload || d.fiscalNumber} size={92} level="M" />
@@ -68,7 +85,7 @@ export default function Receipt({ bill, invoice }) {
         </div>
       )}
       {isInvoice && !d.fiscalNumber && (d.fiscalStatus === 'Pending' || d.fiscalStatus === 'Failed') && (
-        <div style={{ textAlign: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px dashed #999' }}>
+        <div className="r-fbr">
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a00' }}>FBR FILING PENDING</div>
           <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
             This sale is valid. It will be filed with FBR shortly.
@@ -81,6 +98,9 @@ export default function Receipt({ bill, invoice }) {
           ? (d.receiptFooter || 'Thank you — please come again!')
           : 'Bill preview (not yet paid)'}
       </div>
+
+      {/* Branded strip — always printed on every slip. */}
+      <div className="r-brand">Powered by Riyan · 0309 8480489</div>
     </div>
   )
 }

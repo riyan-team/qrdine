@@ -28,7 +28,7 @@ public class InvoiceTaxTests
     }
 
     [Fact]
-    public void Discount_is_distributed_by_sale_value_and_does_not_reduce_tax()
+    public void Discount_is_distributed_by_sale_value_and_tax_is_charged_on_the_net()
     {
         var lines = new[]
         {
@@ -38,12 +38,15 @@ public class InvoiceTaxTests
 
         var m = Invoice.Price(lines, serviceChargePercent: 0, discount: 250m);
 
-        // Discount split 200 / 50 by sale value; tax still on full sale value.
+        // Discount split 200 / 50 by sale value; GST is charged on the net (post-discount)
+        // line value (the FBR-correct model for a trade discount).
         Assert.Equal(200m, lines[0].DiscountAmount);
         Assert.Equal(50m, lines[1].DiscountAmount);
-        Assert.Equal(180m, m.TaxAmount);               // unchanged by discount
+        Assert.Equal(90m, lines[0].TaxAmount);         // (2000 − 200) × 5%
+        Assert.Equal(72m, lines[1].TaxAmount);         // (500 − 50) × 16%
+        Assert.Equal(162m, m.TaxAmount);               // 90 + 72 — reduced by the discount
         Assert.Equal(250m, m.DiscountAmount);
-        Assert.Equal(2430m, m.Total);                  // 2500 + 180 - 250
+        Assert.Equal(2412m, m.Total);                  // 2500 − 250 + 162
         // Line totals reconcile with the invoice total.
         Assert.Equal(m.Total, lines.Sum(l => l.TotalAmount));
     }

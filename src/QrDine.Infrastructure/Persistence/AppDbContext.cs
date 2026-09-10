@@ -123,7 +123,13 @@ public class AppDbContext : DbContext, IAppDbContext
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
         });
 
-        b.Entity<TableSession>(e => e.HasQueryFilter(x => x.RestaurantId == TenantId));
+        b.Entity<TableSession>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            // The open-session lookups (by table id, and by table code) hit these constantly.
+            e.HasIndex(x => new { x.RestaurantId, x.DiningTableId, x.IsOpen });
+            e.HasIndex(x => new { x.RestaurantId, x.TableCode, x.IsOpen });
+        });
 
         b.Entity<MenuCategory>(e =>
         {
@@ -156,6 +162,12 @@ public class AppDbContext : DbContext, IAppDbContext
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
             e.Ignore(x => x.Total);
             e.Ignore(x => x.DomainEvents);
+            // Indexes on the hot columns the staff board, table poll, history and
+            // session lookups filter/sort by — turns per-request table scans into seeks.
+            e.HasIndex(x => new { x.RestaurantId, x.Status });
+            e.HasIndex(x => new { x.RestaurantId, x.TableSessionId });
+            e.HasIndex(x => new { x.RestaurantId, x.CreatedAt });
+            e.HasIndex(x => new { x.RestaurantId, x.TableCode });
             // Map the aggregate's private _items collection.
             var nav = e.Metadata.FindNavigation(nameof(Order.Items))!;
             nav.SetPropertyAccessMode(PropertyAccessMode.Field);
@@ -232,6 +244,7 @@ public class AppDbContext : DbContext, IAppDbContext
         b.Entity<Payment>(e =>
         {
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.HasIndex(x => new { x.RestaurantId, x.TableSessionId });
             e.Property(x => x.Amount).HasPrecision(12, 2);
             e.Property(x => x.Method).HasMaxLength(30);
         });

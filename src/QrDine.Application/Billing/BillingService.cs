@@ -228,16 +228,26 @@ public class BillingService
         var totalBills = await _db.Invoices.AsNoTracking().CountAsync(ct);
 
         // Pending = open sessions that still have unsettled orders (a running bill).
+        // Load every open session's orders in ONE query (not one query per session),
+        // then group in memory — avoids an N+1 that grew with the number of open tables.
         var openSessions = await _db.Sessions.AsNoTracking().Where(s => s.IsOpen).ToListAsync(ct);
-        var pending = new List<OpenTableDto>();
-        foreach (var s in openSessions)
-        {
-            var open = await OpenOrders(s.Id, ct);
-            if (open.Count == 0) continue;
-            var amount = open.SelectMany(o => o.Items).Sum(i => i.Price * i.Qty);
-            pending.Add(new OpenTableDto(s.TableCode, s.TableName, open.Count, amount, s.OpenedAt));
-        }
-        pending = pending.OrderBy(p => p.OpenedAt).ToList();
+        var openSessionIds = openSessions.Select(s => s.Id).ToList();
+        var openOrders = await _db.Orders.AsNoTracking()
+            .Include(o => o.Items)
+            .Where(o => openSessionIds.Contains(o.TableSessionId)
+                && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .ToListAsync(ct);
+        var bySession = openOrders.GroupBy(o => o.TableSessionId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var pending = openSessions
+            .Where(s => bySession.ContainsKey(s.Id))
+            .Select(s =>
+            {
+                var open = bySession[s.Id];
+                var amount = open.SelectMany(o => o.Items).Sum(i => i.Price * i.Qty);
+                return new OpenTableDto(s.TableCode, s.TableName, open.Count, amount, s.OpenedAt);
+            })
+            .OrderBy(p => p.OpenedAt).ToList();
 
         // Settled-bills history (searchable, newest first).
         var hq = _db.Invoices.AsNoTracking().AsQueryable();

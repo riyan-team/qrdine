@@ -43,13 +43,18 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
         const string prompt =
             "You are reading a photo of a restaurant menu. Extract EVERY category with its items and prices.\n" +
             "Group items under their printed section/category headings (e.g. Biryani, Karahi, Drinks, Deals).\n" +
+            "name: the item or deal's SHORT title ONLY — at most 4 words (e.g. \"Chicken Biryani\", \"Family Deal 1\").\n" +
+            "NEVER put the list of included items, a combo's contents, or any sentence/description in name.\n" +
             "price: a plain number in the menu's currency — strip symbols, commas and size labels; if an item lists\n" +
             "multiple sizes use the largest/full price.\n" +
             "dealPrice: if an item shows a discount/deal (a crossed-out original price, or 'was 500 now 400', or a\n" +
             "combo/deal price), set price to the ORIGINAL and dealPrice to the DISCOUNTED price; otherwise omit it.\n" +
-            "Ignore descriptions, phone numbers and addresses.\n" +
+            "dealDescription: for a deal/combo ONLY, put the full 'what's included' text here (e.g. \"2 Pizzas + \n" +
+            "1.5L drink + garlic bread\"). Leave it out for normal items. This keeps the title short and the\n" +
+            "combo contents in their own field.\n" +
+            "Ignore plain item descriptions, phone numbers and addresses.\n" +
             "Return ONLY JSON in exactly this shape, no prose, no markdown:\n" +
-            "{\"categories\":[{\"name\":\"string\",\"items\":[{\"name\":\"string\",\"price\":0,\"dealPrice\":0}]}]}";
+            "{\"categories\":[{\"name\":\"string\",\"items\":[{\"name\":\"string\",\"price\":0,\"dealPrice\":0,\"dealDescription\":\"string\"}]}]}";
 
         var payload = new
         {

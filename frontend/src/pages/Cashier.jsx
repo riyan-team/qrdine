@@ -173,6 +173,7 @@ function Slip({ o, kind, brk }) {
       {o.customerNote && <div style={{ fontSize: 12, marginTop: 6 }}>Note: {o.customerNote}</div>}
       {!isKitchen && <div className="r-tot r-line r-grand"><span>Total</span><span>{money(o.total)}</span></div>}
       <div className="r-foot">{o.waiterName ? `Waiter: ${o.waiterName} · ` : ''}{STATUS_LABEL[o.status] || o.status}{isKitchen && o.etaMinutes ? ` · ETA ${o.etaMinutes} min` : ''}</div>
+      {!isKitchen && <div className="r-brand">Powered by Riyan · 0309 8480489</div>}
     </div>
   )
 }

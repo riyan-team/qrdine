@@ -10,7 +10,13 @@ namespace QrDine.Infrastructure.Realtime;
 public class OrderHub : Hub
 {
     public static string StaffGroup(string slug) => $"staff:{slug}";
-    public static string TableGroup(string slug, string tableCode) => $"table:{slug}:{tableCode}";
+    // SignalR group names are case-sensitive, but table codes are compared
+    // case-insensitively everywhere else. Canonicalise the code here so the
+    // customer's JoinTable and the server's broadcast always land on the SAME
+    // group — otherwise a casing/spacing mismatch silently drops the guest's
+    // live updates and "order ready" bell.
+    public static string TableGroup(string slug, string tableCode) =>
+        $"table:{slug}:{(tableCode ?? string.Empty).Trim().ToUpperInvariant()}";
     public static string PrintGroup(string slug) => $"print:{slug}";
 
     public Task JoinStaff(string slug) => Groups.AddToGroupAsync(Context.ConnectionId, StaffGroup(slug));

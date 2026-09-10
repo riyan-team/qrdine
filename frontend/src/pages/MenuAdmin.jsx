@@ -232,7 +232,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         {/* Deal / offer */}
         <div className="cat-title" style={{ fontSize: 14 }}>Deal / offer <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(optional — shows an “OFF” price)</span></div>
         <div className="row" style={{ gap: 8 }}>
-          <input type="number" placeholder="Deal price (below base)" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={{ ...inp, flex: 1 }} />
+          <input type="number" placeholder="Deal price" title="Deal price (must be below the base price)" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={{ ...inp, flex: 1 }} />
           <input placeholder="What’s included (combo)" value={f.dealDescription} onChange={(e) => set('dealDescription', e.target.value)} style={{ ...inp, flex: 2 }} />
         </div>
         {f.dealPrice !== '' && Number(f.dealPrice) >= 0 && (
@@ -342,7 +342,15 @@ function MenuImportModal({ onClose, onImported }) {
   const apply = async () => {
     setBusy(true); setErr('')
     try {
-      const categories = preview.categories.map((c) => ({ name: c.name, items: c.items.map((i) => ({ name: i.name, price: Number(i.price) || 0 })) }))
+      const categories = preview.categories.map((c) => ({
+        name: c.name,
+        items: c.items.map((i) => ({
+          name: i.name,
+          price: Number(i.price) || 0,
+          dealPrice: i.dealPrice === '' || i.dealPrice == null ? null : Number(i.dealPrice),
+          dealDescription: (i.dealDescription || '').trim() || null,
+        })),
+      }))
       const r = await api.applyMenuImport(categories)
       await ui.alert(`Added ${r.created} item(s) to your menu.`)
       onImported()
@@ -388,10 +396,21 @@ function MenuImportModal({ onClose, onImported }) {
                 <div key={ci} style={{ marginBottom: 12 }}>
                   <input value={c.name} onChange={(e) => setCat(ci, e.target.value)} style={{ fontWeight: 700, width: '100%', marginBottom: 4 }} />
                   {c.items.map((it, ii) => (
-                    <div key={ii} className="row" style={{ gap: 6, marginBottom: 4 }}>
-                      <input value={it.name} onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
-                      <input type="number" value={it.price} onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
-                      <button className="ghost" onClick={() => removeItem(ci, ii)}><TrashIcon size={15} /></button>
+                    <div key={ii} style={{ marginBottom: 6 }}>
+                      <div className="row" style={{ gap: 6, marginBottom: 4 }}>
+                        <input value={it.name} placeholder="Item name" onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
+                        <input type="number" value={it.price} placeholder="Price" onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
+                        <button className="ghost" onClick={() => removeItem(ci, ii)}><TrashIcon size={15} /></button>
+                      </div>
+                      {(it.dealPrice != null && it.dealPrice !== '') || it.dealDescription ? (
+                        <div className="row" style={{ gap: 6, paddingLeft: 12, marginBottom: 2 }}>
+                          <span className="pill s-Cancelled" style={{ alignSelf: 'center' }}>deal</span>
+                          <input type="number" value={it.dealPrice ?? ''} placeholder="Deal price"
+                            onChange={(e) => setItem(ci, ii, 'dealPrice', e.target.value)} style={{ width: 90 }} />
+                          <input value={it.dealDescription || ''} placeholder="What's included (combo)"
+                            onChange={(e) => setItem(ci, ii, 'dealDescription', e.target.value)} style={{ flex: 1 }} />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
