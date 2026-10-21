@@ -5,6 +5,7 @@ import { lookupRestaurant } from '../api'
 import { useForm, FormField, required } from '../forms.jsx'
 import { friendlyError } from '../errors'
 import AuthBrand from '../AuthBrand.jsx'
+import BackHome from '../BackHome.jsx'
 
 const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', Manager: '/admin/dashboard', Owner: '/admin/dashboard' }
 
@@ -54,6 +55,7 @@ export default function Login() {
       {/* Sign-in panel */}
       <main className="auth-main">
         <div className="auth-card">
+          <BackHome />
           <div className="h" style={{ marginTop: 0 }}>Welcome back</div>
           <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Sign in to your restaurant.</p>
           <form onSubmit={doLogin} noValidate>

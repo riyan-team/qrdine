@@ -4,6 +4,7 @@ import { platform } from '../api'
 import { platformAuth } from '../auth'
 import { useForm, FormField, required } from '../forms.jsx'
 import { friendlyError } from '../errors'
+import BackHome from '../BackHome.jsx'
 
 // SaaS operator sign-in — separate from restaurant staff.
 export default function PlatformLogin() {
@@ -32,7 +33,8 @@ export default function PlatformLogin() {
 
   return (
     <div className="wrap" style={{ maxWidth: 400 }}>
-      <div className="h" style={{ marginTop: 40 }}>QrDine — Operator</div>
+      <div style={{ marginTop: 28 }}><BackHome /></div>
+      <div className="h" style={{ marginTop: 8 }}>QrDine — Operator</div>
       <div className="card">
         <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Platform control panel. Manage all restaurants, plans and subscriptions.</p>
         <form onSubmit={go} noValidate>

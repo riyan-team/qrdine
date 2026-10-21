@@ -1496,3 +1496,8 @@ a.lp-contact-row:hover { border-color: var(--accent); transform: translateX(3px)
   .lx-code { font-size: 28px; }
   .lx-hero-row { gap: 12px; }
 }
+
+/* "Back to home" on the sign-in / sign-up / operator screens (BackHome.jsx). */
+.back-home { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px; padding: 6px 10px 6px 6px;
+  border-radius: 10px; font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .15s, background .15s, transform .15s; }
+.back-home:hover { color: var(--accent); background: var(--accent-tint); transform: translateX(-2px); }

@@ -5,6 +5,7 @@ import { auth } from '../auth'
 import { useForm, FormField, required, minLen, maxLen, username as vUsername, slug as vSlug } from '../forms.jsx'
 import { friendlyError } from '../errors'
 import AuthBrand from '../AuthBrand.jsx'
+import BackHome from '../BackHome.jsx'
 import { CheckIcon, WarnIcon } from '../icons.jsx'
 
 // Redirect the browser to JazzCash's hosted checkout by POSTing the signed fields.
@@ -101,6 +102,7 @@ export default function Signup() {
       {/* Sign-up panel */}
       <main className="auth-main auth-scroll">
         <div className={'auth-card auth-card-wide' + (step === 'plan' ? ' auth-card-plans' : '')}>
+          <BackHome />
           <div className="h" style={{ marginTop: 0, marginBottom: 2 }}>Create your restaurant</div>
           <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>
             {step === 'plan' ? 'Pick a plan — you can change it anytime.'

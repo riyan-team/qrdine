@@ -20,6 +20,7 @@ export const PrintIcon = (p) => <Svg {...p}><path d="M6 9V3h12v6" /><path d="M6 
 export const ReceiptIcon = (p) => <Svg {...p}><path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1Z" /><path d="M9 8h6M9 12h6" /></Svg>
 export const KitchenIcon = (p) => <Svg {...p}><path d="M7 21h10" /><path d="M7 21v-4h10v4" /><path d="M6 13a6 6 0 0 1 12 0Z" /></Svg>
 export const PlusIcon = (p) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
+export const ArrowLeftIcon = (p) => <Svg {...p}><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></Svg>
 export const RefreshIcon = (p) => <Svg {...p}><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v5h-5" /></Svg>
 export const SearchIcon = (p) => <Svg {...p}><circle cx="11" cy="11" r="7" /><path d="m21 21-4-4" /></Svg>
 export const BellIcon = (p) => <Svg {...p}><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" /><path d="M10 20a2 2 0 0 0 4 0" /></Svg>
