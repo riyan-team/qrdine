@@ -5,8 +5,9 @@ import { useHub } from '../useHub'
 import { auth } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
 import { useCart, plusOrCustomize, cartToItems, CartLines, Customizer } from '../ordering.jsx'
-import { StarIcon, CheckIcon, BellIcon, SearchIcon, TableIcon, PlusIcon } from '../icons.jsx'
+import { BellIcon, SearchIcon, TableIcon, PlusIcon } from '../icons.jsx'
 import DineInLogo from '../DineInLogo.jsx'
+import { useLoyalty, RewardsStrip, RewardsHub, GoogleReviewCard, RateUs, burst } from '../loyalty.jsx'
 
 export default function Menu() {
   const { slug, code } = useParams()
@@ -20,6 +21,10 @@ export default function Menu() {
   const [query, setQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState('all') // 'all' | 'deals' | 'meals' | categoryId
   const notifiedBellRef = useRef(new Set())
+  // Loyalty & reviews (additive: hidden until the restaurant switches rewards on)
+  const loy = useLoyalty(slug, code)
+  const [hubOpen, setHubOpen] = useState(false)
+  const linkedRef = useRef(false)
 
   useEffect(() => {
     // Remember table code for guest session persistence
@@ -55,7 +60,21 @@ export default function Menu() {
       playBell()
       toast.success(`Order #${o.id} is ready to serve! 🔔`)
     }
+
+    // The bill was settled: a member sees the points it earned.
+    if (o.status === 'Paid' && loy.me) {
+      const before = loy.me.points
+      setTimeout(async () => {
+        const m = await loy.refresh()
+        if (m && m.points > before) { burst(); toast.success(`+${(m.points - before).toLocaleString('en-PK')} points earned! ⭐`) }
+      }, 1500)
+    }
   }, null)
+
+  // A returning member with a running order: make sure this seating earns for them.
+  useEffect(() => {
+    if (!linkedRef.current && loy.me && orders.length > 0) { linkedRef.current = true; loy.link() }
+  }, [loy.me, orders.length])
 
   const onPlus = (it) => plusOrCustomize(it, cart.addToCart, setCustomizing)
 
@@ -67,6 +86,7 @@ export default function Menu() {
       cart.clear()
       setNote('')
       toast.success(`Order #${newOrder.id} placed! Kitchen will prepare it shortly.`)
+      loy.link()   // the seating exists now: tie its bill to the member (no-op when not a member)
     } catch (e) {
       ui.alert('Could not place order: ' + e.message)
     }
@@ -138,6 +158,9 @@ export default function Menu() {
           </div>
         </div>
       </div>
+
+      {/* Loyalty: join, or points and the next reward (opens Rewards & Reviews) */}
+      <RewardsStrip loy={loy} onOpen={() => setHubOpen(true)} />
 
       {/* Fast Menu Search with Clear Button */}
       <div className="menu-search-box">
@@ -275,8 +298,11 @@ export default function Menu() {
         ))
       )}
 
-      {/* Guest Experience Feedback Card */}
-      <FeedbackCard slug={slug} code={code} />
+      {/* Guest Experience Feedback Card (+ the loyalty bonus for members) and Google reviews */}
+      <RateUs slug={slug} code={code} loy={loy} />
+      <GoogleReviewCard info={loy.info} />
+
+      <RewardsHub loy={loy} slug={slug} code={code} open={hubOpen} onClose={() => setHubOpen(false)} />
 
       {/* Sticky Bottom Cart Sheet */}
       {cart.list.length > 0 && (
@@ -469,73 +495,3 @@ function TrackerRow({ o, slug, navigate }) {
   )
 }
 
-// ---- Rate your experience Feedback Card ----
-function FeedbackCard({ slug, code }) {
-  const [rating, setRating] = useState(0)
-  const [hover, setHover] = useState(0)
-  const [comment, setComment] = useState('')
-  const [done, setDone] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  const submit = async () => {
-    if (!rating) return
-    setBusy(true)
-    try {
-      await api.submitFeedback(slug, { rating, comment: comment.trim(), tableCode: code })
-      setDone(true)
-    } catch {
-      /* ignore */
-    }
-    setBusy(false)
-  }
-
-  if (done) return (
-    <div className="card" style={{ marginTop: 14, textAlign: 'center' }}>
-      <div style={{ fontSize: 28, color: 'var(--accent2)' }}><CheckIcon size={28} /></div>
-      <b>Thanks for your feedback!</b>
-      <div className="muted" style={{ fontSize: 13 }}>We hope to see you again soon.</div>
-    </div>
-  )
-
-  return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <b>Rate your experience</b>
-      <div
-        className="row"
-        style={{ gap: 6, margin: '10px 0', fontSize: 32, cursor: 'pointer', justifyContent: 'center' }}
-        onMouseLeave={() => setHover(0)}
-      >
-        {[1, 2, 3, 4, 5].map((n) => (
-          <span
-            key={n}
-            onClick={() => setRating(n)}
-            onMouseEnter={() => setHover(n)}
-            style={{
-              display: 'inline-flex',
-              color: 'var(--amber, #e0a500)',
-              filter: (hover || rating) >= n ? 'none' : 'grayscale(1) opacity(0.35)',
-              transition: 'transform .1s',
-              transform: (hover || rating) >= n ? 'scale(1.1)' : 'scale(1)'
-            }}
-          >
-            <StarIcon size={32} />
-          </span>
-        ))}
-      </div>
-      {rating > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <textarea
-            placeholder="Tell us about your experience (optional)"
-            value={comment}
-            maxLength={500}
-            onChange={(e) => setComment(e.target.value)}
-            style={{ width: '100%', minHeight: 65, marginBottom: 8 }}
-          />
-          <button className="primary" disabled={busy} onClick={submit} style={{ width: '100%' }}>
-            {busy ? 'Submitting…' : 'Submit Feedback'}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}

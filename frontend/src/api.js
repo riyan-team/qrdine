@@ -25,6 +25,51 @@ const staffPut = (path, body) => fetch(`/api/r/${S()}${path}`, {
 const staffDelete = (path) => fetch(`/api/r/${S()}${path}`, { method: 'DELETE', headers: staffAuth() }).then(j)
 const staffGet = (path) => fetch(`/api/r/${S()}${path}`, { headers: staffAuth() }).then(j)
 
+// ---- Loyalty & reviews ----
+// A guest who joins rewards keeps a member token on this phone (per restaurant); guest calls send it
+// as X-Member-Token. Spending points always needs staff approval on the server.
+const memberKey = (slug) => `qrdine.member.${slug}`
+export const memberStore = {
+  get: (slug) => { try { return localStorage.getItem(memberKey(slug)) || '' } catch { return '' } },
+  set: (slug, token) => { try { localStorage.setItem(memberKey(slug), token) } catch { /* private mode */ } },
+  clear: (slug) => { try { localStorage.removeItem(memberKey(slug)) } catch { /* private mode */ } },
+}
+const memberHeaders = (slug) => json({ 'X-Member-Token': memberStore.get(slug) })
+const guestPost = (slug, path, body) => fetch(`/api/r/${slug}/loyalty${path}`, {
+  method: 'POST', headers: memberHeaders(slug), body: body === undefined ? undefined : JSON.stringify(body),
+}).then(j)
+
+export const loyalty = {
+  // guest (QR page)
+  info: (slug) => fetch(`/api/r/${slug}/loyalty`).then(j),
+  join: (slug, body) => guestPost(slug, '/join', body),
+  me: (slug) => fetch(`/api/r/${slug}/loyalty/me`, { headers: memberHeaders(slug) })
+    .then((res) => (res.status === 404 ? null : j(res))),
+  link: (slug, tableCode) => guestPost(slug, '/link', { tableCode }),
+  redeem: (slug, rewardId, tableCode) => guestPost(slug, '/redeem', { rewardId, tableCode }),
+  cancel: (slug, id) => guestPost(slug, `/redemptions/${id}/cancel`),
+
+  // owner / manager
+  program: () => staffGet(`/admin/loyalty/program`),
+  saveProgram: (p) => staffPut(`/admin/loyalty/program`, p),
+  overview: () => staffGet(`/admin/loyalty/overview`),
+  rewards: () => staffGet(`/admin/loyalty/rewards`),
+  addReward: (r) => staffPost(`/admin/loyalty/rewards`, r),
+  updateReward: (id, r) => staffPut(`/admin/loyalty/rewards/${id}`, r),
+  deleteReward: (id) => staffDelete(`/admin/loyalty/rewards/${id}`),
+  members: (q = '', page = 1) => staffGet(`/admin/loyalty/members?q=${encodeURIComponent(q)}&page=${page}&pageSize=20`),
+  member: (id) => staffGet(`/admin/loyalty/members/${id}`),
+  adjust: (id, points, note) => staffPost(`/admin/loyalty/members/${id}/adjust`, { points, note }),
+
+  // reception
+  redemptions: (status = '') => staffGet(`/admin/loyalty/redemptions${status ? `?status=${status}` : ''}`),
+  approve: (id) => staffPost(`/admin/loyalty/redemptions/${id}/approve`),
+  reject: (id, note) => staffPost(`/admin/loyalty/redemptions/${id}/reject`, { note }),
+  tableMember: (code) => staffGet(`/admin/loyalty/tables/${encodeURIComponent(code)}`),
+  attach: (code, phone, name) => staffPost(`/admin/loyalty/tables/${encodeURIComponent(code)}/member`, { phone, name }),
+  detach: (code) => staffDelete(`/admin/loyalty/tables/${encodeURIComponent(code)}/member`),
+}
+
 // Public: resolve a typed restaurant name or address to its slug (login helper).
 export const lookupRestaurant = (q) =>
   fetch(`/api/restaurants/lookup?q=${encodeURIComponent(q)}`).then(async (res) => {

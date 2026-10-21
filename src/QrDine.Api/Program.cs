@@ -180,6 +180,7 @@ app.UseAuthorization();                              // enforce role policies on
 app.MapOnboarding();
 app.MapFiles();
 app.MapFeedback();
+app.MapLoyalty();
 app.MapPayments();
 app.MapPlatform();
 app.MapAuth();

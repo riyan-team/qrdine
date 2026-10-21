@@ -48,6 +48,11 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments => Set<Domain.Subscriptions.SubscriptionPayment>();
     public DbSet<Domain.Files.StoredFile> StoredFiles => Set<Domain.Files.StoredFile>();
     public DbSet<Domain.Feedback.Feedback> Feedbacks => Set<Domain.Feedback.Feedback>();
+    public DbSet<Domain.Loyalty.LoyaltyProgram> LoyaltyPrograms => Set<Domain.Loyalty.LoyaltyProgram>();
+    public DbSet<Domain.Loyalty.LoyaltyMember> LoyaltyMembers => Set<Domain.Loyalty.LoyaltyMember>();
+    public DbSet<Domain.Loyalty.LoyaltyReward> LoyaltyRewards => Set<Domain.Loyalty.LoyaltyReward>();
+    public DbSet<Domain.Loyalty.LoyaltyTransaction> LoyaltyTransactions => Set<Domain.Loyalty.LoyaltyTransaction>();
+    public DbSet<Domain.Loyalty.LoyaltyRedemption> LoyaltyRedemptions => Set<Domain.Loyalty.LoyaltyRedemption>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -87,6 +92,63 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Comment).HasMaxLength(500);
             e.Property(x => x.TableCode).HasMaxLength(20);
             e.HasIndex(x => new { x.RestaurantId, x.CreatedAt });
+        });
+
+        // ---- Loyalty & reviews (all tenant-owned) ----
+        b.Entity<Domain.Loyalty.LoyaltyProgram>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.HasIndex(x => x.RestaurantId).IsUnique();     // one programme per restaurant
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.Tagline).HasMaxLength(160);
+            e.Property(x => x.PerAmount).HasPrecision(12, 2);
+            e.Property(x => x.MinBillAmount).HasPrecision(12, 2);
+            e.Property(x => x.GoogleReviewUrl).HasMaxLength(400);
+            e.Property(x => x.GoogleMapsUrl).HasMaxLength(400);
+        });
+
+        b.Entity<Domain.Loyalty.LoyaltyMember>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.HasIndex(x => new { x.RestaurantId, x.Phone }).IsUnique();
+            e.HasIndex(x => new { x.RestaurantId, x.Token });
+            e.Property(x => x.Phone).HasMaxLength(20);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.Token).HasMaxLength(40);
+            e.Property(x => x.LifetimeSpend).HasPrecision(14, 2);
+        });
+
+        b.Entity<Domain.Loyalty.LoyaltyReward>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Title).HasMaxLength(60);
+            e.Property(x => x.Description).HasMaxLength(200);
+            e.Property(x => x.Emoji).HasMaxLength(16);
+        });
+
+        b.Entity<Domain.Loyalty.LoyaltyTransaction>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.HasIndex(x => new { x.RestaurantId, x.MemberId, x.CreatedAt });
+            e.HasIndex(x => new { x.RestaurantId, x.TableSessionId });
+            e.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.BillAmount).HasPrecision(12, 2);
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+        });
+
+        b.Entity<Domain.Loyalty.LoyaltyRedemption>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.HasIndex(x => new { x.RestaurantId, x.Status, x.RequestedAt });
+            e.HasIndex(x => new { x.RestaurantId, x.MemberId });
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.RewardTitle).HasMaxLength(60);
+            e.Property(x => x.RewardEmoji).HasMaxLength(16);
+            e.Property(x => x.Code).HasMaxLength(10);
+            e.Property(x => x.TableCode).HasMaxLength(20);
+            e.Property(x => x.DecidedBy).HasMaxLength(60);
+            e.Property(x => x.Note).HasMaxLength(200);
         });
 
         b.Entity<Domain.Subscriptions.SubscriptionPayment>(e =>

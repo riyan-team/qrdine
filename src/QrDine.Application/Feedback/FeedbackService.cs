@@ -4,7 +4,8 @@ using QrDine.Domain.Common;
 
 namespace QrDine.Application.Feedback;
 
-public record FeedbackInput(int Rating, string? Comment, string? TableCode);
+// MemberToken (optional): a loyalty member rating from their phone can earn the feedback bonus.
+public record FeedbackInput(int Rating, string? Comment, string? TableCode, string? MemberToken = null);
 public record FeedbackDto(int Id, int Rating, string Comment, string TableCode, DateTime CreatedAt);
 public record FeedbackSummaryDto(double Average, int Count, IReadOnlyList<int> Distribution, IReadOnlyList<FeedbackDto> Recent);
 

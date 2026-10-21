@@ -1,5 +1,6 @@
 using QrDine.Api.Auth;
 using QrDine.Application.Feedback;
+using QrDine.Application.Loyalty;
 
 namespace QrDine.Api.Endpoints;
 
@@ -9,10 +10,14 @@ public static class FeedbackEndpoints
 {
     public static void MapFeedback(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/r/{slug}/feedback", async (FeedbackInput body, FeedbackService svc) =>
+        app.MapPost("/api/r/{slug}/feedback", async (FeedbackInput body, FeedbackService svc, LoyaltyService loyalty, ILogger<FeedbackService> log) =>
         {
             await svc.Submit(body);
-            return Results.NoContent();
+            // A member's rating can earn the loyalty feedback bonus; that must never lose the rating itself.
+            var bonus = 0;
+            try { bonus = await loyalty.AwardFeedback(body.MemberToken); }
+            catch (Exception ex) { log.LogWarning(ex, "Feedback bonus not added."); }
+            return Results.Ok(new { bonus });
         }).RequireRateLimiting("public");
 
         app.MapGet("/api/r/{slug}/admin/feedback", async (FeedbackService svc)

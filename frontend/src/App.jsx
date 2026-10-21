@@ -16,6 +16,7 @@ import PlatformLogin from './pages/PlatformLogin.jsx'
 import PlatformConsole from './pages/PlatformConsole.jsx'
 import Landing from './pages/Landing.jsx'
 import OrderDetails from './pages/OrderDetails.jsx'
+import Loyalty from './pages/Loyalty.jsx'
 import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
 import { roleLabel } from './api'
@@ -76,6 +77,7 @@ function Nav() {
       {(can('orders.approve') || can('orders.pay')) && (has('ordering') || has('billing')) && <NavLink to="/cashier" className={link}>Reception</NavLink>}
       {can('orders.cook') && has('kitchen') && <NavLink to="/kitchen" className={link}>Kitchen</NavLink>}
       {can('orders.serve') && has('waiter') && <NavLink to="/waiter" className={link}>Waiter</NavLink>}
+      {can('settings.manage') && <NavLink to="/admin/loyalty" className={link}>Loyalty</NavLink>}
       {can('settings.manage') && <NavLink to="/admin/settings" className={link}>Settings</NavLink>}
       <span style={{ marginLeft: 'auto' }} />
       {staff ? (
@@ -113,6 +115,7 @@ export default function App() {
         <Route path="/admin/inventory" element={<RequireStaff><Inventory /></RequireStaff>} />
         <Route path="/admin/fbr" element={<RequireStaff><FbrInvoices /></RequireStaff>} />
         <Route path="/admin/settings" element={<RequireStaff><Settings /></RequireStaff>} />
+        <Route path="/admin/loyalty" element={<RequireStaff><Loyalty /></RequireStaff>} />
         <Route path="/cashier" element={<RequireStaff><Cashier /></RequireStaff>} />
         <Route path="/kitchen" element={<RequireStaff><Kitchen /></RequireStaff>} />
         <Route path="/waiter" element={<RequireStaff><Waiter /></RequireStaff>} />

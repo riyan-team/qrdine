@@ -5,6 +5,7 @@ import { OrderActions } from '../ordering.jsx'
 import { toast, playBell } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import Receipt from './Receipt.jsx'
+import { Requests as LoyaltyRequests, BillMember } from './Loyalty.jsx'
 import { BellIcon, TableIcon, SearchIcon, PrintIcon, ReceiptIcon, KitchenIcon, CheckIcon, CashIcon, QrIcon, UserIcon, TrendIcon } from '../icons.jsx'
 
 // Run a status action, surfacing any failure as a toast (never silently).
@@ -91,6 +92,7 @@ export default function Cashier() {
 
       {tab === 'history' && <ReceptionHistory />}
       {tab === 'live' && <>
+      <LoyaltyRequests compact />
       <div className="cat-title"><BellIcon size={15} /> New — waiting for approval ({incoming.length})</div>
       <div className="grid cols">
         {incoming.map((o) => (
@@ -225,6 +227,7 @@ function BillModal({ code, onClose }) {
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [member, setMember] = useState(null)   // loyalty: who this bill earns points for
   const timer = useRef(null)
 
   // Load the bill; an explicit discount override re-prices server-side (tax on net).
@@ -289,6 +292,8 @@ function BillModal({ code, onClose }) {
               </div>
             )}
 
+            <BillMember code={code} total={total} onChange={setMember} />
+
             <div className="pay-grid">
               <label className="muted">Pay via</label>
               <select value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -343,6 +348,9 @@ function BillModal({ code, onClose }) {
           <div className="noprint" style={{ marginTop: 14 }}>
             <div className="paid-badge" style={{ marginBottom: 10 }}><CheckIcon size={15} /> Paid — {invoice.number}
               {invoice.changeGiven > 0 && <span style={{ marginLeft: 8 }}>· change {money(invoice.changeGiven)}</span>}</div>
+            {member?.enabled && member.member && member.perAmount > 0 && invoice.total >= member.minBillAmount && (
+              <div className="lx-earned fade-up">⭐ About {(Math.floor(invoice.total / member.perAmount) * member.earnPoints).toLocaleString('en-PK')} points added for {member.member.name}</div>
+            )}
             <div className="row" style={{ gap: 8, alignItems: 'center' }}>
               <button style={{ marginLeft: 'auto' }} onClick={onClose}>Done</button>
               {invoice.receiptEnabled && <button className="blue" onClick={() => window.print()}><PrintIcon size={15} /> Reprint</button>}

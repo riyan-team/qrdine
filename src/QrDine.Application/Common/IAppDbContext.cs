@@ -34,6 +34,11 @@ public interface IAppDbContext
     DbSet<QrDine.Domain.Subscriptions.SubscriptionPayment> SubscriptionPayments { get; }
     DbSet<QrDine.Domain.Files.StoredFile> StoredFiles { get; }
     DbSet<QrDine.Domain.Feedback.Feedback> Feedbacks { get; }
+    DbSet<QrDine.Domain.Loyalty.LoyaltyProgram> LoyaltyPrograms { get; }
+    DbSet<QrDine.Domain.Loyalty.LoyaltyMember> LoyaltyMembers { get; }
+    DbSet<QrDine.Domain.Loyalty.LoyaltyReward> LoyaltyRewards { get; }
+    DbSet<QrDine.Domain.Loyalty.LoyaltyTransaction> LoyaltyTransactions { get; }
+    DbSet<QrDine.Domain.Loyalty.LoyaltyRedemption> LoyaltyRedemptions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

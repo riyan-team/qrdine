@@ -19,6 +19,10 @@ public class TableSession : Entity, ITenantOwned
     public DateTime OpenedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ClosedAt { get; set; }
 
+    /// <summary>The loyalty member this seating's bill earns points for (set from the guest's phone or by
+    /// reception). Empty for most seatings; never affects the bill.</summary>
+    public int? LoyaltyMemberId { get; set; }
+
     public static TableSession Open(DiningTable table) => new()
     {
         RestaurantId = table.RestaurantId,

@@ -59,6 +59,10 @@ moves throw a clean 400. Both **QR** and **Waiter** orders use the same pipeline
 - `frontend/src/pages/Settings.jsx` — account, **Receipt & branding** (logo/header/footer), branches
   (edit + FBR-gated POS), tables, staff (edit incl. username), role permissions
 - `frontend/src/icons.jsx` — thin-line SVG icon set (replaced the app's decorative emoji)
+- `frontend/src/loyalty.jsx` — guest **Loyalty & reviews**: rewards strip under the menu header, the Rewards & Reviews
+  bottom sheet (join, points ring, rewards, redemption code, history, ratings, Google review buttons), `useLoyalty`
+- `frontend/src/pages/Loyalty.jsx` — owner/manager **Loyalty** page (overview, programme & Google links, rewards,
+  members + adjust, reward requests); also exports `Requests` (compact strip) + `BillMember` used on Reception
 - `frontend/src/api.js`, `frontend/src/auth.js`, `frontend/src/useStaffOrders.js`, `frontend/src/useHub.js`
 - `frontend/src/styles.css` — design system (cream/maroon POS theme) + animations + 80mm receipt
   print rules (`@page { size: 80mm auto }`) + the `.lp-*` landing styles (bottom of file)
@@ -128,6 +132,26 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-10-21** — **Loyalty, rewards & Google reviews on the table QR** (branch `feature/loyalty`, migration `AddLoyalty`):
+  - **Off by default**: a restaurant sees nothing new until the owner switches it on (Loyalty → Program & reviews).
+    New tables `LoyaltyPrograms` (one per restaurant), `LoyaltyMembers` (unique phone per restaurant), `LoyaltyRewards`,
+    `LoyaltyTransactions` (the ledger behind every balance), `LoyaltyRedemptions`; one nullable column
+    `Sessions.LoyaltyMemberId`. All tenant-filtered. Service `src/QrDine.Application/Loyalty/LoyaltyService.cs`,
+    endpoints `src/QrDine.Api/Endpoints/LoyaltyEndpoints.cs`, tests `tests/QrDine.Tests/LoyaltyTests.cs`.
+  - **Joining**: guests join on the QR page with name + mobile (Pakistani numbers normalised to 03xxxxxxxxx); the phone
+    keeps a member token (`X-Member-Token`). No SMS/OTP exists, so **points only come off when staff approve** a reward
+    request (code shown on the guest's phone; approve on Reception or Loyalty → Reward requests).
+  - **Earning**: `BillingService.Finalize` calls `AwardForSettledSession` **after** the sale is saved, in a try/catch
+    (a loyalty error is logged, never fails a settle). Once per seating (an Earn ledger line marks it). The seating is
+    linked to a member when the guest joins/orders (`/loyalty/link`) or when Reception adds a phone on the bill.
+    Points = floor(bill total ÷ PerAmount) × EarnPoints, above MinBillAmount. Bill amounts are never changed.
+  - **Reviews**: in-house rating card (same `/feedback` endpoint; optional `memberToken` earns the rating bonus at most
+    once per 20 h) + **Review us on Google / See our Google reviews** buttons from the owner's links. Per Google's
+    rules the button shows to every guest and is never rewarded with points.
+  - Permissions reuse existing keys: programme/rewards/members = `settings.manage`; reward requests + bill member =
+    `orders.pay`. Guest endpoints use the `public` rate limit.
+  - Local dev DB must be recreated for the new tables (EnsureCreated): the old one was kept as
+    `src/QrDine.Api/qrdine.db.bak-before-loyalty`.
 - **2026-09-01** — Marketing landing page + waiter "add items to a running tab":
   - **Landing page** (`frontend/src/pages/Landing.jsx`, styles under the `.lp-*` block in
     `styles.css`): the app's public front door at **`/`** (was a redirect to `/login`).

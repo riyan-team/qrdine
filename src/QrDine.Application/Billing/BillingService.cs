@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using QrDine.Application.Common;
+using QrDine.Application.Loyalty;
 using QrDine.Application.Ordering.Dtos;
 using QrDine.Application.Printing;
 using QrDine.Domain.Billing;
@@ -22,11 +24,14 @@ public class BillingService
     private readonly IOrderNotifier _notifier;
     private readonly FiscalSyncService _fiscalSync;
     private readonly IPrintDispatcher _print;
+    private readonly LoyaltyService _loyalty;
+    private readonly ILogger<BillingService> _log;
 
     public BillingService(IAppDbContext db, ICurrentTenant tenant, IOrderNotifier notifier,
-        FiscalSyncService fiscalSync, IPrintDispatcher print)
+        FiscalSyncService fiscalSync, IPrintDispatcher print, LoyaltyService loyalty, ILogger<BillingService> log)
     {
         _db = db; _tenant = tenant; _notifier = notifier; _fiscalSync = fiscalSync; _print = print;
+        _loyalty = loyalty; _log = log;
     }
 
     private int TenantId => _tenant.RestaurantId ?? throw new DomainException("No restaurant in context.");
@@ -200,6 +205,14 @@ public class BillingService
         // captured on the invoice and shows in the owner's pending list for retry.
         await _fiscalSync.SyncOnSettle(invoice, r, operatorUsername, ct);
         await _db.SaveChangesAsync(ct);
+
+        // Loyalty points for the member linked to this seating, if any. The sale is already saved,
+        // and a loyalty problem must never stop a bill being settled — so it is logged, not thrown.
+        try { await _loyalty.AwardForSettledSession(session.Id, invoice.Id, invoice.Total, ct); }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _log.LogWarning(ex, "Loyalty points were not added for session {SessionId} (invoice {InvoiceId}).", session.Id, invoice.Id);
+        }
 
         foreach (var o in orders)
             await _notifier.OrderChanged(Slug, OrderDto.From(o), ct);

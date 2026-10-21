@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<FiscalSyncService>();
         services.AddScoped<Reports.ReportsService>();
         services.AddScoped<Feedback.FeedbackService>();
+        services.AddScoped<Loyalty.LoyaltyService>();
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
         return services;
     }
