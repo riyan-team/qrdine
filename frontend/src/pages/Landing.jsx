@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import DineInLogo from '../DineInLogo.jsx'
+import { CONTACT } from '../contact'
 import {
   QrIcon, KitchenIcon, UserIcon, CashIcon, BankIcon, ChartIcon,
   BoxIcon, TableIcon, CheckIcon, PhoneIcon, ReceiptIcon,
@@ -196,8 +197,8 @@ export default function Landing() {
             <h2 className="lp-h2">Talk to us</h2>
             <p className="lp-lead">Questions, a demo, or help getting set up — we’re happy to help.</p>
             <div className="lp-contact-rows">
-              <a className="lp-contact-row" href="mailto:hello@dinein.pk"><span className="lp-c-ico"><ReceiptIcon size={18} /></span><div><b>Email</b><span>hello@dinein.pk</span></div></a>
-              <a className="lp-contact-row" href="tel:+920000000000"><span className="lp-c-ico"><PhoneIcon size={18} /></span><div><b>Phone</b><span>+92 000 0000000</span></div></a>
+              <a className="lp-contact-row" href={`mailto:${CONTACT.email}`}><span className="lp-c-ico"><ReceiptIcon size={18} /></span><div><b>Email</b><span>{CONTACT.email}</span></div></a>
+              <a className="lp-contact-row" href={`tel:${CONTACT.tel}`}><span className="lp-c-ico"><PhoneIcon size={18} /></span><div><b>Phone</b><span>{CONTACT.phone}</span></div></a>
               <div className="lp-contact-row"><span className="lp-c-ico"><TableIcon size={18} /></span><div><b>Where</b><span>Lahore, Pakistan</span></div></div>
             </div>
           </div>

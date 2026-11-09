@@ -1,5 +1,6 @@
 import { auth, staffAuth, platformAuth } from './auth'
 import { parseError } from './errors'
+import { shrinkImage } from './imageShrink'
 
 // Staff calls target the signed-in restaurant; guest calls take an explicit slug.
 const S = () => auth.staffSlug()
@@ -7,7 +8,10 @@ const S = () => auth.staffSlug()
 async function j(res) {
   if (!res.ok) {
     if (res.status === 401) { auth.clearStaff(); if (location.pathname !== '/login') location.href = '/login' }
-    throw await parseError(res)   // friendly ApiError — never the raw body
+    const err = await parseError(res)   // friendly ApiError — never the raw body
+    // Paused restaurant: tell the staff screens why nothing is working (see PlanBanner in App.jsx).
+    if (err.locked) window.dispatchEvent(new CustomEvent('qrdine:locked', { detail: err.message }))
+    throw err
   }
   const t = await res.text()
   return t ? JSON.parse(t) : null
@@ -160,7 +164,7 @@ export const api = {
   updateItem: (id, item) => staffPut(`/admin/items/${id}`, item),
   setAvailability: (id, available) => staffPost(`/admin/items/${id}/availability`, { available }),
   deleteItem: (id) => staffDelete(`/admin/items/${id}`),
-  uploadItemPhoto: (id, file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/items/${id}/photo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
+  uploadItemPhoto: async (id, file) => { const fd = new FormData(); fd.append('file', await shrinkImage(file)); return fetch(`/api/r/${S()}/admin/items/${id}/photo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
 
   // bulk menu import (returns a preview to review before saving)
   importMenuPhoto: (file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/menu/import/photo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
@@ -220,7 +224,8 @@ export const api = {
   // receipt branding (logo + printed header/footer)
   getReceiptSettings: () => staffGet(`/admin/receipt-settings`),
   setReceiptSettings: (s) => staffPut(`/admin/receipt-settings`, s),
-  uploadLogo: (file) => { const fd = new FormData(); fd.append('file', file); return fetch(`/api/r/${S()}/admin/logo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
+  getSubscription: () => staffGet(`/admin/subscription`),
+  uploadLogo: async (file) => { const fd = new FormData(); fd.append('file', await shrinkImage(file, { maxSide: 512, keepTransparency: true })); return fetch(`/api/r/${S()}/admin/logo`, { method: 'POST', headers: staffAuth(), body: fd }).then(j) },
   changePassword: (currentPassword, newPassword) => staffPost(`/auth/change-password`, { currentPassword, newPassword }),
   fbrSynced: () => staffGet(`/admin/fbr/invoices/synced`),
   fbrPending: () => staffGet(`/admin/fbr/invoices/pending`),

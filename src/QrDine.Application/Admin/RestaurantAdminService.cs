@@ -173,6 +173,9 @@ public class RestaurantAdminService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<DateTime?> GetPaidThrough(CancellationToken ct = default) =>
+        await _db.Restaurants.AsNoTracking().Where(x => x.Id == TenantId).Select(x => x.PlanExpiresAt).FirstAsync(ct);
+
     // ---------- FBR restaurant settings (owner enable + seller identity) ----------
     public async Task<FbrSettingsDto> GetFbrSettings(CancellationToken ct = default)
     {

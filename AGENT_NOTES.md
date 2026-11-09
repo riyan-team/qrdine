@@ -79,7 +79,12 @@ Dev DB is `src/QrDine.Api/qrdine.db` (git-ignored). It is built from the model v
 **delete/rename `qrdine.db`** and restart (it re-seeds). There is no demo restaurant;
 create one via **Sign up** (`/signup`).
 
-## Deploy (Oracle Cloud free VM)
+## Deploy (Hostworld, current)
+Since 2026-11-09 production runs on the Hostworld server without Docker, deployed by hand from
+the PC, so **pushing to `main` no longer deploys**. The Oracle VM described below is gone.
+Services, updating, paid-date rules, backups and restoring: **`deploy/hostworld/README.md`**.
+
+## Deploy (Oracle Cloud free VM, old)
 Repo is cloned at **`~/qrdine`** on the VM (user `opc`). Stack: app + Postgres + Caddy
 (auto-HTTPS) via `deploy/oracle/docker-compose.yml`. Secrets in **`~/qrdine/deploy/oracle/.env`**
 (git-ignored; created by `setup.sh`): `DOMAIN, DB_PASSWORD, JWT_SECRET,
@@ -119,7 +124,7 @@ Then in the browser (hard-refresh): log in → owner sees **Settings → Role pe
 with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take order** tab.
 
 ## Credentials
-- **Platform operator** (`/platform/login`): `grep -E '^PLATFORM_ADMIN_' ~/qrdine/deploy/oracle/.env`
+- **Platform operator** (`/platform/login`): `grep '^PlatformAdmin__' /etc/qrdine/qrdine.env` on Hostworld
 - **Restaurant owner**: whatever was set at **sign-up** (hashed; not recoverable from DB).
   No demo accounts are seeded in production.
 - **Local dev test accounts** (SQLite only, NOT on the server): owner/`owner123`,
@@ -132,6 +137,9 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-09** — **Moved to Hostworld; photo shrinking; unpaid restaurants lock**:
+  - Item photos and logos shrink in the browser before upload (`frontend/src/imageShrink.js`): photos 1000 px JPEG, logos 512 px keeping transparency. The server's limits and content checks are unchanged.
+  - `PlanExpiresAt` is now enforced in `TenantResolutionMiddleware` (`Domain/Restaurants/SubscriptionAccess.cs`): warning 5 days before, 3 grace days after, then 403 with `expired=true` on all `/api/r/{slug}` routes until a payment is recorded. Owners see it through `GET /admin/subscription` and `PlanBanner` in `App.jsx`; guests get a neutral "menu isn't available" screen. Suspended restaurants now get a friendly message too.
 - **2026-10-21** — **Loyalty, rewards & Google reviews on the table QR** (branch `feature/loyalty`, migration `AddLoyalty`):
   - **Off by default**: a restaurant sees nothing new until the owner switches it on (Loyalty → Program & reviews).
     New tables `LoyaltyPrograms` (one per restaurant), `LoyaltyMembers` (unique phone per restaurant), `LoyaltyRewards`,

@@ -5,12 +5,13 @@
 // onto the offending inputs.
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, fieldErrors = null, reference = null } = {}) {
+  constructor(message, { status = 0, fieldErrors = null, reference = null, locked = false } = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.fieldErrors = fieldErrors   // { fieldName: "message" } | null
     this.reference = reference       // support id for 500s | null
+    this.locked = locked             // the restaurant is suspended or its plan has ended
   }
 }
 
@@ -56,7 +57,8 @@ export async function parseError(res) {
   const detail = typeof body?.detail === 'string' && body.detail.trim() ? body.detail.trim() : null
   const message = detail || BY_STATUS[status] || 'Something went wrong. Please try again.'
   const reference = typeof body?.reference === 'string' ? body.reference : null
-  return new ApiError(message, { status, fieldErrors, reference })
+  const locked = body?.suspended === true || body?.expired === true
+  return new ApiError(message, { status, fieldErrors, reference, locked })
 }
 
 // For a thrown error of unknown origin (e.g. a network failure), produce a friendly line.

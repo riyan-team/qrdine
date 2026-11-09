@@ -13,6 +13,7 @@ export default function Menu() {
   const { slug, code } = useParams()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
+  const [unavailable, setUnavailable] = useState(false)   // restaurant paused or address not found
   const cart = useCart()
   const [note, setNote] = useState('')
   const [orders, setOrders] = useState([])
@@ -32,7 +33,7 @@ export default function Menu() {
       auth.rememberTable(slug, code)
     }
     // Load menu and table orders
-    api.getMenu(slug).then(setData).catch(() => {})
+    api.getMenu(slug).then(setData).catch((e) => { if (e?.status === 403 || e?.status === 404) setUnavailable(true) })
     api.tableOrders(slug, code).then(setOrders).catch(() => {})
 
     // Load previously notified orders for this session to prevent repeated ring on reload
@@ -135,6 +136,14 @@ export default function Menu() {
     }).filter((cat) => cat.items.length > 0)
   }, [data?.menu, query, activeFilter])
 
+  if (unavailable) return (
+    <div className="wrap" style={{ maxWidth: 460, marginTop: 80, textAlign: 'center' }}>
+      <div className="card">
+        <div className="big" style={{ marginBottom: 8 }}>This menu isn't available right now</div>
+        <p className="muted" style={{ fontSize: 14, marginBottom: 0 }}>Please ask a member of staff to take your order.</p>
+      </div>
+    </div>
+  )
   if (!data) return <div className="loading"><span className="spinner dark" /> Loading menu…</div>
 
   const totalResults = filteredCategories.reduce((acc, c) => acc + c.items.length, 0)

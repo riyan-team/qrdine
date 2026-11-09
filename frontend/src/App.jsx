@@ -1,4 +1,4 @@
-import { Component } from 'react'
+import { Component, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation, Link } from 'react-router-dom'
 import Owner from './pages/Owner.jsx'
 import Menu from './pages/Menu.jsx'
@@ -19,7 +19,7 @@ import OrderDetails from './pages/OrderDetails.jsx'
 import Loyalty from './pages/Loyalty.jsx'
 import { DialogHost, ToastHost } from './ui.jsx'
 import { auth } from './auth'
-import { roleLabel } from './api'
+import { api, roleLabel } from './api'
 import DineInLogo from './DineInLogo.jsx'
 
 // Guards a staff-only route: no token → bounce to /login, remembering where we were.
@@ -92,6 +92,32 @@ function Nav() {
   )
 }
 
+const days = (n) => `${n} day${n === 1 ? '' : 's'}`
+
+// Warns the owner/manager before the paid date runs out, and tells all staff why nothing
+// works once the restaurant is paused (any failed call announces that; see api.js).
+function PlanBanner() {
+  const [msg, setMsg] = useState(null)
+  useEffect(() => {
+    const onLocked = (e) => setMsg({ text: e.detail, urgent: true })
+    window.addEventListener('qrdine:locked', onLocked)
+    if (auth.can('settings.manage')) {
+      api.getSubscription().then((s) => {
+        if (s.state === 'EndingSoon') setMsg({ text: `Your QrDine plan ends in ${days(s.daysLeft)}. Please renew it to keep everything running.` })
+        if (s.state === 'Overdue') setMsg({ text: `Your QrDine plan has ended. QrDine will stop working in ${days(s.daysLeft)} unless it is renewed.`, urgent: true })
+      }).catch(() => {})
+    }
+    return () => window.removeEventListener('qrdine:locked', onLocked)
+  }, [])
+  if (!msg) return null
+  return (
+    <div className="noprint" role="alert" style={{
+      padding: '10px 16px', fontSize: 14, textAlign: 'center',
+      background: msg.urgent ? '#b91c1c' : '#fef3c7', color: msg.urgent ? '#fff' : '#78350f',
+    }}>{msg.text}</div>
+  )
+}
+
 export default function App() {
   const loc = useLocation()
   const isPlatform = loc.pathname.startsWith('/platform')
@@ -100,6 +126,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       {!isPlatform && !isBare && <Nav />}
+      {!isPlatform && !isBare && auth.staffToken && <PlanBanner />}
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/owner" element={<RequireStaff><Owner /></RequireStaff>} />

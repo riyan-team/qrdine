@@ -58,6 +58,13 @@ public static class AdminSettingsEndpoints
             return Results.Ok(new { logoUrl = url });
         }).DisableAntiforgery();
 
+        // Plan status for the owner's "renew soon" banner.
+        g.MapGet("/subscription", async (RestaurantAdminService svc, IConfiguration config, CancellationToken ct) =>
+        {
+            var access = Middleware.SubscriptionPolicy.For(await svc.GetPaidThrough(ct), config);
+            return Results.Ok(new { state = access.State.ToString(), daysLeft = access.DaysLeft });
+        });
+
         // FBR fiscal settings (owner enable + seller NTN/STRN). Branch POS config
         // rides on the branch endpoints above.
         g.MapGet("/fbr", async (RestaurantAdminService svc) => Results.Ok(await svc.GetFbrSettings()));
