@@ -95,7 +95,9 @@ public static class AuthSetup
             // Editing permissions is owner-only, so a manager can't grant themselves more.
             o.AddPolicy(Policies.OwnerOnly, p => p.RequireAssertion(c => IsStaff(c.User)).RequireRole("Owner"));
             // Placing an order: a valid guest token OR any staff member (waiter on behalf).
-            o.AddPolicy(Policies.GuestOrStaff, p => p.RequireAuthenticatedUser());
+            // Not an operator token: it has no restaurant, so it has no business on these routes.
+            o.AddPolicy(Policies.GuestOrStaff, p => p.RequireAssertion(c =>
+                c.User.FindFirst(AppClaims.TokenType)?.Value is AppClaims.TypeGuest or AppClaims.TypeStaff));
             // The SaaS operator control plane.
             o.AddPolicy(Policies.Platform, p => p.RequireAssertion(c =>
                 c.User.FindFirst(AppClaims.TokenType)?.Value == AppClaims.TypePlatform));

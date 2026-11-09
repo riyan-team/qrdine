@@ -37,18 +37,37 @@ public class PlatformService
     private readonly IAppDbContext _db;
     private readonly ITokenService _tokens;
     private readonly IPasswordHasher _hasher;
+    private readonly LoginGuard _guard;
 
-    public PlatformService(IAppDbContext db, ITokenService tokens, IPasswordHasher hasher)
+    public PlatformService(IAppDbContext db, ITokenService tokens, IPasswordHasher hasher, LoginGuard? guard = null)
     {
-        _db = db; _tokens = tokens; _hasher = hasher;
+        _db = db; _tokens = tokens; _hasher = hasher; _guard = guard ?? new LoginGuard();
     }
 
     public async Task<AuthResponse> Login(PlatformLoginRequest req, CancellationToken ct = default)
     {
-        var admin = await _db.PlatformAdmins.FirstOrDefaultAsync(a => a.Username == req.Username.Trim().ToLowerInvariant(), ct);
-        if (admin is null || !_hasher.Verify(req.Password, admin.PasswordHash))
+        var name = (req.Username ?? "").Trim().ToLowerInvariant();
+        var account = "platform:" + name;
+        _guard.EnsureAllowed(account);
+        var admin = await _db.PlatformAdmins.FirstOrDefaultAsync(a => a.Username.ToLower() == name, ct);
+        // Same work for an unknown name, so the answer time doesn't say which names exist.
+        if (admin is null) _hasher.Hash(req.Password ?? "");
+        if (admin is null || !_hasher.Verify(req.Password ?? "", admin.PasswordHash))
+        {
+            _guard.Failed(account);
             throw new DomainException("Invalid username or password.");
+        }
+        _guard.Succeeded(account);
         return new AuthResponse(_tokens.CreatePlatformToken(admin), admin.DisplayName, "Platform", Array.Empty<string>());
+    }
+
+    /// <summary>A platform sign-in is good while its operator still exists with the same password.</summary>
+    public async Task<bool> StillSignedIn(System.Security.Claims.ClaimsPrincipal user, CancellationToken ct = default)
+    {
+        if (user.FindFirst(AppClaims.TokenType)?.Value != AppClaims.TypePlatform) return false;
+        if (!int.TryParse(user.FindFirst(AppClaims.StaffId)?.Value, out var id)) return false;
+        var admin = await _db.PlatformAdmins.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        return admin is not null && user.FindFirst(AppClaims.Stamp)?.Value == StaffSessions.StampOf(admin.PasswordHash);
     }
 
     public async Task<PlatformStatsDto> Stats(CancellationToken ct = default)

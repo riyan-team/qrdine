@@ -269,11 +269,9 @@ public class OrderService
         return await Publish(order, ct);
     }
 
+    // Only reads: looking at an order changes nothing, so it isn't sent to every screen again.
     public async Task<OrderDto> GetOrder(int id, CancellationToken ct = default)
-    {
-        var order = await LoadOrder(id, ct);
-        return await Publish(order, ct);
-    }
+        => OrderDto.From(await LoadOrder(id, ct));
 
     public async Task<OrderDto> Reorder(int id, CancellationToken ct = default)
     {

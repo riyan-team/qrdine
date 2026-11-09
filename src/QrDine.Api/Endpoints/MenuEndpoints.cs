@@ -14,6 +14,8 @@ public static class MenuEndpoints
             return menu is null ? Results.NotFound() : Results.Ok(menu);
         });
 
-        g.MapGet("/tables", async (MenuService svc) => Results.Ok(await svc.GetTables()));
+        // The restaurant's table list is for its staff screens (guests get their table from the QR).
+        g.MapGet("/tables", async (MenuService svc) => Results.Ok(await svc.GetTables()))
+            .RequireAuthorization(QrDine.Api.Auth.Policies.StaffAny);
     }
 }

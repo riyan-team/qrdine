@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using QrDine.Api.Auth;
 using QrDine.Api.Validation;
+using QrDine.Application.Auth;
 using QrDine.Application.Common;
 using QrDine.Application.Ordering;
 using QrDine.Application.Ordering.Dtos;
@@ -40,13 +41,22 @@ public static class OrderEndpoints
             return Results.Ok(await svc.Place(body, OrderSource.Qr));
         }).RequireAuthorization(Policies.GuestOrStaff).RequireRateLimiting("orders");
 
-        // Reading a table's own live orders stays public (the customer just scanned it).
-        g.MapGet("/tables/{code}/orders", async (string code, OrderService svc)
-            => Results.Ok(await svc.TableOrders(code)));
+        // A table's running orders: that table's guests (their phone got a pass when they scanned) or staff.
+        g.MapGet("/tables/{code}/orders", async (string code, ClaimsPrincipal user, OrderService svc) =>
+            Access.MayReadTable(user, code)
+                ? Results.Ok(await svc.TableOrders(code))
+                : Results.Problem(detail: "This session is for a different table.", statusCode: 403))
+            .RequireAuthorization(Policies.GuestOrStaff);
 
-        // Read single order (for customer order-details screen or staff)
-        g.MapGet("/orders/{id:int}", async (int id, OrderService svc)
-            => Results.Ok(await svc.GetOrder(id)));
+        // One order (the customer's order-details screen, or staff). A guest only sees their own
+        // table's, so order numbers can't be paged through. Someone else's order gets exactly the
+        // same answer as a missing one, so it gives nothing away.
+        g.MapGet("/orders/{id:int}", async (int id, ClaimsPrincipal user, OrderService svc) =>
+        {
+            var order = await svc.GetOrder(id);
+            if (!Access.MayReadOrder(user, order)) throw new DomainException("Order not found.");
+            return Results.Ok(order);
+        }).RequireAuthorization(Policies.GuestOrStaff);
 
         // Cancel order (staff with permission OR guest for their table)
         g.MapPost("/orders/{id:int}/cancel", async (int id, CancelRequest? body, ClaimsPrincipal user, OrderService svc) =>
@@ -81,8 +91,7 @@ public static class OrderEndpoints
             if (type == AppClaims.TypeGuest)
             {
                 var order = await svc.GetOrder(id);
-                var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
-                if (!string.IsNullOrEmpty(tokenTable) && !string.Equals(tokenTable, order.TableCode, StringComparison.OrdinalIgnoreCase))
+                if (!Access.MayReadOrder(user, order))
                     return Results.Problem(detail: "This order is not for your table.", statusCode: 403);
             }
             return Results.Ok(await svc.Reorder(id));

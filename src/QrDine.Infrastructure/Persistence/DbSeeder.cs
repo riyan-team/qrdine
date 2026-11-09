@@ -16,20 +16,30 @@ public static class DbSeeder
     public static async Task SeedAsync(AppDbContext db, IPasswordHasher hasher,
         string? platformUsername, string? platformPassword)
     {
-        // Platform operator login (the SaaS owner). Seeded only when credentials are
-        // supplied via config/env (PlatformAdmin__Username / PlatformAdmin__Password).
-        // In production, set these as environment variables — no password is hardcoded.
-        if (!await db.PlatformAdmins.AnyAsync()
-            && !string.IsNullOrWhiteSpace(platformUsername)
-            && !string.IsNullOrWhiteSpace(platformPassword))
+        // Platform operator login (the SaaS owner). Taken from config/env
+        // (PlatformAdmin__Username / PlatformAdmin__Password) on every start, so the settings
+        // file is the one place to change it: edit it, restart, and the new name and password
+        // work while every older operator sign-in stops working. No password is hardcoded.
+        if (!string.IsNullOrWhiteSpace(platformUsername) && !string.IsNullOrWhiteSpace(platformPassword))
         {
-            db.PlatformAdmins.Add(new PlatformAdmin
+            var name = platformUsername.Trim().ToLowerInvariant();
+            var admin = await db.PlatformAdmins.OrderBy(a => a.Id).FirstOrDefaultAsync();
+            if (admin is null)
             {
-                Username = platformUsername.Trim(),
-                DisplayName = "Platform Admin",
-                PasswordHash = hasher.Hash(platformPassword),
-            });
-            await db.SaveChangesAsync();
+                db.PlatformAdmins.Add(new PlatformAdmin
+                {
+                    Username = name,
+                    DisplayName = "Platform Admin",
+                    PasswordHash = hasher.Hash(platformPassword),
+                });
+                await db.SaveChangesAsync();
+            }
+            else if (admin.Username != name || !hasher.Verify(platformPassword, admin.PasswordHash))
+            {
+                admin.Username = name;
+                if (!hasher.Verify(platformPassword, admin.PasswordHash)) admin.PasswordHash = hasher.Hash(platformPassword);
+                await db.SaveChangesAsync();
+            }
         }
 
         // Subscription plan catalogue — product configuration the operator edits in the

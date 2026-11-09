@@ -30,6 +30,22 @@ async function j(res) {
   return t ? JSON.parse(t) : null
 }
 
+// Guest answers: like j(), but a refused table pass never sends a customer to the staff sign-in page.
+async function g(res) {
+  if (!res.ok) {
+    const err = await parseError(res)
+    if (err.locked) window.dispatchEvent(new CustomEvent('qrdine:locked', { detail: err.message }))
+    throw err
+  }
+  const t = await res.text()
+  return t ? JSON.parse(t) : null
+}
+
+// Staff signed in to THIS restaurant act as staff; anyone else on a guest page uses the table pass.
+const passFor = async (slug, code = '') =>
+  (auth.staffToken && auth.staffSlug() === slug) ? auth.staffToken : await auth.guestToken(slug, code)
+const bearer = (token) => (token ? { Authorization: `Bearer ${token}` } : {})
+
 const json = (extra = {}) => ({ 'Content-Type': 'application/json', ...extra })
 
 // Staff-authed requests against the signed-in restaurant.
@@ -98,12 +114,16 @@ export const lookupRestaurant = (q) =>
 export const api = {
   // ---- guest (slug from the QR URL) ----
   getMenu: (slug) => fetch(`/api/r/${slug}`).then(j),
-  tableOrders: (slug, code) => fetch(`/api/r/${slug}/tables/${code}/orders`).then(j),
+  // A table's running orders: only that table's own pass (or staff) may read them.
+  tableOrders: async (slug, code) => {
+    const token = await passFor(slug, code)
+    return fetch(`/api/r/${slug}/tables/${code}/orders`, { headers: bearer(token) }).then(g)
+  },
   placeOrder: async (slug, body) => {
     const token = await auth.guestToken(slug, body.tableCode)
     return fetch(`/api/r/${slug}/orders`, {
-      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify(body),
-    }).then(j)
+      method: 'POST', headers: json(bearer(token)), body: JSON.stringify(body),
+    }).then(g)
   },
   getOrder: async (slugOrId, maybeId) => {
     let slug, id
@@ -114,21 +134,20 @@ export const api = {
       slug = auth.staffSlug()
       id = slugOrId
     }
-    const token = auth.staffToken || await auth.guestToken(slug, '')
-    const headers = token ? json({ Authorization: `Bearer ${token}` }) : json()
-    return fetch(`/api/r/${slug}/orders/${id}`, { headers }).then(j)
+    const token = await passFor(slug)
+    return fetch(`/api/r/${slug}/orders/${id}`, { headers: json(bearer(token)) }).then(g)
   },
   cancelOrder: async (slug, id, reason) => {
-    const token = auth.staffToken || await auth.guestToken(slug, '')
+    const token = await passFor(slug)
     return fetch(`/api/r/${slug}/orders/${id}/cancel`, {
-      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify({ reason }),
-    }).then(j)
+      method: 'POST', headers: json(bearer(token)), body: JSON.stringify({ reason }),
+    }).then(g)
   },
   reorder: async (slug, id) => {
-    const token = auth.staffToken || await auth.guestToken(slug, '')
+    const token = await passFor(slug)
     return fetch(`/api/r/${slug}/orders/${id}/reorder`, {
-      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }),
-    }).then(j)
+      method: 'POST', headers: json(bearer(token)),
+    }).then(g)
   },
   submitFeedback: (slug, body) => fetch(`/api/r/${slug}/feedback`, {
     method: 'POST', headers: json(), body: JSON.stringify(body),
@@ -195,8 +214,8 @@ export const api = {
   callStaff: async (slug, code, kind) => {
     const token = await auth.guestToken(slug, code)
     return fetch(`/api/r/${slug}/tables/${code}/call`, {
-      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify({ kind }),
-    }).then(j)
+      method: 'POST', headers: json(bearer(token)), body: JSON.stringify({ kind }),
+    }).then(g)
   },
   serviceRequests: () => staffGet(`/staff/requests`),
   serviceDone: (id) => staffPost(`/staff/requests/${id}/done`),

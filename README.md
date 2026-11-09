@@ -89,8 +89,10 @@ place an order, and watch it flow across the **Reception → Kitchen → Waiter*
 **3. (optional) Print bridge** — prints kitchen tickets + receipts
 ```bash
 cd tools/QrDine.PrintBridge
-dotnet run
+dotnet run -- http://localhost:5099 <staff mobile or username>
 ```
+The print feed carries every bill, so the bridge signs in as a staff member (make one for
+the counter PC in Settings → Staff). It asks for the password, or reads `QRDINE_PASSWORD`.
 Leave it running; it prints to the console and to `printouts/*.txt`. Approve an order
 (kitchen ticket) or settle a table (receipt) to see jobs arrive.
 

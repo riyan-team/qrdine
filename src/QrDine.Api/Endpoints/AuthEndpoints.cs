@@ -32,14 +32,13 @@ public static class AuthEndpoints
             => Results.Ok(await svc.Login(body)))
             .RequireRateLimiting("login");
 
-        // A signed-in staff member changes their own password.
+        // A signed-in staff member changes their own password. That ends their other sign-ins
+        // (other phones, a lost tablet), so this screen gets a fresh token to carry on with.
         g.MapPost("/auth/change-password", async (ChangePasswordRequest body, ClaimsPrincipal user, AuthService svc) =>
         {
-            var username = user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-                ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-            await svc.ChangePassword(username, body);
-            return Results.NoContent();
-        }).RequireAuthorization(Policies.StaffAny);
+            var staffId = int.TryParse(user.FindFirst(QrDine.Application.Common.AppClaims.StaffId)?.Value, out var id) ? id : 0;
+            return Results.Ok(new { token = await svc.ChangePassword(staffId, body) });
+        }).RequireAuthorization(Policies.StaffAny).RequireRateLimiting("login");
 
         // Guest scans a table → gets a short-lived token scoped to that table.
         g.MapPost("/tables/{code}/session", async (string code, AuthService svc)

@@ -80,8 +80,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 // configurable via the "RateLimits" config section (see appsettings.json); the values
 // below are the fallbacks. Each named policy is applied to its endpoints with
 // .RequireRateLimiting(name). Rejections return 429 with a friendly problem+json body.
-string ClientKey(HttpContext ctx) =>
-    ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+// A home or phone network gets a whole /64 block of IPv6 addresses, so the block counts as one
+// visitor. Otherwise a guesser could switch address on every try and never hit a limit.
+string ClientKey(HttpContext ctx)
+{
+    var ip = ctx.Connection.RemoteIpAddress;
+    if (ip is null) return "unknown";
+    if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+    if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) return ip.ToString();
+    var bytes = ip.GetAddressBytes();
+    Array.Clear(bytes, 8, 8);
+    return new System.Net.IPAddress(bytes) + "/64";
+}
 
 FixedWindowRateLimiterOptions Window(int permit, int seconds) =>
     new() { PermitLimit = permit, Window = TimeSpan.FromSeconds(seconds), QueueLimit = 0 };
@@ -165,6 +175,9 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAsync(db, hasher, padminUser, padminPass);
 }
 
+// Browser protections on every answer, the app's own files included (see SecurityHeadersMiddleware).
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 // Serve uploaded menu photos from wwwroot/uploads.
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads"));
 app.UseStaticFiles();
@@ -199,7 +212,8 @@ floor.MapOrders();
 floor.MapStaff();
 floor.MapBilling();
 
-app.MapHub<OrderHub>("/hub/orders");
+// A live connection ends when its sign-in runs out; the app then reconnects with a fresh one.
+app.MapHub<OrderHub>("/hub/orders", o => o.CloseOnAuthenticationExpiration = true);
 app.MapHealthChecks("/health");
 
 // SPA: everything that isn't an API/hub route serves the built React app.

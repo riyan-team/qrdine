@@ -33,7 +33,7 @@ public class StaffInputValidator : AbstractValidator<StaffInput>
             .MaximumLength(60).WithMessage("Name must be 60 characters or fewer.");
         RuleFor(x => x.Role).NotEmpty().WithMessage("Choose a role.");
         RuleFor(x => x.Password).NotEmpty().WithMessage("Enter a password.")
-            .MinimumLength(4).WithMessage("Password must be at least 4 characters.")
+            .MinimumLength(6).WithMessage("Password must be at least 6 characters.")
             .MaximumLength(200).WithMessage("Password is too long.");
     }
 }
@@ -50,7 +50,7 @@ public class StaffUpdateInputValidator : AbstractValidator<StaffUpdateInput>
 public class ResetPasswordInputValidator : AbstractValidator<ResetPasswordInput>
 {
     public ResetPasswordInputValidator() => RuleFor(x => x.Password).NotEmpty().WithMessage("Enter a new password.")
-        .MinimumLength(4).WithMessage("Password must be at least 4 characters.").MaximumLength(200).WithMessage("Password is too long.");
+        .MinimumLength(6).WithMessage("Password must be at least 6 characters.").MaximumLength(200).WithMessage("Password is too long.");
 }
 
 public class OnboardRequestValidator : AbstractValidator<OnboardRequest>

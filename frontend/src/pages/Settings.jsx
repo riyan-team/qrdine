@@ -80,7 +80,12 @@ function AccountSettings() {
   const staff = auth.getStaff()
   const save = async () => {
     setErr(''); setMsg(''); setBusy(true)
-    try { await api.changePassword(cur, nw); setMsg('Password updated.'); setCur(''); setNw(''); setTimeout(() => setMsg(''), 2000) }
+    try {
+      // A new password signs out every other device; this one carries on with the fresh pass.
+      const res = await api.changePassword(cur, nw)
+      if (res?.token) auth.setStaff({ ...auth.getStaff(), token: res.token })
+      setMsg('Password updated.'); setCur(''); setNw(''); setTimeout(() => setMsg(''), 2000)
+    }
     catch (e) { setErr(e.message) }
     setBusy(false)
   }
@@ -624,7 +629,7 @@ function Staff() {
     } catch (e) { setErr(e.message) }
   }
   const resetPw = async (s) => {
-    const pw = await ui.prompt({ title: `New password for ${s.username}`, placeholder: 'New password', confirmText: 'Update', required: true })
+    const pw = await ui.prompt({ title: `New password for ${s.username}`, placeholder: 'New password (6+ characters)', confirmText: 'Update', required: true })
     if (pw) {
       try { await api.resetStaffPassword(s.id, pw); toast.success('Password updated.') }
       catch (e) { toast.error(friendlyError(e)) }
@@ -665,7 +670,7 @@ function Staff() {
       </div>
       <div className="row" style={{ gap: 8, marginBottom: 6 }}>
         <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
-        <PasswordInput placeholder="Password" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
+        <PasswordInput placeholder="Password (6+ characters)" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
       </div>
       {fbrOn && (
         <div className="row" style={{ gap: 8, marginBottom: 6 }}>

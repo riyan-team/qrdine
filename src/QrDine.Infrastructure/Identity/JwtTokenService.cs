@@ -24,6 +24,9 @@ public class JwtTokenService : ITokenService
             new(AppClaims.TokenType, AppClaims.TypeStaff),
             new(AppClaims.Slug, slug),
             new(AppClaims.RestaurantId, staff.RestaurantId.ToString()),
+            // Checked on every request (StaffSessions): a removed account or a new password ends this token.
+            new(AppClaims.StaffId, staff.Id.ToString()),
+            new(AppClaims.Stamp, Application.Auth.StaffSessions.StampOf(staff.PasswordHash)),
         };
         foreach (var p in permissions.Distinct())
             claims.Add(new Claim(AppClaims.Permission, p));
@@ -38,6 +41,8 @@ public class JwtTokenService : ITokenService
             new(AppClaims.Slug, slug),
             new(AppClaims.RestaurantId, restaurantId.ToString()),
             new(AppClaims.TableCode, tableCode),
+            // Lets a guest re-open their own finished orders, but not earlier guests' at that table.
+            new(AppClaims.IssuedAt, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
         };
         return Build(claims, _opt.GuestHours);
     }
@@ -49,6 +54,8 @@ public class JwtTokenService : ITokenService
             new(JwtRegisteredClaimNames.Sub, admin.Username),
             new(ClaimTypes.Name, admin.DisplayName),
             new(AppClaims.TokenType, AppClaims.TypePlatform),
+            new(AppClaims.StaffId, admin.Id.ToString()),
+            new(AppClaims.Stamp, Application.Auth.StaffSessions.StampOf(admin.PasswordHash)),
         };
         return Build(claims, _opt.StaffHours);
     }

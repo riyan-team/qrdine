@@ -36,6 +36,6 @@ public static class OnboardingEndpoints
                         ? await db.Restaurants.FirstOrDefaultAsync(x => x.Slug == norm, ct)
                         : null);
             return r is null ? Results.NotFound() : Results.Ok(new { slug = r.Slug, name = r.Name });
-        });
+        }).RequireRateLimiting("public");   // exact match only, and slowed so names can't be tried in bulk
     }
 }

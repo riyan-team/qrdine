@@ -1,3 +1,4 @@
+using QrDine.Application.Auth;
 using QrDine.Application.Common;
 using QrDine.Infrastructure.MultiTenancy;
 using QrDine.Infrastructure.Persistence;
@@ -10,14 +11,23 @@ namespace QrDine.Api.Middleware;
 /// scoped CurrentTenant, so the DbContext's global query filter auto-scopes all
 /// data. In production this would prefer a subdomain or a JWT claim; the slug in
 /// the path is the simplest form and keeps guest URLs shareable.
+///
+/// It also decides whether a sign-in still counts. A token alone isn't trusted for its 12 hours:
+/// a staff token must still match a staff member with the same password, and it carries that
+/// person's role and permissions as they are now. An operator token must still match the operator.
 /// </summary>
 public class TenantResolutionMiddleware
 {
     private readonly RequestDelegate _next;
     public TenantResolutionMiddleware(RequestDelegate next) => _next = next;
 
-    public async Task Invoke(HttpContext ctx, CurrentTenant tenant, AppDbContext db, IConfiguration config)
+    private const string Ended = "Your sign-in has ended. Please sign in again.";
+
+    public async Task Invoke(HttpContext ctx, CurrentTenant tenant, AppDbContext db, IConfiguration config,
+        StaffSessions sessions, Application.Platform.PlatformService platform)
     {
+        var signedIn = ctx.User.Identity?.IsAuthenticated == true;
+        var type = signedIn ? ctx.User.FindFirst(AppClaims.TokenType)?.Value : null;
         var slug = ExtractSlug(ctx.Request.Path);
         if (slug is not null)
         {
@@ -25,8 +35,14 @@ public class TenantResolutionMiddleware
             var r = await db.Restaurants.AsNoTracking().FirstOrDefaultAsync(x => x.Slug == slug);
             if (r is null)
             {
-                ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-                await ctx.Response.WriteAsJsonAsync(new { title = "Unknown restaurant", status = 404 });
+                // A saved sign-in for a restaurant that has since been deleted: end it, so the
+                // screen goes to sign-in instead of an empty app.
+                if (type is AppClaims.TypeStaff or AppClaims.TypeGuest && Access.IsFor(ctx.User, slug))
+                {
+                    await Write(ctx, StatusCodes.Status401Unauthorized, new { title = Ended, status = 401 });
+                    return;
+                }
+                await Write(ctx, StatusCodes.Status404NotFound, new { title = "Unknown restaurant", status = 404 });
                 return;
             }
             tenant.Set(r.Id, r.Slug);
@@ -37,24 +53,53 @@ public class TenantResolutionMiddleware
             var blocked = RestaurantAccess.Blocked(r, config);
             if (blocked is not null)
             {
-                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await ctx.Response.WriteAsJsonAsync(blocked);
+                await Write(ctx, StatusCodes.Status403Forbidden, blocked);
                 return;
             }
 
-            // A token issued for one restaurant must not be used on another's routes.
-            if (ctx.User.Identity?.IsAuthenticated == true)
+            if (signedIn)
             {
+                // A token issued for one restaurant must not be used on another's routes.
                 var tokenSlug = ctx.User.FindFirst(AppClaims.Slug)?.Value;
                 if (tokenSlug is not null && !string.Equals(tokenSlug, slug, StringComparison.OrdinalIgnoreCase))
                 {
-                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await ctx.Response.WriteAsJsonAsync(new { title = "Token does not belong to this restaurant", status = 403 });
+                    await Write(ctx, StatusCodes.Status403Forbidden, new { title = "Token does not belong to this restaurant", status = 403 });
                     return;
+                }
+                // Same address, different restaurant: one was deleted and a new one took its name.
+                var tokenRid = ctx.User.FindFirst(AppClaims.RestaurantId)?.Value;
+                if (tokenRid is not null && tokenRid != r.Id.ToString())
+                {
+                    await Write(ctx, StatusCodes.Status401Unauthorized, new { title = Ended, status = 401 });
+                    return;
+                }
+
+                if (type == AppClaims.TypeStaff)
+                {
+                    var now = await sessions.Check(ctx.User, ctx.RequestAborted);
+                    if (now is null)
+                    {
+                        await Write(ctx, StatusCodes.Status401Unauthorized, new { title = Ended, status = 401 });
+                        return;
+                    }
+                    ctx.User = StaffSessions.WithCurrentAccess(ctx.User, now);
                 }
             }
         }
+        else if (type == AppClaims.TypePlatform && ctx.Request.Path.StartsWithSegments("/api/platform")
+                 && !ctx.Request.Path.StartsWithSegments("/api/platform/login")
+                 && !await platform.StillSignedIn(ctx.User, ctx.RequestAborted))
+        {
+            await Write(ctx, StatusCodes.Status401Unauthorized, new { title = Ended, status = 401 });
+            return;
+        }
         await _next(ctx);
+    }
+
+    private static Task Write(HttpContext ctx, int status, object body)
+    {
+        ctx.Response.StatusCode = status;
+        return ctx.Response.WriteAsJsonAsync(body);
     }
 
     // Matches /api/r/{slug}/...  → returns {slug}

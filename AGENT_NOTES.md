@@ -125,7 +125,7 @@ Then in the browser (hard-refresh): log in → owner sees **Settings → Role pe
 with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take order** tab.
 
 ## Credentials
-- **Platform operator** (`/platform/login`): `grep '^PlatformAdmin__' /etc/qrdine/qrdine.env` on Hostworld
+- **Platform operator** (`/platform/login`): `grep '^PlatformAdmin__' /etc/qrdine/qrdine.env` on Hostworld. Written to the database on every start, so edit the file and restart to change it.
 - **Restaurant owner**: whatever was set at **sign-up** (hashed; not recoverable from DB).
   No demo accounts are seeded in production.
 - **Local dev test accounts** (SQLite only, NOT on the server): owner/`owner123`,
@@ -138,6 +138,16 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-09** — **Sign-in and access checks tightened** (no migration; every existing pass stops working once):
+  - Found: anyone with an order number could read the order, and anyone could list a table's live orders. The live feed let anyone listen to a whole restaurant's orders. A reset password, removed staff member or role change didn't end an existing pass. Passwords could be guessed without limit by changing address. The print bridge was handed a long-lived pass.
+  - Staff and platform passes carry `stf` and `stm` (a stamp of the password hash). `TenantResolutionMiddleware` checks them against the database on every request (`Auth/StaffSessions.cs`) and uses the current role and permissions, not the ones in the pass.
+  - Guest passes carry `iat` and belong to one table (`Auth/Access.cs`). Reading another table's order answers like a missing one. `GET /tables` needs staff.
+  - `OrderHub` is `[Authorize]`, takes the restaurant from the pass, and checks each feed it's asked to join. It closes when the pass runs out.
+  - `LoginGuard`: 10 wrong passwords in 15 minutes rest that account for 15 minutes (staff and platform; in memory, one process). Staff passwords are 6+ characters. Changing your own password returns a new pass.
+  - `SecurityHeadersMiddleware` adds CSP, frame denial, HSTS and the rest. Rate limits count IPv6 per /64.
+  - The platform operator account is synced from the env file on every start (`DbSeeder`). `/admin` in the browser goes to sign-in, or to your own home if you're signed in. The browser checks a saved pass once before showing staff screens.
+  - The print bridge signs in as a staff account (`QRDINE_PASSWORD` or a hidden prompt) and signs in again before the pass ends.
+  - 18 new tests (`SecurityTests`). The whole-day check now also tries reading orders without a pass and with another table's pass.
 - **2026-11-09** — **Photo reading copes with Google being busy.** The owner's first key setup hit Gemini 503 "high demand" on every try. `GeminiMenuExtractor` now retries a busy first model once, then tries `Gemini:FallbackModels` (default `gemini-flash-lite-latest`) within a 90 s budget, and stops at once on a refused key or unusable photo. `qrdine-set-gemini.sh` checks the key via `models.list`, tests up to four models, and saves a valid key even when all of them are busy. 10 new tests (`GeminiMenuExtractorTests`).
 - **2026-11-09** — **One change at a time per restaurant** (migration `OneOpenSeatingOneBill`, adds two unique indexes):
   - A whole-day test on real Postgres with requests sent at the same moment found: two cashiers settling one table made 4 bills, a double approve took stock twice, orders from ten phones at once landed on a seating nobody billed, part payments could pass the bill, and two tables moved onto one lost a bill.

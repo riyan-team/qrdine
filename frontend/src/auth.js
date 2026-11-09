@@ -5,11 +5,26 @@ import { parseError } from './errors'
 
 const STAFF_KEY = 'qrdine.staff'
 
+// When a token runs out, from its own payload (no network). A token we can't read counts as run out.
+export function expiresAt(token) {
+  try {
+    const part = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return (JSON.parse(atob(part)).exp || 0) * 1000
+  } catch { return 0 }
+}
+// Still good for at least another minute.
+export const fresh = (token) => !!token && expiresAt(token) > Date.now() + 60_000
+
 export const auth = {
   getStaff() { try { return JSON.parse(localStorage.getItem(STAFF_KEY) || 'null') } catch { return null } },
   setStaff(s) { localStorage.setItem(STAFF_KEY, JSON.stringify(s)) },
   clearStaff() { localStorage.removeItem(STAFF_KEY) },
-  get staffToken() { return this.getStaff()?.token || null },
+  // A sign-in that has run out is no sign-in: the screens go to the sign-in page, not an empty app.
+  get staffToken() {
+    const t = this.getStaff()?.token || null
+    if (t && expiresAt(t) <= Date.now()) { this.clearStaff(); return null }
+    return t
+  },
   staffSlug() { return this.getStaff()?.slug || '' },
   role() { return this.getStaff()?.role || null },
   perms() { return this.getStaff()?.permissions || [] },
@@ -64,37 +79,46 @@ export const auth = {
   getTable(slug) {
     try { return sessionStorage.getItem(`qrdine.table.${slug}`) || '' } catch { return '' }
   },
+  // A guest's table pass (6 hours). A pass that has run out is replaced, so a phone left on the
+  // menu all evening keeps working.
   async guestToken(slug, tableCode) {
     const code = tableCode || this.getTable(slug)
     if (!code) {
-      const cached = Object.keys(this._guestTokens).find(k => k.startsWith(`${slug}:`))
-      if (cached && this._guestTokens[cached]) return this._guestTokens[cached]
+      const cached = Object.keys(this._guestTokens).find(k => k.startsWith(`${slug}:`) && fresh(this._guestTokens[k]))
+      if (cached) return this._guestTokens[cached]
       try {
         const stored = sessionStorage.getItem(`qrdine.guestToken.${slug}`)
-        if (stored) return stored
+        if (fresh(stored)) return stored
       } catch {}
       return ''
     }
     this.rememberTable(slug, code)
     const key = `${slug}:${code}`
-    if (this._guestTokens[key]) return this._guestTokens[key]
+    if (fresh(this._guestTokens[key])) return this._guestTokens[key]
     try {
       const stored = sessionStorage.getItem(`qrdine.guestToken.${key}`)
-      if (stored) {
+      if (fresh(stored)) {
         this._guestTokens[key] = stored
         return stored
       }
     } catch {}
-    const res = await fetch(`/api/r/${slug}/tables/${code}/session`, { method: 'POST' })
-    if (!res.ok) throw new Error('Could not start table session')
-    const { token } = await res.json()
-    this._guestTokens[key] = token
-    try {
-      sessionStorage.setItem(`qrdine.guestToken.${slug}`, token)
-      sessionStorage.setItem(`qrdine.guestToken.${key}`, token)
-    } catch {}
-    return token
+    // The menu and the live feed ask at the same moment: one request serves both.
+    if (!this._pending[key]) {
+      this._pending[key] = (async () => {
+        const res = await fetch(`/api/r/${slug}/tables/${code}/session`, { method: 'POST' })
+        if (!res.ok) throw new Error('Could not start table session')
+        const { token } = await res.json()
+        this._guestTokens[key] = token
+        try {
+          sessionStorage.setItem(`qrdine.guestToken.${slug}`, token)
+          sessionStorage.setItem(`qrdine.guestToken.${key}`, token)
+        } catch {}
+        return token
+      })().finally(() => { delete this._pending[key] })
+    }
+    return this._pending[key]
   },
+  _pending: {},
 }
 
 export const staffAuth = () => {

@@ -8,6 +8,7 @@ public static class PaymentEndpoints
     public static void MapPayments(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/payments/checkout", async (PaymentRequest body, IPaymentGateway gateway)
-            => Results.Ok(await gateway.CreateCheckout(body)));
+            => Results.Ok(await gateway.CreateCheckout(body)))
+            .RequireRateLimiting("public");
     }
 }

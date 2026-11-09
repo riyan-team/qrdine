@@ -46,6 +46,28 @@ ssh hostworld python3 - < deploy/hostworld/e2e/e2e.py
 ssh hostworld bash -s < deploy/hostworld/e2e/e2e-down.sh
 ```
 
+## Signing in, and how access is checked
+
+| Who | Address | Signs in with |
+|---|---|---|
+| Restaurant owner and staff | `https://qrdine.mystay.live/login` (typing `/admin` leads here) | mobile number or username, and password |
+| Platform operator | `https://qrdine.mystay.live/platform/login` | `PlatformAdmin__Username` and `PlatformAdmin__Password` in `/etc/qrdine/qrdine.env` |
+| Print provider console | `https://print.mystay.live/admin/` | `ADMIN_KEY` in `/etc/qrprint/qrprint.env` |
+| Print shop dashboard | `https://print.mystay.live/dashboard/` | Shop ID and the password set in the provider console |
+
+The platform operator account is written to the database from the env file on every start, so changing it there and running `systemctl restart qrdine` changes the sign-in. To read it: `ssh hostworld "grep ^PlatformAdmin__ /etc/qrdine/qrdine.env"`.
+
+QrDine:
+
+- A staff pass is checked against the database on every request (`TenantResolutionMiddleware`, `StaffSessions`). A password reset, a removed staff member or a new role takes effect at once. Changing your own password gives you a new pass and ends the others.
+- A guest pass belongs to one table. It reads only that table's orders and orders only there. Another table's order looks the same as a missing one (`Access`).
+- The live feed (`OrderHub`) needs a pass: a staff member of that restaurant for the kitchen and printer feeds, a guest of that table for the table feed.
+- 10 wrong passwords in 15 minutes rest that account for 15 minutes, whichever address they come from (`LoginGuard`). The count is in memory, like `RestaurantGate`, so it relies on one process. A restart clears it.
+- Every response carries a content security policy, frame denial, HSTS and nosniff (`SecurityHeadersMiddleware`).
+- The print bridge (`tools/QrDine.PrintBridge`) signs in as a staff account. It is no longer handed a pass.
+
+Print: the same 10-in-15-minutes rest for each shop's password and for the admin key (counted per network, IPv6 per /64). Logging out ends that session everywhere. In production the app won't start with an `ADMIN_KEY`, `AGENT_KEY` or `SESSION_SECRET` shorter than 32 characters.
+
 ## Reading menus from a photo
 
 Uses Google's Gemini API. The key lives only in `/etc/qrdine/qrdine.env`. To set or change it, get a key at https://aistudio.google.com/apikey, then run this from the PC:

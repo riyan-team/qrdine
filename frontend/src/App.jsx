@@ -47,11 +47,38 @@ const Expenses = screen(() => import('./pages/Expenses.jsx'))
 const Payroll = screen(() => import('./pages/Payroll.jsx'))
 const DayClose = screen(() => import('./pages/DayClose.jsx'))
 
+// The server has the last word on a saved sign-in: a removed account, a new password or a deleted
+// restaurant all end it. Ask once per sign-in per page load, before any staff screen shows, so an
+// old sign-in never opens an empty app. No answer at all (offline) lets the screen open: the
+// server still checks every request.
+const sessionVerdicts = new Map()   // token → 'ok' | 'ended'
+const sessionChecks = new Map()     // token → Promise of the verdict
+function checkSession(token, slug) {
+  if (!sessionChecks.has(token)) {
+    sessionChecks.set(token, window.fetch(`/api/r/${encodeURIComponent(slug)}/staff/plan`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.status === 401 || r.status === 404 ? 'ended' : 'ok'), () => 'ok')
+      .then((v) => { sessionVerdicts.set(token, v); return v }))
+  }
+  return sessionChecks.get(token)
+}
+
 // Guards a staff-only route: no token sends them to /login, remembering where they were going.
 // A screen they aren't allowed sends them to their own home rather than a page of errors.
 function RequireStaff({ children, perm, anyOf, feature, anyFeature }) {
   const loc = useLocation()
-  if (!auth.staffToken) return <Navigate to="/login" state={{ from: loc.pathname }} replace />
+  const token = auth.staffToken
+  const [verdict, setVerdict] = useState(() => (token ? sessionVerdicts.get(token) ?? null : null))
+  useEffect(() => {
+    if (!token) return undefined
+    let live = true
+    checkSession(token, auth.staffSlug()).then((v) => {
+      if (v === 'ended' && auth.staffToken === token) auth.clearStaff()
+      if (live) setVerdict(v)
+    })
+    return () => { live = false }
+  }, [token])
+  if (!token || verdict === 'ended') return <Navigate to="/login" state={{ from: loc.pathname }} replace />
+  if (verdict === null) return null
   const allowed = (!perm || auth.can(perm)) && (!anyOf || anyOf.some((p) => auth.can(p))) && (!feature || auth.hasFeature(feature)) && (!anyFeature || anyFeature.some((f) => auth.hasFeature(f)))
   if (!allowed) return <Navigate to={auth.home()} replace />
   return children
@@ -277,6 +304,9 @@ export default function App() {
         <Route path="/cashier" element={page(<Cashier />, { anyOf: ['orders.approve', 'orders.pay'], anyFeature: ['ordering', 'billing'] })} />
         <Route path="/kitchen" element={page(<Kitchen />, { perm: 'orders.cook', feature: 'kitchen' })} />
         <Route path="/waiter" element={page(<Waiter />, { perm: 'orders.serve', feature: 'waiter' })} />
+        {/* Typing /admin: signed in goes to your own first screen, otherwise to sign-in. */}
+        <Route path="/admin" element={<Navigate to={auth.staffToken ? auth.home() : '/login'} replace />} />
+        <Route path="/admin/*" element={<Navigate to={auth.staffToken ? auth.home() : '/login'} replace />} />
         <Route path="*" element={<Navigate to={auth.staffToken ? auth.home() : '/'} replace />} />
       </Routes>
       </Suspense>

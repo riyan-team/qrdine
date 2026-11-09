@@ -196,8 +196,13 @@ def dine_in():
     same('new order waits for approval', o['status'], 'Placed')
     step('guest token can\'t order for another table', 'POST', r('/orders'),
          {'tableCode': 'T2', 'items': [line(A)], 'note': None}, g, expect=400)
-    live = step('guest sees own table', 'GET', r('/tables/T1/orders'))
+    live = step('guest sees own table', 'GET', r('/tables/T1/orders'), token=g)
     same('table shows one order', len(live), 1)
+    step("a table's orders need a pass", 'GET', r('/tables/T1/orders'), expect=401)
+    step("another table's pass can't list them", 'GET', r('/tables/T1/orders'), token=guest('T2'), expect=403)
+    step('an order needs a pass', 'GET', r(f"/orders/{o['id']}"), expect=401)
+    step("another table's pass can't read it", 'GET', r(f"/orders/{o['id']}"), token=guest('T2'), expect=400)
+    step('own pass reads it', 'GET', r(f"/orders/{o['id']}"), token=g)
     queue = step('staff queue', 'GET', r('/staff/orders'), token=T())
     same('order is in the queue', any(x['id'] == o['id'] for x in queue), True)
     same('status after serve', walk(o['id'])['status'], 'Served')
@@ -257,7 +262,7 @@ def floor():
     same('merged bill', step('T4 bill', 'GET', r('/tables/T4/bill'), token=T())['total'], 1300)
     same('T5 empty', step('T5 bill', 'GET', r('/tables/T5/bill'), token=T())['hasOpenOrders'], False)
     for x in (o['id'], o2['id']):
-        cur = step('read', 'GET', r(f'/orders/{x}'))
+        cur = step('read', 'GET', r(f'/orders/{x}'), token=T())
         if cur['status'] == 'Placed':
             step('approve', 'POST', r(f'/orders/{x}/approve'), token=T())
         step('cook', 'POST', r(f'/orders/{x}/cook'), {'etaMinutes': 10}, T())
@@ -266,7 +271,7 @@ def floor():
     same('merged invoice', settle('T4', tendered=1300)['total'], 1300)
     o3 = staff_order('T6', line(A))
     step('cancel', 'POST', r(f"/orders/{o3['id']}/cancel"), {'reason': 'Guest left'}, T())
-    same('cancelled', step('read', 'GET', r(f"/orders/{o3['id']}"))['status'], 'Cancelled')
+    same('cancelled', step('read', 'GET', r(f"/orders/{o3['id']}"), token=T())['status'], 'Cancelled')
     same('table clear', step('T6 bill', 'GET', r('/tables/T6/bill'), token=T())['hasOpenOrders'], False)
 
 
@@ -472,7 +477,7 @@ def bulk():
     step('bulk price', 'POST', r('/admin/menu/bulk-price'), {'percent': 10, 'roundTo': 10, 'categoryId': state['cat']}, T())
     m = step('menu', 'GET', r('/admin/menu'), token=T())
     same('new price', next(i for i in flat_items(m) if i['id'] == A)['price'], 550)
-    same('open order keeps its price', step('read', 'GET', r(f"/orders/{o['id']}"))['total'], 500)
+    same('open order keeps its price', step('read', 'GET', r(f"/orders/{o['id']}"), token=T())['total'], 500)
     walk(o['id'])
     same('bill keeps it too', settle('T9', tendered=500)['total'], 500)
     step('prices back', 'POST', r('/admin/menu/bulk-price'), {'percent': -9.0909, 'roundTo': 10, 'categoryId': state['cat']}, T())
@@ -578,7 +583,7 @@ def races():
     res = run_all([(lambda: raw_req('POST', r(f"/orders/{o2['id']}/approve"), token=T())),
                    (lambda: raw_req('POST', r(f"/orders/{o2['id']}/cancel"), {'reason': 'Race'}, T()))])
     same('approve vs cancel: no server errors', [s for s, _ in res if s >= 500], [])
-    final = step('read', 'GET', r(f"/orders/{o2['id']}"))['status']
+    final = step('read', 'GET', r(f"/orders/{o2['id']}"), token=T())['status']
     expected = before if final == 'Cancelled' else before - 1
     same(f'stock matches final status ({final})', stock_qty(sid), expected)
 
@@ -599,7 +604,7 @@ def races():
     same('nothing lost in the move', step('T7 bill', 'GET', r('/tables/T7/bill'), token=T())['total'], 600)
     # Tidy up so the day's totals below are simple to read.
     for x in (o['id'], o2['id'], o4['id'], o5['id'], *ids):
-        cur = step('read', 'GET', r(f'/orders/{x}'))
+        cur = step('read', 'GET', r(f'/orders/{x}'), token=T())
         if cur['status'] not in ('Cancelled', 'Paid'):
             step('cancel', 'POST', r(f'/orders/{x}/cancel'), {'reason': 'Tidy up'}, T())
     # A guest orders in the instant the cashier settles. The food must land on a bill either way.
@@ -619,7 +624,7 @@ def races():
     t0 = time.time()
     run_all([(lambda: raw_req('POST', r('/orders'), {'tableCode': 'T10', 'items': [line(B)], 'note': None}, g)) for _ in range(10)])
     print(f'    ten orders at once took {int((time.time() - t0) * 1000)} ms in all (includes 15 s waits whenever the per-address order limit answers 429)')
-    for x in step('T10 orders', 'GET', r('/tables/T10/orders')):
+    for x in step('T10 orders', 'GET', r('/tables/T10/orders'), token=T()):
         step('cancel', 'POST', r(f"/orders/{x['id']}/cancel"), {'reason': 'Tidy up'}, T())
 
 

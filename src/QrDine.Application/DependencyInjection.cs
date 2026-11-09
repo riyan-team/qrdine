@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<Common.FloorTurn>();
         services.AddScoped<OrderService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<StaffSessions>();
+        services.AddSingleton<LoginGuard>();
         services.AddScoped<PermissionService>();
         services.AddScoped<BillingService>();
         services.AddScoped<FiscalSyncService>();
