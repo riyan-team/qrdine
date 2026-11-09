@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -9,8 +10,14 @@ namespace QrDine.Infrastructure.Menu;
 
 /// <summary>
 /// Extracts a menu from a photo using Google's Gemini API (free tier). Configure
-/// with Gemini:ApiKey (env Gemini__ApiKey) + optional Gemini:Model. No key ⇒ a
-/// friendly error so the CSV import still works without any setup.
+/// with Gemini:ApiKey (env Gemini__ApiKey), optional Gemini:Model and optional
+/// Gemini:FallbackModels (comma-separated). No key ⇒ a friendly error so the CSV
+/// import still works without any setup.
+///
+/// Google's models are often briefly overloaded (503 "high demand") or rate-limited (429).
+/// So a busy answer is retried once on the first model, then the next model is tried, all
+/// within a time budget that stays under Cloudflare's 100-second limit. A refused key or a
+/// photo Google can't use stops at once, because another model wouldn't change that.
 ///
 /// Notes for reliability: we ask for JSON via responseMimeType and describe the exact
 /// shape in the prompt instead of sending a rigid responseSchema (the schema form is
@@ -20,9 +27,17 @@ namespace QrDine.Infrastructure.Menu;
 /// </summary>
 public class GeminiMenuExtractor : IMenuVisionExtractor
 {
+    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan PerTry = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan ShortestTry = TimeSpan.FromSeconds(8);
+
+    private const string NotWorking = "Reading photos isn't working right now. Please tell Dine In, and use the spreadsheet import for now.";
+    private const string Busy = "Google's photo reading is very busy right now. Please try again in a few minutes, or use the spreadsheet import.";
+
     private readonly HttpClient _http;
     private readonly string? _apiKey;
-    private readonly string _model;
+    private readonly IReadOnlyList<string> _models;
+    private readonly TimeSpan _retryDelay;
     private readonly ILogger<GeminiMenuExtractor> _log;
 
     public GeminiMenuExtractor(HttpClient http, IConfiguration config, ILogger<GeminiMenuExtractor> log)
@@ -30,11 +45,19 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
         _http = http;
         _log = log;
         _apiKey = (config["Gemini:ApiKey"] ?? "").Trim();
-        // Google retires dated models often. This name follows whichever Flash model is current.
-        _model = (config["Gemini:Model"] ?? "gemini-flash-latest").Trim();
+        // Google retires dated models often. These names follow whichever Flash models are current.
+        var primary = (config["Gemini:Model"] ?? "").Trim();
+        if (primary.Length == 0) primary = "gemini-flash-latest";
+        var fallbacks = (config["Gemini:FallbackModels"] ?? "gemini-flash-lite-latest")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _models = new[] { primary }.Concat(fallbacks).Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToList();
+        _retryDelay = TimeSpan.FromMilliseconds(int.TryParse(config["Gemini:RetryDelayMs"], out var ms) ? Math.Max(0, ms) : 2000);
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+
+    private enum Outcome { Ok, Busy, NoSuchModel, KeyProblem, BadRequest }
+    private sealed record Attempt(Outcome Outcome, int Status, string Body);
 
     public async Task<MenuImportPreview> Extract(byte[] image, string mimeType, CancellationToken ct = default)
     {
@@ -69,38 +92,87 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
             },
             generationConfig = new { temperature = 0.1, responseMimeType = "application/json", maxOutputTokens = 32768 },
         };
+        var json = JsonSerializer.Serialize(payload);
 
+        var clock = Stopwatch.StartNew();
+        var wasBusy = false;
+        for (var i = 0; i < _models.Count; i++)
+        {
+            var model = _models[i];
+            var tries = i == 0 ? 2 : 1;   // a busy first model gets one more go before moving on
+            for (var t = 0; t < tries; t++)
+            {
+                if (t > 0) await Task.Delay(_retryDelay, ct);
+                var left = Budget - clock.Elapsed;
+                if (left < ShortestTry) throw new DomainException(wasBusy ? Busy : NotWorking);
+
+                var attempt = await Call(model, json, left < PerTry ? left : PerTry, ct);
+                switch (attempt.Outcome)
+                {
+                    case Outcome.Ok:
+                        if (i > 0 || t > 0) _log.LogInformation("Gemini menu extract: read by {Model} after {Ms} ms", model, clock.ElapsedMilliseconds);
+                        return Parse(attempt.Body);
+                    case Outcome.KeyProblem:
+                        throw new DomainException(NotWorking);
+                    case Outcome.BadRequest:
+                        throw new DomainException(FriendlyFor(attempt.Status));
+                    case Outcome.Busy:
+                        wasBusy = true;
+                        continue;
+                    case Outcome.NoSuchModel:
+                        t = tries;   // no point asking this model again
+                        break;
+                }
+            }
+        }
+        throw new DomainException(wasBusy ? Busy : NotWorking);
+    }
+
+    private async Task<Attempt> Call(string model, string json, TimeSpan limit, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(limit);
         // The key goes in a header, so it can't end up in a log with the address.
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent")
+            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
         };
         request.Headers.Add("x-goog-api-key", _apiKey);
-        HttpResponseMessage resp;
-        try { resp = await _http.SendAsync(request, ct); }
-        catch (Exception ex)
+        try
         {
-            _log.LogWarning(ex, "Gemini menu extract: network error calling model {Model}", _model);
-            throw new DomainException("We couldn't reach the service that reads photos. Try again in a moment, or use the spreadsheet import.");
+            using var resp = await _http.SendAsync(request, timeout.Token);
+            var body = await resp.Content.ReadAsStringAsync(timeout.Token);
+            var status = (int)resp.StatusCode;
+            if (resp.IsSuccessStatusCode) return new Attempt(Outcome.Ok, status, body);
+            _log.LogWarning("Gemini menu extract failed: {Status} model={Model} body={Body}", status, model, Truncate(body, 800));
+            return new Attempt(Classify(status, body), status, body);
         }
-
-        var body = await resp.Content.ReadAsStringAsync(ct);
-        if (!resp.IsSuccessStatusCode)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            _log.LogWarning("Gemini menu extract failed: {Status} model={Model} body={Body}",
-                (int)resp.StatusCode, _model, Truncate(body, 800));
-            // Gemini reports a bad key as a 400 (INVALID_ARGUMENT) — surface the key hint.
-            var keyProblem = body.Contains("API key not valid", StringComparison.OrdinalIgnoreCase)
-                || body.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase)
-                || body.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase);
-            var modelProblem = body.Contains("is not found", StringComparison.OrdinalIgnoreCase)
-                || body.Contains("NOT_FOUND", StringComparison.OrdinalIgnoreCase);
-            throw new DomainException(
-                keyProblem || modelProblem ? "Reading photos isn't working right now. Please tell Dine In, and use the spreadsheet import for now."
-                : FriendlyFor((int)resp.StatusCode));
+            // A timeout or a dropped connection: treat like a busy model and try the next one.
+            _log.LogWarning(ex, "Gemini menu extract: no answer from model {Model}", model);
+            return new Attempt(Outcome.Busy, 0, "");
         }
+    }
 
+    private static Outcome Classify(int status, string body)
+    {
+        // Gemini reports a bad key as a 400 (INVALID_ARGUMENT), so look at the words too.
+        if (status is 401 or 403
+            || body.Contains("API key not valid", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("API_KEY_INVALID", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase))
+            return Outcome.KeyProblem;
+        if (status == 404 || body.Contains("is not found", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("NOT_FOUND", StringComparison.OrdinalIgnoreCase))
+            return Outcome.NoSuchModel;
+        if (status is 408 or 429 || status >= 500) return Outcome.Busy;
+        return Outcome.BadRequest;
+    }
+
+    private MenuImportPreview Parse(string body)
+    {
         try
         {
             var text = ExtractText(body);
@@ -155,9 +227,6 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
     private static string FriendlyFor(int status) => status switch
     {
         400 => "That photo couldn't be read. Please try a different photo, or use the spreadsheet import.",
-        401 or 403 => "Reading photos isn't working right now. Please tell Dine In, and use the spreadsheet import for now.",
-        429 => "Too many photos are being read right now. Wait a minute and try again, or use the spreadsheet import.",
-        >= 500 => "The service that reads photos is having a problem. Try again shortly, or use the spreadsheet import.",
         _ => "The photo couldn't be read right now. Try a clearer photo, or use the spreadsheet import.",
     };
 

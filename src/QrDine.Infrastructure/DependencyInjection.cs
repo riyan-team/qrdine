@@ -53,9 +53,10 @@ public static class DependencyInjection
             services.AddScoped<IFileStorage, Storage.DbFileStorage>();
 
         // Menu photo import via Gemini (free tier). Works only once Gemini:ApiKey is set;
-        // the CSV import needs nothing.
+        // the CSV import needs nothing. Each try has its own time limit inside the extractor
+        // (retries and fallback models fit in 90 s); this is only the outer guard.
         services.AddHttpClient<Application.Menu.IMenuVisionExtractor, Menu.GeminiMenuExtractor>(
-            c => c.Timeout = TimeSpan.FromSeconds(30));
+            c => c.Timeout = TimeSpan.FromSeconds(100));
 
         // Auth: password hashing + JWT issuing.
         services.Configure<JwtOptions>(config.GetSection("Jwt"));

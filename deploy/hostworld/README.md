@@ -54,7 +54,11 @@ Uses Google's Gemini API. The key lives only in `/etc/qrdine/qrdine.env`. To set
 ssh -t hostworld /usr/local/sbin/qrdine-set-gemini
 ```
 
-It asks for the key without showing it, has Gemini read a small test menu, and saves the key only if that worked. The model defaults to `gemini-flash-latest`, because Google retires dated model names. `qrdine-set-gemini.sh` in this folder is the source; copy it to `/usr/local/sbin/qrdine-set-gemini` if it changes.
+It asks for the key without showing it and checks with Google that the key is valid. Then it has up to four Flash models read a small test menu, starting with `gemini-flash-latest` (Google retires dated model names). It saves `Gemini__Model` (the first model that read the menu) and `Gemini__FallbackModels` (the rest). A refused key changes nothing. If the key is valid but every model is busy (Google's 503 "high demand"), it saves the key anyway, because the app copes with that itself.
+
+In the app (`GeminiMenuExtractor`), a busy or rate-limited answer gets one more try, then moves to the next model, within 90 seconds so Cloudflare's 100-second limit isn't hit. A refused key or an unusable photo stops at once. Photo import isn't in the `floor` route group, so a slow read never holds up orders.
+
+`qrdine-set-gemini.sh` in this folder is the source; copy it to `/usr/local/sbin/qrdine-set-gemini` if it changes. Its `QRDINE_ENV_FILE`, `QRDINE_NO_RESTART` and `QRDINE_RETRY_PAUSE` settings exist only for testing it.
 
 ## What each plan unlocks
 

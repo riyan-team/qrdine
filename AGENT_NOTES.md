@@ -138,6 +138,7 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-09** — **Photo reading copes with Google being busy.** The owner's first key setup hit Gemini 503 "high demand" on every try. `GeminiMenuExtractor` now retries a busy first model once, then tries `Gemini:FallbackModels` (default `gemini-flash-lite-latest`) within a 90 s budget, and stops at once on a refused key or unusable photo. `qrdine-set-gemini.sh` checks the key via `models.list`, tests up to four models, and saves a valid key even when all of them are busy. 10 new tests (`GeminiMenuExtractorTests`).
 - **2026-11-09** — **One change at a time per restaurant** (migration `OneOpenSeatingOneBill`, adds two unique indexes):
   - A whole-day test on real Postgres with requests sent at the same moment found: two cashiers settling one table made 4 bills, a double approve took stock twice, orders from ten phones at once landed on a seating nobody billed, part payments could pass the bill, and two tables moved onto one lost a bill.
   - Fix: `RestaurantGate` / `FloorTurn` (Application/Common) and `FloorGateFilter` (Api/Middleware) make each restaurant's writes take turns. They're applied to the `floor` route group in `Program.cs` (orders, billing, floor, inventory, business, staff, loyalty). GETs are never queued. Settling hands back its turn before FBR filing. The order, table and bill rules themselves are unchanged.
