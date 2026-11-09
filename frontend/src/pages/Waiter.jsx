@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, money, STATUS_LABEL } from '../api'
-import { useStaffOrders } from '../useStaffOrders'
+import { api, money, statusLabel } from '../api'
+import { loadUntilOk, useStaffOrders, useCalls } from '../useStaffOrders'
 import { auth } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
 import {
@@ -8,7 +8,7 @@ import {
   OrderActions, Spinner, catAnchor,
 } from '../ordering.jsx'
 import { OrderHistory } from '../history.jsx'
-import { NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon, ReceiptIcon } from '../icons.jsx'
+import { BellIcon, NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon, ReceiptIcon } from '../icons.jsx'
 
 // Waiter screen. Two jobs:
 //  • Board — get alerted when food is ready, take a table, advance/serve orders.
@@ -16,7 +16,8 @@ import { NoteIcon, PlusIcon, CheckIcon, TableIcon, SearchIcon, ReceiptIcon } fro
 //    on a table's behalf (flows to reception → kitchen like any QR order).
 // "You" is the signed-in staff member — assignments are tied to their real name.
 export default function Waiter() {
-  const orders = useStaffOrders()
+  const { calls, onCall, done } = useCalls()
+  const orders = useStaffOrders(onCall)
   const me = auth.getStaff()?.displayName || 'Waiter'
   const canOrder = auth.can('orders.create')
   const [tab, setTab] = useState('board')   // 'board' | 'order'
@@ -37,15 +38,15 @@ export default function Waiter() {
           const isMyOrder = !o.waiterName || o.waiterName.toLowerCase() === me.toLowerCase()
           if (isMyOrder) {
             playBell()
-            toast.success(`Ready to serve — ${o.tableName} · #${o.id} 🔔`)
+            toast.success(`Ready to serve: ${o.tableName}`)
             setUnreadReady((prev) => new Set([...prev, o.id]))
           } else {
-            toast.info(`Ready to serve — ${o.tableName} · #${o.id} (${o.waiterName})`)
+            toast.info(`Ready to serve: ${o.tableName} (${o.waiterName})`)
           }
         }
         if (o.waiterName === me && b.waiter !== me) {
           playBell()
-          toast.info(`Assigned to you — ${o.tableName} · #${o.id}`)
+          toast.info(`${o.tableName} is yours now`)
         }
       }
     }
@@ -79,6 +80,17 @@ export default function Waiter() {
         </div>
       </div>
 
+      {calls.length > 0 && (
+        <div className="fl-calls" role="status">
+          {calls.map((c) => (
+            <div key={c.id} className={`fl-call${c.kind === 'Bill' ? ' is-bill' : ''}`}>
+              <BellIcon size={15} /> {c.tableName}: {c.kind === 'Bill' ? 'wants the bill' : 'calling a waiter'}
+              <button onClick={() => done(c.id)}>Done</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'history'
         ? <OrderHistory statuses={['', 'Placed', 'Approved', 'Cooking', 'Ready', 'Served', 'Paid', 'Cancelled']} />
         : tab === 'order' && canOrder
@@ -105,10 +117,10 @@ function Board({ orders, me, canOrder, onAddItems, unreadReady, ackReady }) {
                 {unreadReady?.has(o.id) && (
                   <span className="pill s-Ready" style={{ background: 'var(--accent2)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}
                     onClick={() => ackReady?.(o.id)} title="Newly ready! Click to acknowledge">
-                    🔔 New!
+                    New
                   </span>
                 )}
-                <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
+                <span className={'pill s-' + o.status}>{statusLabel(o)}</span>
               </span>
             </div>
             <Lines o={o} />
@@ -128,7 +140,7 @@ function Board({ orders, me, canOrder, onAddItems, unreadReady, ackReady }) {
           <div className="card lift fade-up" key={o.id}>
             <div className="row between">
               <b>{o.tableName} · #{o.id}</b>
-              <span className={'pill s-' + o.status}>{STATUS_LABEL[o.status]}</span>
+              <span className={'pill s-' + o.status}>{statusLabel(o)}</span>
             </div>
             <Lines o={o} />
             <div className="row between" style={{ marginTop: 8, flexWrap: 'wrap', gap: 8 }}>
@@ -182,8 +194,8 @@ function TakeOrder({ orders, initialTable }) {
   const [activeCat, setActiveCat] = useState(null)
   const [bump, setBump] = useState(false)
 
-  useEffect(() => { api.getTables().then(setTables).catch(() => setTables([])) }, [])
-  useEffect(() => { api.getMenu(auth.staffSlug()).then(setData).catch(() => setData({ menu: [] })) }, [])
+  useEffect(() => loadUntilOk(() => api.getTables(), setTables), [])
+  useEffect(() => loadUntilOk(() => api.getMenu(auth.staffSlug()), setData), [])
 
   // Pop the cart badge whenever the item count changes.
   useEffect(() => {
@@ -260,7 +272,7 @@ function TakeOrder({ orders, initialTable }) {
           <div>
             <div className="muted" style={{ fontSize: 13 }}>Ordering for</div>
             <div className="big">{table.name} <span className="muted" style={{ fontSize: 14 }}>· {table.code}</span>
-              {busyTables.has(table.code) && <span className="pill s-Approved" style={{ marginLeft: 8, fontSize: 11 }}>running tab — adds to it</span>}
+              {busyTables.has(table.code) && <span className="pill s-Approved" style={{ marginLeft: 8, fontSize: 11 }}>running, adds to it</span>}
             </div>
           </div>
           <button onClick={() => { setTable(null); cart.clear(); setNote(''); setQuery('') }}>Change table</button>
@@ -306,7 +318,7 @@ function TakeOrder({ orders, initialTable }) {
             onChange={(e) => setNote(e.target.value)} style={{ width: '100%', marginBottom: 8 }} />
           <button className="green" disabled={placing} onClick={submit}
             style={{ width: '100%', fontSize: 16, padding: '12px' }}>
-            {placing ? <><Spinner /> Sending…</> : 'Send to reception →'}
+            {placing ? <><Spinner /> Sending…</> : 'Send to reception'}
           </button>
         </div>
       )}

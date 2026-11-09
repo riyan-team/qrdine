@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, money } from './api'
 import { auth } from './auth'
 import { ui } from './ui.jsx'
@@ -13,8 +13,15 @@ export const needsCustomizing = (it) =>
 
 // Cart state keyed by a line "signature" (item + variant + chosen modifiers), so
 // identical customizations stack and different ones stay separate.
-export function useCart() {
-  const [cart, setCart] = useState({})   // { sig: line }
+export function useCart(storageKey) {
+  const [cart, setCart] = useState(() => {   // { sig: line }
+    if (!storageKey) return {}
+    try { return JSON.parse(sessionStorage.getItem(storageKey) || '{}') } catch { return {} }
+  })
+  useEffect(() => {
+    if (!storageKey) return
+    try { sessionStorage.setItem(storageKey, JSON.stringify(cart)) } catch { /* private mode: cart just won't survive a reload */ }
+  }, [cart, storageKey])
 
   const addToCart = (line) => setCart((c) => {
     const existing = c[line.sig]
@@ -147,7 +154,7 @@ export function OrderActions({ o, size = 'sm', onError }) {
   if (o.status === 'Placed' && can('orders.approve')) action = { fn: () => run(() => api.approve(o.id)), label: <><CheckIcon size={15} /> Approve</>, cls: size === 'lg' ? 'green' : 'ghost' }
   else if (o.status === 'Approved' && can('orders.cook')) action = { fn: cook, label: <><KitchenIcon size={15} /> Start cooking</>, cls: size === 'lg' ? 'primary' : 'ghost' }
   else if (o.status === 'Cooking' && can('orders.cook')) action = { fn: () => run(() => api.ready(o.id)), label: <><BellIcon size={15} /> Mark ready</>, cls: size === 'lg' ? 'primary' : 'ghost' }
-  else if (o.status === 'Ready' && can('orders.serve')) action = { fn: () => run(() => api.serve(o.id)), label: <><CheckIcon size={15} /> Mark served</>, cls: size === 'lg' ? 'green' : 'ghost' }
+  else if (o.status === 'Ready' && can('orders.serve')) action = { fn: () => run(() => api.serve(o.id)), label: <><CheckIcon size={15} /> {o.channel === 'Takeaway' ? 'Hand over' : o.channel === 'Delivery' ? 'Send with rider' : 'Mark served'}</>, cls: size === 'lg' ? 'green' : 'ghost' }
   if (!action) return null
 
   return (
@@ -172,7 +179,8 @@ export function Customizer({ item, onClose, onAdd }) {
     return { ...s, [group.id]: next }
   })
 
-  const base = item.variants?.length ? (item.variants.find((v) => v.id === variantId)?.price ?? 0) : item.price
+  const base = item.variants?.length ? (item.variants.find((v) => v.id === variantId)?.price ?? 0)
+    : (item.dealActive && item.dealPrice != null) ? item.dealPrice : item.price
   const allOpts = (item.modifierGroups || []).flatMap((g) => g.options)
   const chosenIds = Object.values(selected).flat()
   const chosen = allOpts.filter((o) => chosenIds.includes(o.id))

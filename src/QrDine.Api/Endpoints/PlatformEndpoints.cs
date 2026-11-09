@@ -26,6 +26,7 @@ public static class PlatformEndpoints
             => Results.Ok(await svc.RecordPayment(id, body, user.Identity?.Name ?? "operator")));
         g.MapGet("/restaurants/{id:int}/payments", async (int id, PlatformService svc) => Results.Ok(await svc.ListPayments(id)));
         // Permanently delete a restaurant and all its data.
+        g.MapPost("/restaurants/{id:int}/reset-owner-password", async (int id, PlatformService svc) => Results.Ok(await svc.ResetOwnerPassword(id)));
         g.MapDelete("/restaurants/{id:int}", async (int id, PlatformService svc) => { await svc.DeleteRestaurant(id); return Results.NoContent(); });
         // SaaS gate: grant/revoke FBR fiscal integration for a restaurant.
         g.MapPost("/restaurants/{id:int}/fbr", async (int id, SetFbrRequest body, PlatformService svc) => { await svc.SetFbr(id, body.Enabled); return Results.NoContent(); });

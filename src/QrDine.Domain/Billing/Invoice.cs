@@ -17,6 +17,9 @@ public class Invoice : Entity, ITenantOwned
     public string Usin { get; set; } = "";          // unique sale id for FBR (idempotency key)
     public string TableCode { get; set; } = "";
     public string TableName { get; set; } = "";
+    public Ordering.OrderChannel Channel { get; set; } = Ordering.OrderChannel.Dine;
+    public string DeliveryAddress { get; set; } = "";
+    public string RiderName { get; set; } = "";
 
     public decimal Subtotal { get; set; }           // sum of line sale values (tax-exclusive)
     public decimal TaxPercent { get; set; }         // blended display rate = Tax / Subtotal
@@ -207,6 +210,9 @@ public enum FiscalStatus
 /// </summary>
 public class InvoiceLine : Entity
 {
+    /// <summary>The item code on the line that carries a delivery charge rather than a dish.</summary>
+    public const string DeliveryCode = "DELIVERY";
+
     public int InvoiceId { get; set; }
     public string ItemCode { get; set; } = "";      // menu item id (FBR ItemCode)
     public string Name { get; set; } = "";

@@ -39,7 +39,7 @@ export default function OrderDetails() {
       if (o.status === 'Ready' && !bellPlayed.current) {
         bellPlayed.current = true
         playBell()
-        toast.success(`Order #${o.id} is ready! 🔔`)
+        toast.success(`Order #${o.id} is ready!`)
       }
     }
   }, null)
@@ -206,7 +206,7 @@ export default function OrderDetails() {
             {countdown}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
-            {isDue ? 'Due any moment now — putting the finishing touches' : `Promised in about ${order.etaMinutes} minutes`}
+            {isDue ? 'Due any moment now' : `Promised in about ${order.etaMinutes} minutes`}
           </div>
         </div>
       )}
@@ -215,7 +215,7 @@ export default function OrderDetails() {
       {order.status === 'Ready' && (
         <div className="card" style={{ marginBottom: 14, textAlign: 'center', borderColor: 'var(--accent2)', background: 'var(--green-tint)' }}>
           <div style={{ fontSize: 36, color: 'var(--accent2)', marginBottom: 4 }}><CheckIcon size={38} /></div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--accent2)' }}>Order is Ready to Serve! 🔔</div>
+          <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--accent2)' }}>Your order is ready</div>
           <div className="muted" style={{ fontSize: 13.5, marginTop: 4 }}>
             Our staff is bringing your food to your table right now.
           </div>

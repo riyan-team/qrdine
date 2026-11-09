@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, money } from '../api'
+import { Modal } from '../backoffice.jsx'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { WarnIcon, TrashIcon, CloseIcon } from '../icons.jsx'
@@ -12,6 +13,7 @@ export default function Inventory() {
   const [moves, setMoves] = useState([])
   const [ns, setNs] = useState({ name: '', unit: 'kg', quantity: '', lowThreshold: '' })
   const [recipeFor, setRecipeFor] = useState(null)
+  const [wasting, setWasting] = useState(null)
   const [recipesOn, setRecipesOn] = useState(false)   // driven by the stock-tracking setting
   const [err, setErr] = useState('')
 
@@ -33,9 +35,9 @@ export default function Inventory() {
       setNs({ name: '', unit: 'kg', quantity: '', lowThreshold: '' }); load()
     } catch (e) { setErr(e.message) }
   }
-  const restock = async (s) => { const q = await ui.prompt({ title: `Add stock — ${s.name}`, placeholder: s.unit, confirmText: 'Add', required: true }); if (q && Number(q) > 0) { try { await api.restock(s.id, Number(q), 'Manual restock'); load() } catch (e) { toast.error(friendlyError(e)) } } }
-  const adjust = async (s) => { const q = await ui.prompt({ title: `Set count — ${s.name}`, defaultValue: String(s.quantity), placeholder: s.unit, confirmText: 'Set' }); if (q != null && Number(q) >= 0) { try { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } catch (e) { toast.error(friendlyError(e)) } } }
-  const editThreshold = async (s) => { const q = await ui.prompt({ title: `Low-stock alert — ${s.name}`, defaultValue: String(s.lowThreshold), placeholder: s.unit, confirmText: 'Save' }); if (q != null) { try { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) || 0 }); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  const restock = async (s) => { const q = await ui.prompt({ title: `Add stock: ${s.name}`, placeholder: s.unit, confirmText: 'Add', required: true }); if (q && Number(q) > 0) { try { await api.restock(s.id, Number(q), 'Manual restock'); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  const adjust = async (s) => { const q = await ui.prompt({ title: `Set count: ${s.name}`, defaultValue: String(s.quantity), placeholder: s.unit, confirmText: 'Set' }); if (q != null && Number(q) >= 0) { try { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  const editThreshold = async (s) => { const q = await ui.prompt({ title: `Low-stock alert: ${s.name}`, defaultValue: String(s.lowThreshold), placeholder: s.unit, confirmText: 'Save' }); if (q != null) { try { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) || 0 }); load() } catch (e) { toast.error(friendlyError(e)) } } }
   const del = async (s) => { if (await ui.confirm({ title: 'Delete stock item', message: `Delete ${s.name}?`, confirmText: 'Delete', danger: true })) { try { await api.deleteStock(s.id); load() } catch (e) { toast.error(friendlyError(e)) } } }
 
   const lowCount = stock.filter((s) => s.isLow).length
@@ -68,10 +70,11 @@ export default function Inventory() {
               <div key={s.id} className="row between" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
                 <div>
                   <b>{s.name}</b> {s.isLow && <span className="pill s-Placed" style={{ marginLeft: 4 }}>LOW</span>}
-                  <div className="muted" style={{ fontSize: 13 }}>{s.quantity} {s.unit} · alert ≤ {s.lowThreshold}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>{s.quantity} {s.unit} · low at {s.lowThreshold}{s.lastCost > 0 ? ` · last bought at ${money(s.lastCost)}` : ''}</div>
                 </div>
                 <div className="row" style={{ gap: 4 }}>
                   <button className="ghost" onClick={() => restock(s)}>+ Stock</button>
+                  <button className="ghost" onClick={() => setWasting(s)}>Waste</button>
                   <button className="ghost" onClick={() => adjust(s)}>Count</button>
                   <button className="ghost" onClick={() => editThreshold(s)}>Alert</button>
                   <button className="ghost" onClick={() => del(s)}><TrashIcon size={15} /></button>
@@ -101,7 +104,7 @@ export default function Inventory() {
               <div className="muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>{c.name}</div>
               {c.items.map((it) => (
                 <div key={it.id} className="row between" style={{ padding: '5px 0' }}>
-                  <span>{it.emoji} {it.name}</span>
+                  <span>{it.name}</span>
                   <button className="ghost" onClick={() => setRecipeFor(it)}>Edit recipe</button>
                 </div>
               ))}
@@ -124,7 +127,37 @@ export default function Inventory() {
       </div>
 
       {recipeFor && <RecipeEditor item={recipeFor} stock={stock} onClose={() => setRecipeFor(null)} />}
+      {wasting && <WasteForm item={wasting} onClose={() => setWasting(null)} onSaved={() => { setWasting(null); load() }} />}
     </div>
+  )
+}
+
+const WASTE_REASONS = ['Went bad', 'Spilled', 'Burnt', 'Staff meal', 'Expired']
+
+function WasteForm({ item, onClose, onSaved }) {
+  const [qty, setQty] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    setBusy(true); setErr('')
+    try { await api.wasteStock(item.id, Number(qty), reason.trim()); onSaved() }
+    catch (e) { setErr(friendlyError(e)); setBusy(false) }
+  }
+  return (
+    <Modal title={`Record waste: ${item.name}`} sub={`${item.quantity} ${item.unit} in stock. This shows on your stock report.`} onClose={onClose} footer={<>
+      <button onClick={onClose}>Cancel</button>
+      <button className="primary push" disabled={busy || !(Number(qty) > 0) || !reason.trim()} onClick={save}>{busy ? 'Saving…' : 'Record'}</button>
+    </>}>
+      <div className="bo-form">
+        <div className="field is-full"><label className="field-label">How much ({item.unit})</label><input autoFocus type="number" min="0" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
+      </div>
+      <div className="bo-chips" style={{ margin: '12px 0 8px' }}>
+        {WASTE_REASONS.map((r) => <button key={r} className={`bo-chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
+      </div>
+      <input style={{ width: '100%' }} placeholder="Or type a reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+      {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
+    </Modal>
   )
 }
 
@@ -148,7 +181,7 @@ function RecipeEditor({ item, stock, onClose }) {
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal">
-        <div className="row between"><div className="big">{item.name} — recipe</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
+        <div className="row between"><div className="big">{item.name}: recipe</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
         {stock.length === 0 && <div className="muted" style={{ margin: '10px 0' }}>Add stock items first.</div>}
         <div style={{ margin: '10px 0' }}>
           {lines.map((l, i) => (

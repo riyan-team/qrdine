@@ -31,9 +31,10 @@ Roles: **Owner, Manager, Cashier(=Reception), Kitchen, Waiter**. Permissions are
 Permission keys (`src/QrDine.Domain/Identity/Permissions.cs`):
 `orders.create` (take order), `orders.approve`, `orders.cook`, `orders.serve`,
 `orders.pay`, `orders.cancel`, `menu.manage`, `inventory.manage`, `settings.manage`,
-`reports.view`, `invoice.sync`.
+`reports.view`, `invoice.sync`, `expenses.manage`, `suppliers.manage`, `orders.discount`,
+`customers.manage`, `payroll.manage`.
 
-Defaults: Owner/Manager = all; Cashier = create+approve+pay+invoice.sync;
+Defaults: Owner/Manager = all; Cashier = create+approve+pay+invoice.sync+discount+customers;
 Kitchen = cook; Waiter = create+serve.
 
 ## Order lifecycle (one central state machine)
@@ -137,6 +138,16 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-09** — **Dine In: redesign, back office and floor features** (branch `hostworld-production`, migrations `AddSuppliersExpenses`, `AddFloorTicketsKhataPayroll`, both additive):
+  - The user-facing name is **Dine In**. New look in `frontend/src/design/*.css`, CSS-only 3D (`Diorama.jsx`, `motion.js`). Never put a transform on a scroll-snap element, and don't use a forwards animation fill on a container with `position: fixed` children.
+  - **Sign-in** is `POST /api/auth/login`: mobile or username plus password, and the account says which restaurant (`Auth/LoginName.cs`). Sign-up has no address field.
+  - **Guest menu** opens on category cards, with a swipe pager, deals, most ordered and a suggestion before sending.
+  - **Floor:** parcel and delivery tickets (`TicketService`), table shift and merge, guests calling a waiter or the bill (`ServiceRequestService`), item void with a reason, part payments, card and cash tax rates, day closing (`DayCloseService`).
+  - **Back office:** supplier khata and purchases, customer khata with limits, expenses, salaries and attendance, reports by section (`Reports.jsx`), bulk price change.
+  - **Permissions added:** `expenses.manage`, `suppliers.manage`, `orders.discount`, `customers.manage`, `payroll.manage`.
+  - **Plans:** back-office routes are refused on the server when the plan leaves them out (`Auth/PlanGate.cs`). Order, table and bill routes deliberately aren't. `GET /staff/plan` lets a signed-in screen notice a plan change.
+  - **Times:** `UtcDateTimeConverter` marks every API time as UTC, because the database hands them back without a kind. Printed slips, CSVs and FBR use `BusinessDay.ToPkt`, since the server's clock is IST.
+  - **Gemini:** `gemini-2.0-flash` was shut down, so the default is `gemini-flash-latest`. Set the key with `qrdine-set-gemini` (see `deploy/hostworld/README.md`).
 - **2026-11-09** — **Moved to Hostworld; photo shrinking; unpaid restaurants lock**:
   - Item photos and logos shrink in the browser before upload (`frontend/src/imageShrink.js`): photos 1000 px JPEG, logos 512 px keeping transparency. The server's limits and content checks are unchanged.
   - `PlanExpiresAt` is now enforced in `TenantResolutionMiddleware` (`Domain/Restaurants/SubscriptionAccess.cs`): warning 5 days before, 3 grace days after, then 403 with `expired=true` on all `/api/r/{slug}` routes until a payment is recorded. Owners see it through `GET /admin/subscription` and `PlanBanner` in `App.jsx`; guests get a neutral "menu isn't available" screen. Suspended restaurants now get a friendly message too.

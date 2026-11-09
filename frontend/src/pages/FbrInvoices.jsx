@@ -32,7 +32,7 @@ export default function FbrInvoices() {
   return (
     <div className="wrap">
       <div className="h">FBR fiscal invoices</div>
-      <p className="muted">Invoices filed with FBR appear under Synced. Anything FBR hasn't accepted stays in Pending with the reason — fix the cause, then retry.</p>
+      <p className="muted">Invoices filed with FBR appear under Synced. Anything FBR hasn't accepted stays in Pending with the reason. Fix the cause, then retry.</p>
 
       <div className="row" style={{ gap: 8, marginBottom: 12 }}>
         <button className={tab === 'pending' ? 'primary' : 'ghost'} onClick={() => setTab('pending')}>
@@ -68,7 +68,7 @@ export default function FbrInvoices() {
                     : <>
                         <div style={{ color: 'var(--red)', fontSize: 13, maxWidth: 420 }}>{i.fiscalError || '—'}</div>
                         <div className="muted" style={{ fontSize: 12 }}>
-                          {i.fiscalAttempts} attempt(s){i.fiscalLastAttemptAt ? ` · last ${new Date(i.fiscalLastAttemptAt).toLocaleString()}` : ''}
+                          {i.fiscalAttempts} {i.fiscalAttempts === 1 ? 'attempt' : 'attempts'}{i.fiscalLastAttemptAt ? ` · last ${new Date(i.fiscalLastAttemptAt).toLocaleString()}` : ''}
                         </div>
                       </>}
                 </Td>
@@ -81,7 +81,7 @@ export default function FbrInvoices() {
             ))}
             {rows.length === 0 && (
               <tr><td colSpan={6} className="muted" style={{ padding: 16, textAlign: 'center' }}>
-                {tab === 'pending' ? 'Nothing pending — every invoice is filed.' : 'No synced invoices yet.'}
+                {tab === 'pending' ? 'Nothing pending. Every invoice is filed.' : 'No synced invoices yet.'}
               </td></tr>
             )}
           </tbody>

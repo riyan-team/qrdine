@@ -62,6 +62,7 @@ public class OrderService
         var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
         var order = Order.Place(TenantId,
             new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName), req.Note, source);
+        order.Channel = table.Kind;
 
         // A waiter taking the order is the one serving that table — attach them now so
         // it shows on their board and skips auto-assignment later.
@@ -178,6 +179,85 @@ public class OrderService
         if (wasConsumed && await StockEnabled(ct))
             await _inventory.ApplyOrderConsumption(Lines(order), restore: true, ct);
         return dto;
+    }
+
+    /// <summary>
+    /// Takes a dish off a running order and keeps a record of it. If it had already gone to the
+    /// kitchen and wasn't served, its ingredients go back to stock, the same rule as a cancellation.
+    /// </summary>
+    public async Task<OrderDto> VoidItem(int orderId, int itemId, VoidItemRequest req, string by, CancellationToken ct = default)
+    {
+        var reason = (req.Reason ?? "").Trim();
+        if (reason.Length == 0) throw new DomainException("Say why this is being removed.");
+
+        var order = await LoadOrder(orderId, ct);
+        var wasConsumed = order.Status is OrderStatus.Approved or OrderStatus.Cooking or OrderStatus.Ready;
+        var item = order.VoidItem(itemId, req.Qty);
+        var label = item.VariantName is null ? item.Name : $"{item.Name} ({item.VariantName})";
+        _db.OrderVoids.Add(new OrderVoid
+        {
+            BranchId = order.BranchId, OrderId = order.Id, TableName = order.TableName, ItemName = label,
+            Qty = req.Qty, UnitPrice = item.Price, Reason = reason, VoidedBy = by,
+        });
+        await _db.SaveChangesAsync(ct);
+        var dto = await Publish(order, ct);
+        if (wasConsumed && await StockEnabled(ct))
+            await _inventory.ApplyOrderConsumption(new List<(int, int)> { (item.MenuItemId, req.Qty) }, restore: true, ct);
+        return dto;
+    }
+
+    /// <summary>
+    /// Shifts the guests at one table to another. If the other table already has a running bill the
+    /// two join into one, along with anything already paid and any rewards member. Otherwise the
+    /// seating simply moves. Nothing about the orders themselves changes.
+    /// </summary>
+    public async Task<IReadOnlyList<OrderDto>> MoveTable(string fromCode, string toCode, CancellationToken ct = default)
+    {
+        var from = (fromCode ?? "").Trim();
+        var to = (toCode ?? "").Trim();
+        if (string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) throw new DomainException("Choose a different table.");
+
+        var target = await _db.Tables.FirstOrDefaultAsync(t => t.Code == to && t.Kind == OrderChannel.Dine, ct)
+            ?? throw new DomainException("That table doesn't exist.");
+        var source = await _db.Sessions.Where(s => s.TableCode == from && s.IsOpen).OrderByDescending(s => s.OpenedAt).FirstOrDefaultAsync(ct)
+            ?? throw new DomainException("This table has no running bill to move.");
+        if (source.Channel != OrderChannel.Dine) throw new DomainException("Parcel and delivery tickets stay on their own ticket.");
+        if (source.BranchId != target.BranchId) throw new DomainException("That table is in another branch.");
+
+        var orders = await _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers)
+            .Where(o => o.TableSessionId == source.Id && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .ToListAsync(ct);
+        if (orders.Count == 0) throw new DomainException("This table has no running bill to move.");
+
+        var existing = await _db.Sessions.Where(s => s.DiningTableId == target.Id && s.IsOpen).OrderByDescending(s => s.OpenedAt).FirstOrDefaultAsync(ct);
+        var session = existing ?? source;
+        if (existing is not null)
+        {
+            var paid = await _db.Payments.Where(p => p.TableSessionId == source.Id).ToListAsync(ct);
+            foreach (var p in paid) p.TableSessionId = existing.Id;
+            existing.LoyaltyMemberId ??= source.LoyaltyMemberId;
+            source.Close();
+        }
+        else
+        {
+            source.DiningTableId = target.Id;
+            source.TableCode = target.Code;
+            source.TableName = target.Name;
+        }
+
+        var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == target.BranchId, ct))?.Name ?? "";
+        var info = new TableSessionInfo(session.Id, target.Id, target.Code, target.Name, target.BranchId, branchName);
+        foreach (var o in orders) o.MoveTo(info);
+        await _db.SaveChangesAsync(ct);
+
+        var moved = new List<OrderDto>();
+        foreach (var o in orders)
+        {
+            var dto = await Publish(o, ct);
+            await _notifier.OrderMoved(Slug, from, dto, ct);
+            moved.Add(dto);
+        }
+        return moved;
     }
 
     public async Task<OrderDto> Pay(int id, CancellationToken ct = default)

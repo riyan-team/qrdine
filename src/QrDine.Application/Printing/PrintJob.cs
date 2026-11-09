@@ -30,7 +30,7 @@ public static class PrintJobs
     public static PrintJob Receipt(InvoiceDto inv)
     {
         string Money(decimal v) => $"{inv.Currency} {v:N0}";
-        var lines = new List<string> { inv.TableName, inv.IssuedAt.ToLocalTime().ToString("dd-MMM-yyyy HH:mm"), new string('-', 32) };
+        var lines = new List<string> { inv.TableName, Common.BusinessDay.ToPkt(inv.IssuedAt).ToString("dd-MMM-yyyy HH:mm"), new string('-', 32) };
         foreach (var l in inv.Lines)
             lines.Add($"{l.Qty} x {l.Name}".PadRight(24) + Money(l.LineTotal).PadLeft(8));
         lines.Add(new string('-', 32));

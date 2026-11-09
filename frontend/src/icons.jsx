@@ -44,5 +44,14 @@ export const MenuIcon = (p) => <Svg {...p}><path d="M6 3v18" /><path d="M6 8c2 0
 export const DownloadIcon = (p) => <Svg {...p}><path d="M12 3v12" /><path d="m7 12 5 5 5-5" /><path d="M5 21h14" /></Svg>
 export const WarnIcon = (p) => <Svg {...p}><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></Svg>
 export const StarIcon = (p) => <Svg {...p} fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.9 6.1 21l1.2-6.5L2.5 9.4l6.6-.9Z" /></Svg>
+export const ListIcon = (p) => <Svg {...p}><path d="M4 7h16M4 12h16M4 17h16" /></Svg>
+export const LogoutIcon = (p) => <Svg {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></Svg>
+export const BookIcon = (p) => <Svg {...p}><path d="M4 5a2 2 0 0 1 2-2h14v15H6a2 2 0 0 0-2 2Z" /><path d="M4 20a2 2 0 0 0 2 2h14v-4" /><path d="M9 8h6" /></Svg>
+export const UsersIcon = (p) => <Svg {...p}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 21a6.5 6.5 0 0 1 13 0" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 15a6.5 6.5 0 0 1 3.5 6" /></Svg>
+export const WalletIcon = (p) => <Svg {...p}><path d="M20 7H5a2 2 0 0 1 0-4h13v4" /><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1" /><path d="M17 14h.01" /></Svg>
+export const BagIcon = (p) => <Svg {...p}><path d="M6 8h12l1.2 12.1a1 1 0 0 1-1 1.1H5.8a1 1 0 0 1-1-1.1Z" /><path d="M9 11V6a3 3 0 0 1 6 0v5" /></Svg>
+export const TruckIcon = (p) => <Svg {...p}><circle cx="6" cy="18" r="2.4" /><circle cx="18" cy="18" r="2.4" /><path d="M8.4 18h7.2M3.6 18H2V6h12v12" /><path d="M14 10h4l4 4v4h-1.6" /></Svg>
+export const SwapIcon = (p) => <Svg {...p}><path d="M4 8h14" /><path d="m14 4 4 4-4 4" /><path d="M20 16H6" /><path d="m10 12-4 4 4 4" /></Svg>
+export const ChatIcon = (p) => <Svg {...p}><path d="M21 12a8.6 8.6 0 0 1-12.7 7.6L3 21l1.5-5A8.6 8.6 0 1 1 21 12Z" /></Svg>
 export const EyeIcon = (p) => <Svg {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Svg>
 export const EyeOffIcon = (p) => <Svg {...p}><path d="M3 3l18 18" /><path d="M10.6 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4-.9" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></Svg>

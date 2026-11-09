@@ -135,10 +135,11 @@ public class ReportsService
         var invoices = await query.OrderByDescending(i => i.Number)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
 
+        var nameOf = await StaffNames.Lookup(_db, ct);
         var rows = invoices.Select(i => new SalesRow(
             i.Id, i.FormattedNumber, i.IssuedAt, branches.GetValueOrDefault(i.BranchId, ""), i.TableName,
             i.PaymentMethod, i.Subtotal, i.DiscountAmount, i.TaxAmount + i.FurtherTaxAmount, i.ServiceChargeAmount,
-            i.Total, i.AmountTendered, i.ChangeGiven, i.CreatedByUsername, i.FiscalStatus.ToString())).ToList();
+            i.Total, i.AmountTendered, i.ChangeGiven, nameOf(i.CreatedByUsername), i.FiscalStatus.ToString())).ToList();
 
         var totalPages = (int)Math.Ceiling(total / (double)pageSize);
         return new SalesPage(rows, page, pageSize, total, totalPages, r.Currency, sumSales, sumTax, sumDiscount, sumNet);
@@ -152,10 +153,11 @@ public class ReportsService
         var branches = await _db.Branches.AsNoTracking().ToDictionaryAsync(b => b.Id, b => b.Name, ct);
         var invoices = await FilterInvoices(fromUtc, toUtc, branchId, q, method)
             .OrderBy(i => i.Number).ToListAsync(ct);
+        var nameOf = await StaffNames.Lookup(_db, ct);
         return invoices.Select(i => new InvoiceReportRow(
             i.Number, i.IssuedAt, branches.GetValueOrDefault(i.BranchId, ""), i.TableName, i.PaymentMethod,
             i.Subtotal, i.ServiceChargeAmount, i.TaxAmount, i.FurtherTaxAmount, i.DiscountAmount, i.Total,
-            i.AmountTendered, i.ChangeGiven, i.CreatedByUsername,
+            i.AmountTendered, i.ChangeGiven, nameOf(i.CreatedByUsername),
             i.FiscalStatus.ToString(), i.FiscalNumber ?? "")).ToList();
     }
 }

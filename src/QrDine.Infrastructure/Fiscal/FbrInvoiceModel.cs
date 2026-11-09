@@ -97,7 +97,7 @@ public static class FbrInvoiceMapper
             InvoiceNumber = "",
             POSID = ctx.PosId ?? 0,
             USIN = inv.Usin,
-            DateTime = inv.IssuedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+            DateTime = Application.Common.BusinessDay.ToPkt(inv.IssuedAt).ToString("yyyy-MM-dd HH:mm:ss"),
             BuyerNTN = NullIfBlank(inv.BuyerNtn),
             BuyerCNIC = NullIfBlank(inv.BuyerCnic),
             BuyerName = NullIfBlank(inv.BuyerName),

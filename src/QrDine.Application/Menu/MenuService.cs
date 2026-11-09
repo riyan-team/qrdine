@@ -44,14 +44,14 @@ public class MenuService
             .ToList();
 
         var dto = new RestaurantDto(r.Slug, r.Name, r.Currency,
-            new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter, r.FeatureBilling));
+            new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter, r.FeatureBilling), r.LogoUrl);
         return new MenuDto(dto, menu);
     }
 
     public async Task<IReadOnlyList<TableDto>> GetTables(CancellationToken ct = default)
     {
         var branches = await _db.Branches.AsNoTracking().ToDictionaryAsync(b => b.Id, b => b.Name, ct);
-        var tables = await _db.Tables.AsNoTracking().OrderBy(t => t.Code).ToListAsync(ct);
+        var tables = await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).OrderBy(t => t.Code).ToListAsync(ct);
         return tables.Select(t => new TableDto(t.Code, t.Name, branches.GetValueOrDefault(t.BranchId, ""))).ToList();
     }
 }

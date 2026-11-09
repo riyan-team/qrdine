@@ -30,7 +30,8 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
         _http = http;
         _log = log;
         _apiKey = (config["Gemini:ApiKey"] ?? "").Trim();
-        _model = (config["Gemini:Model"] ?? "gemini-2.0-flash").Trim();
+        // Google retires dated models often. This name follows whichever Flash model is current.
+        _model = (config["Gemini:Model"] ?? "gemini-flash-latest").Trim();
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
@@ -38,7 +39,7 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
     public async Task<MenuImportPreview> Extract(byte[] image, string mimeType, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
-            throw new DomainException("Photo import isn't set up yet — add a Gemini API key, or use the spreadsheet import.");
+            throw new DomainException("Reading a menu from a photo isn't switched on yet. Please use the spreadsheet import for now.");
 
         const string prompt =
             "You are reading a photo of a restaurant menu. Extract EVERY category with its items and prices.\n" +
@@ -66,17 +67,22 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
                     new { inline_data = new { mime_type = string.IsNullOrWhiteSpace(mimeType) ? "image/jpeg" : mimeType, data = Convert.ToBase64String(image) } },
                 }}
             },
-            generationConfig = new { temperature = 0.1, responseMimeType = "application/json", maxOutputTokens = 8192 },
+            generationConfig = new { temperature = 0.1, responseMimeType = "application/json", maxOutputTokens = 32768 },
         };
 
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
-        using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        // The key goes in a header, so it can't end up in a log with the address.
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("x-goog-api-key", _apiKey);
         HttpResponseMessage resp;
-        try { resp = await _http.PostAsync(url, content, ct); }
+        try { resp = await _http.SendAsync(request, ct); }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Gemini menu extract: network error calling model {Model}", _model);
-            throw new DomainException("Couldn't reach the photo-reading service. Check the connection and try again, or use the spreadsheet import.");
+            throw new DomainException("We couldn't reach the service that reads photos. Try again in a moment, or use the spreadsheet import.");
         }
 
         var body = await resp.Content.ReadAsStringAsync(ct);
@@ -91,8 +97,7 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
             var modelProblem = body.Contains("is not found", StringComparison.OrdinalIgnoreCase)
                 || body.Contains("NOT_FOUND", StringComparison.OrdinalIgnoreCase);
             throw new DomainException(
-                keyProblem ? "Photo import isn't authorised — the Gemini API key looks invalid. Ask the operator to check it, or use the spreadsheet import."
-                : modelProblem ? "Photo import is misconfigured (model unavailable). Ask the operator to check the Gemini model, or use the spreadsheet import."
+                keyProblem || modelProblem ? "Reading photos isn't working right now. Please tell Dine In, and use the spreadsheet import for now."
                 : FriendlyFor((int)resp.StatusCode));
         }
 
@@ -149,10 +154,10 @@ public class GeminiMenuExtractor : IMenuVisionExtractor
 
     private static string FriendlyFor(int status) => status switch
     {
-        400 => "The photo-reading service rejected the request. Please try a different photo, or use the spreadsheet import.",
-        401 or 403 => "The photo-reading service isn't authorised — the API key looks invalid. Ask the operator to check it, or use the spreadsheet import.",
-        429 => "The photo-reading service is busy right now (rate limit). Wait a minute and try again, or use the spreadsheet import.",
-        >= 500 => "The photo-reading service is temporarily unavailable. Try again shortly, or use the spreadsheet import.",
+        400 => "That photo couldn't be read. Please try a different photo, or use the spreadsheet import.",
+        401 or 403 => "Reading photos isn't working right now. Please tell Dine In, and use the spreadsheet import for now.",
+        429 => "Too many photos are being read right now. Wait a minute and try again, or use the spreadsheet import.",
+        >= 500 => "The service that reads photos is having a problem. Try again shortly, or use the spreadsheet import.",
         _ => "The photo couldn't be read right now. Try a clearer photo, or use the spreadsheet import.",
     };
 

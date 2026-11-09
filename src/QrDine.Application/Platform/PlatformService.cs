@@ -16,6 +16,7 @@ public record PlanInput(string Name, string Description, decimal PricePkr, decim
     bool Ordering, bool Kitchen, bool Waiter, bool Billing, bool Inventory, bool Reports);
 
 public record SetFbrRequest(bool Enabled);
+public record OwnerPasswordReset(string Username, string Password);
 
 // Operator records a payment collected offline. Kind = "Setup" | "Monthly".
 public record RecordPaymentRequest(string Kind, int Months, decimal AmountPkr, string? Note);
@@ -77,6 +78,7 @@ public class PlatformService
             .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
 
         var tableCounts = (await _db.Tables.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine)
             .Select(t => t.RestaurantId).ToListAsync(ct))
             .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
 
@@ -204,6 +206,24 @@ public class PlatformService
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// An owner who has forgotten their password phones the operator, who sets a temporary one here
+    /// and reads it to them. It is shown once and only the hash is kept.
+    /// </summary>
+    public async Task<OwnerPasswordReset> ResetOwnerPassword(int restaurantId, CancellationToken ct = default)
+    {
+        var owner = await _db.Staff.IgnoreQueryFilters()
+            .Where(s => s.RestaurantId == restaurantId && s.Role == Domain.Identity.StaffRole.Owner)
+            .OrderBy(s => s.Id).FirstOrDefaultAsync(ct)
+            ?? throw new DomainException("This restaurant has no owner account.");
+        const string alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+        var password = string.Concat(Enumerable.Range(0, 10)
+            .Select(_ => alphabet[System.Security.Cryptography.RandomNumberGenerator.GetInt32(alphabet.Length)]));
+        owner.PasswordHash = _hasher.Hash(password);
+        await _db.SaveChangesAsync(ct);
+        return new OwnerPasswordReset(owner.Username, password);
+    }
+
     /// <summary>Permanently delete a restaurant and ALL of its data. Child rows
     /// (order items, invoice lines, variants, recipes…) cascade from their parents
     /// at the database level; each set here is filtered by RestaurantId with the
@@ -211,6 +231,23 @@ public class PlatformService
     public async Task DeleteRestaurant(int restaurantId, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.FirstOrDefaultAsync(x => x.Id == restaurantId, ct) ?? throw new DomainException("Restaurant not found.");
+        await _db.CustomerEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Customers.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.EmployeeEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.AttendanceMarks.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Employees.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.OrderVoids.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.ServiceRequests.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.DayClosings.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.SupplierEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Suppliers.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Expenses.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.LoyaltyRedemptions.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.LoyaltyTransactions.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.LoyaltyRewards.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.LoyaltyMembers.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.LoyaltyPrograms.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.Feedbacks.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Payments.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Invoices.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Orders.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);

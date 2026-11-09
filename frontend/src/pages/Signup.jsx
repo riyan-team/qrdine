@@ -1,212 +1,232 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { onboard, getPlans, money, checkout } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { getPlans, onboard } from '../api'
 import { auth } from '../auth'
-import { useForm, FormField, required, minLen, maxLen, username as vUsername, slug as vSlug } from '../forms.jsx'
-import { friendlyError } from '../errors'
-import AuthBrand from '../AuthBrand.jsx'
-import BackHome from '../BackHome.jsx'
-import { CheckIcon, WarnIcon } from '../icons.jsx'
+import DineInLogo from '../DineInLogo.jsx'
+import { Phone3D, PhoneScreen } from '../Diorama.jsx'
+import { ArrowLeftIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../icons.jsx'
+import { useParallax, tilt } from '../motion'
 
-// Redirect the browser to JazzCash's hosted checkout by POSTing the signed fields.
-function submitToGateway(pay) {
-  const form = document.createElement('form')
-  form.method = 'POST'; form.action = pay.redirectUrl
-  Object.entries(pay.fields || {}).forEach(([k, v]) => {
-    const input = document.createElement('input'); input.type = 'hidden'; input.name = k; input.value = v; form.appendChild(input)
-  })
-  document.body.appendChild(form); form.submit()
-}
+// Sign-up, one question at a time, with the owner's own menu taking shape beside it.
+// There's no address to choose and no card to enter: the address comes from the name, and the
+// first 14 days are free. Their mobile number is what they sign in with from then on.
+
+const STEPS = ['name', 'you', 'password', 'plan', 'making']
 
 const FEATURES = [
-  ['ordering', 'Self-ordering'], ['kitchen', 'Kitchen display'], ['waiter', 'Waiter app'],
-  ['billing', 'Billing & tax'], ['inventory', 'Inventory'], ['reports', 'Sales reports'],
+  ['ordering', 'Guests order from their phone'],
+  ['kitchen', 'Kitchen screen'],
+  ['waiter', 'Waiter ordering'],
+  ['billing', 'Billing and tax'],
+  ['inventory', 'Stock and supplier khata'],
+  ['reports', 'Sales reports and expenses'],
 ]
 
-const deriveSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 30)
+const MAKING = [
+  'Creating your restaurant',
+  'Laying out a starter menu you can edit',
+  'Setting up four tables with QR codes',
+  'Preparing your reports',
+]
 
-// Public sign-up: pick a plan, (mock) pay, create the restaurant, land in the dashboard.
+const mobileProblem = (value) => {
+  const digits = value.replace(/\D/g, '').replace(/^92/, '0')
+  return /^0?3\d{9}$/.test(digits) ? '' : 'Enter a Pakistani mobile number, like 0300 1234567.'
+}
+
 export default function Signup() {
   const nav = useNavigate()
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const [step, setStep] = useState('plan')      // plan → details → pay
+  const scene = useParallax()
+  const input = useRef(null)
+  const [step, setStep] = useState(0)
+  const [dir, setDir] = useState('fwd')
   const [plans, setPlans] = useState([])
   const [planId, setPlanId] = useState(null)
-  const [slugEdited, setSlugEdited] = useState(false)
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [show, setShow] = useState(false)
+  const [error, setError] = useState('')
+  const [madeUpTo, setMadeUpTo] = useState(0)
+  const [f, setF] = useState({ restaurantName: '', ownerDisplayName: '', mobile: '', password: '' })
 
-  const form = useForm(
-    { restaurantName: '', slug: '', ownerDisplayName: '', ownerUsername: '', ownerPassword: '' },
-    {
-      restaurantName: (v) => required(v, 'Restaurant name') || maxLen(v, 120, 'Restaurant name'),
-      slug: (v) => required(v, 'Address') || minLen(v, 3, 'Address') || maxLen(v, 60, 'Address') || vSlug(v),
-      ownerDisplayName: (v) => required(v, 'Your name') || maxLen(v, 60, 'Your name'),
-      ownerUsername: (v) => required(v, 'Username') || minLen(v, 3, 'Username') || maxLen(v, 60, 'Username') || vUsername(v),
-      ownerPassword: (v) => required(v, 'Password') || minLen(v, 6, 'Password'),
-    },
-  )
+  useEffect(() => {
+    getPlans().then((list) => {
+      const sorted = [...list].sort((a, b) => a.pricePkr - b.pricePkr)
+      setPlans(sorted)
+      // The plan with the whole system is the sensible start for a restaurant that wants to try it all.
+      setPlanId(sorted[sorted.length - 1]?.id ?? null)
+    }).catch(() => {})
+  }, [])
 
-  useEffect(() => { getPlans().then(setPlans).catch(() => {}) }, [])
-  const plan = plans.find((p) => p.id === planId)
+  useEffect(() => {
+    const t = setTimeout(() => input.current?.focus(), 420)
+    return () => clearTimeout(t)
+  }, [step])
 
-  // Restaurant name drives the address until the owner edits the address themselves.
-  const onName = (e) => {
-    const v = e.target.value
-    form.setValue('restaurantName', v)
-    if (!slugEdited) form.setValue('slug', deriveSlug(v))
+  const set = (k) => (e) => { setError(''); setF((cur) => ({ ...cur, [k]: e.target.value })) }
+  const go = (n) => { setDir(n > step ? 'fwd' : 'back'); setError(''); setStep(n) }
+
+  const check = () => {
+    if (STEPS[step] === 'name' && f.restaurantName.trim().length < 2) return 'Enter your restaurant\'s name.'
+    if (STEPS[step] === 'you') {
+      if (f.ownerDisplayName.trim().length < 2) return 'Enter your name.'
+      return mobileProblem(f.mobile)
+    }
+    if (STEPS[step] === 'password' && f.password.length < 6) return 'Use at least 6 characters.'
+    return ''
   }
-  const onSlug = (e) => {
-    setSlugEdited(true)
-    form.setValue('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, ''))
+
+  const next = (e) => {
+    e?.preventDefault()
+    const problem = check()
+    if (problem) { setError(problem); return }
+    if (STEPS[step] === 'plan') { create(); return }
+    go(step + 1)
   }
 
-  const finish = async () => {
-    setErr('')
-    if (!form.validateAll()) { setStep('details'); return }
-    setBusy(true)
+  const create = async () => {
+    go(STEPS.indexOf('making'))
+    setMadeUpTo(0)
+    const ticking = setInterval(() => setMadeUpTo((n) => Math.min(n + 1, MAKING.length - 1)), 560)
+    const started = Date.now()
     try {
-      const f = { ...form.values, slug: form.values.slug.trim().toLowerCase() }
-      // Take payment for paid plans.
-      if (plan && plan.pricePkr > 0) {
-        const pay = await checkout(plan.pricePkr, f.slug, `QrDine ${plan.name} plan`)
-        if (pay.status === 'redirect') { submitToGateway(pay); return }        // leaves for JazzCash
-        if (pay.status === 'unconfigured') { setErr(pay.message || 'Payment gateway not configured.'); setBusy(false); return }
-        // status 'paid' (mock) → continue
-      }
-      const session = await onboard({ ...f, planId })
-      auth.setSession(session, f.slug)
-      nav('/admin/dashboard')
-    } catch (e) {
-      // Field-specific server errors land on their inputs; everything else is a banner.
-      const mapped = form.setServerErrors(e.fieldErrors)
-      setErr(mapped ? 'Please fix the highlighted fields and try again.' : friendlyError(e))
-      setStep('details')
-      setBusy(false)
+      const session = await onboard({
+        restaurantName: f.restaurantName.trim(),
+        ownerDisplayName: f.ownerDisplayName.trim(),
+        ownerUsername: f.mobile.trim(),
+        ownerPassword: f.password,
+        planId,
+      })
+      auth.setSession(session, session.slug)
+      await new Promise((r) => setTimeout(r, Math.max(0, 2400 - (Date.now() - started))))
+      clearInterval(ticking)
+      setMadeUpTo(MAKING.length)
+      setTimeout(() => nav('/admin/dashboard?welcome=1', { replace: true }), 600)
+    } catch (err) {
+      clearInterval(ticking)
+      const message = err.message || 'Could not create your restaurant. Please try again.'
+      setDir('back')
+      setStep(/mobile/i.test(message) ? STEPS.indexOf('you') : STEPS.indexOf('plan'))
+      setError(message)
     }
   }
-  const proceed = () => {
-    if (!plan) return
-    if (!form.validateAll()) return
-    plan.pricePkr > 0 ? setStep('pay') : finish()
-  }
 
-  const STEP_ORDER = ['plan', 'details', 'pay']
-  const stepIndex = STEP_ORDER.indexOf(step)
+  const name = STEPS[step]
+  const progress = Math.min(step, 3)
 
   return (
-    <div className={'auth-split' + (step === 'plan' ? ' plan-mode' : '')}>
-      {/* Brand panel — hidden on the wide plan-picker step */}
-      {step !== 'plan' && <AuthBrand />}
+    <div className="su" ref={scene}>
+      <div className="au-light" />
+      <header className="au-top">
+        <Link to="/" className="au-brand" aria-label="Dine In home"><DineInLogo /></Link>
+        <Link to="/login" className="au-top-link">I already have an account</Link>
+      </header>
 
-      {/* Sign-up panel */}
-      <main className="auth-main auth-scroll">
-        <div className={'auth-card auth-card-wide' + (step === 'plan' ? ' auth-card-plans' : '')}>
-          <BackHome />
-          <div className="h" style={{ marginTop: 0, marginBottom: 2 }}>Create your restaurant</div>
-          <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>
-            {step === 'plan' ? 'Pick a plan — you can change it anytime.'
-              : step === 'details' ? 'Tell us about your restaurant.'
-                : 'Confirm your plan to get started.'}
-          </p>
+      <main className={'su-grid' + (name === 'plan' ? ' wide' : '')}>
+        <section className="su-main">
+          {name !== 'making' && (
+            <div className="su-progress" aria-label={`Step ${progress + 1} of 4`}>
+              {[0, 1, 2, 3].map((i) => <i key={i} className={i < progress ? 'done' : i === progress ? 'on' : ''} />)}
+            </div>
+          )}
 
-          {/* Step indicator */}
-          <div className="auth-steps">
-            {['Plan', 'Details', plan?.pricePkr > 0 ? 'Payment' : 'Finish'].map((label, i) => (
-              <div key={label} className={'auth-step' + (i === stepIndex ? ' on' : '') + (i < stepIndex ? ' done' : '')}>
-                <span className="auth-step-dot">{i < stepIndex ? <CheckIcon size={13} /> : i + 1}</span>
-                <span className="auth-step-lbl">{label}</span>
-              </div>
-            ))}
-          </div>
+          <div className="su-deck">
+            <form key={name} className={`su-card su-${dir}`} onSubmit={next} noValidate>
+              {name === 'name' && (
+                <>
+                  <h1>What's your restaurant called?</h1>
+                  <p>This is what your guests will see at the top of the menu.</p>
+                  <input ref={input} className="su-big" value={f.restaurantName} onChange={set('restaurantName')}
+                    placeholder="Karachi Biryani House" maxLength={120} autoComplete="organization" />
+                </>
+              )}
 
-          {/* Step 1 — choose a plan */}
-          {step === 'plan' && (
-            <>
-              <div className="plan-grid">
-                {plans.map((p, i) => (
-                  <button type="button" key={p.id} className={'plan-card fade-up' + (planId === p.id ? ' sel' : '')}
-                    style={{ animationDelay: `${i * 60}ms` }} onClick={() => setPlanId(p.id)}>
-                    {i === 2 && <span className="plan-badge">Most popular</span>}
-                    <span className="pc-name">{p.name}</span>
-                    <span className="pc-price">{p.pricePkr > 0 ? money(p.pricePkr) : 'Free'}{p.pricePkr > 0 && <small>/mo</small>}</span>
-                    <span className="pc-setup">{p.setupFeePkr > 0 ? `+ ${money(p.setupFeePkr)} one-time setup` : 'No setup fee'}</span>
-                    <span className="pc-desc">{p.description}</span>
-                    <span className="pc-feats">
-                      {FEATURES.map(([k, label]) => (
-                        <span key={k} className={'pc-feat' + (p[k] ? '' : ' off')}>
-                          {p[k] ? <CheckIcon size={13} /> : <span className="pc-x">×</span>} {label}
-                        </span>
-                      ))}
-                    </span>
-                    <span className="pc-select">{planId === p.id ? <><CheckIcon size={14} /> Selected</> : 'Choose plan'}</span>
+              {name === 'you' && (
+                <>
+                  <h1>Good to meet you. Who's running {f.restaurantName.trim() || 'it'}?</h1>
+                  <p>Your mobile number is how you'll sign in. We don't send anything to it.</p>
+                  <label className="au-field"><span>Your name</span>
+                    <input ref={input} value={f.ownerDisplayName} onChange={set('ownerDisplayName')} placeholder="Ahmed Raza" maxLength={60} autoComplete="name" />
+                  </label>
+                  <label className="au-field"><span>Mobile number</span>
+                    <input value={f.mobile} onChange={set('mobile')} placeholder="0300 1234567" inputMode="tel" autoComplete="tel" />
+                  </label>
+                </>
+              )}
+
+              {name === 'password' && (
+                <>
+                  <h1>Choose a password</h1>
+                  <p>At least 6 characters. You can change it any time in Settings.</p>
+                  <div className="pw-wrap su-pw">
+                    <input ref={input} className="su-big" type={show ? 'text' : 'password'} value={f.password} onChange={set('password')}
+                      autoComplete="new-password" placeholder="Your password" />
+                    <button type="button" className="pw-eye" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} tabIndex={-1}>
+                      {show ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {name === 'plan' && (
+                <>
+                  <h1>Pick where to start</h1>
+                  <p>Free for your first 14 days. No card needed. You only pay if you decide to stay.</p>
+                  <div className="su-plans">
+                    {plans.map((p) => {
+                      const top = p.id === plans[plans.length - 1]?.id
+                      return (
+                        <button type="button" key={p.id} {...tilt(5)} className={'su-plan' + (planId === p.id ? ' on' : '')} onClick={() => setPlanId(p.id)}>
+                          {top && <span className="su-plan-flag">Whole system</span>}
+                          <b>{p.name}</b>
+                          <span className="su-plan-price">Rs {Number(p.pricePkr).toLocaleString('en-PK')}<small> / month</small></span>
+                          {p.setupFeePkr > 0 && <span className="su-plan-setup">Rs {Number(p.setupFeePkr).toLocaleString('en-PK')} one-time setup, after the trial</span>}
+                          <ul>
+                            <li><CheckIcon size={14} /> Menu and table QR codes</li>
+                            {FEATURES.filter(([key]) => !!p[key]).map(([key, label]) => <li key={key}><CheckIcon size={14} /> {label}</li>)}
+                          </ul>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {name === 'making' && (
+                <div className="su-making">
+                  <h1>Setting up {f.restaurantName.trim()}</h1>
+                  <ul>
+                    {MAKING.map((text, i) => (
+                      <li key={text} className={i < madeUpTo ? 'done' : i === madeUpTo ? 'on' : ''}>
+                        <span className="su-dot">{i < madeUpTo ? <CheckIcon size={14} /> : i === madeUpTo ? <span className="spinner" /> : null}</span>
+                        {text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {error && <div className="au-error" role="alert">
+                {error}{/already has an account/i.test(error) && <> <Link to="/login">Sign in</Link></>}
+              </div>}
+
+              {name !== 'making' && (
+                <div className="su-actions">
+                  {step > 0 && <button type="button" className="su-back" onClick={() => go(step - 1)}><ArrowLeftIcon size={16} /> Back</button>}
+                  <button type="submit" className="au-submit su-next">
+                    {name === 'plan' ? 'Create my restaurant' : 'Continue'}
                   </button>
-                ))}
-                {plans.length === 0 && <div className="empty">Loading plans…</div>}
-              </div>
-              <button className="primary" disabled={!planId} style={{ width: '100%', marginTop: 16 }} onClick={() => setStep('details')}>Continue →</button>
-            </>
-          )}
-
-          {/* Step 2 — restaurant details */}
-          {step === 'details' && (
-            <div style={{ textAlign: 'left' }}>
-              <div className="plan-chip">
-                Plan: <b>{plan?.name}</b> · {plan?.pricePkr > 0 ? money(plan.pricePkr) + '/mo' : 'Free'}{plan?.setupFeePkr > 0 ? ` + ${money(plan.setupFeePkr)} setup` : ''}
-                <button className="ghost" onClick={() => setStep('plan')}>change</button>
-              </div>
-
-              <FormField label="Restaurant name" placeholder="e.g. Karachi Biryani House"
-                {...form.register('restaurantName')} onChange={onName} autoFocus />
-
-              <FormField label="Your menu address" placeholder="karachibiryani"
-                hint={`Your QR menu opens at ${origin}/r/${form.values.slug || 'address'}/t/T1 — you'll also use this to sign in.`}
-                {...form.register('slug')} onChange={onSlug} />
-
-              <FormField label="Your name" placeholder="e.g. Ali Khan" {...form.register('ownerDisplayName')} />
-
-              <FormField label="Username" placeholder="e.g. ali (no spaces)"
-                hint="You'll sign in with this. Letters, numbers, dots, underscores and dashes only."
-                autoComplete="username" {...form.register('ownerUsername')} />
-
-              <FormField label="Password" type="password" placeholder="At least 6 characters"
-                autoComplete="new-password" {...form.register('ownerPassword')} />
-
-              {err && <div className="form-error">{err}</div>}
-              <div className="row" style={{ gap: 8, marginTop: 6 }}>
-                <button onClick={() => setStep('plan')}>Back</button>
-                <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={proceed}>
-                  {plan?.pricePkr > 0 ? 'Continue to payment →' : (busy ? 'Creating…' : 'Create restaurant')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3 — mock payment */}
-          {step === 'pay' && (
-            <div style={{ textAlign: 'left' }}>
-              <div className="plan-chip">{plan?.name} · <b>{money(plan?.pricePkr)}/month</b></div>
-              <label className="fld"><span className="muted" style={{ fontSize: 13 }}>Card number</span>
-                <input placeholder="Card number" defaultValue="4242 4242 4242 4242" /></label>
-              <div className="row" style={{ gap: 10, marginTop: 10 }}>
-                <label className="fld" style={{ flex: 1 }}><span className="muted" style={{ fontSize: 13 }}>Expiry</span><input placeholder="MM/YY" defaultValue="12/28" /></label>
-                <label className="fld" style={{ flex: 1 }}><span className="muted" style={{ fontSize: 13 }}>CVC</span><input placeholder="CVC" defaultValue="123" /></label>
-              </div>
-              <div className="muted" style={{ fontSize: 12, margin: '12px 0' }}><WarnIcon size={13} /> Demo payment — no real charge. Real gateways (JazzCash / Easypaisa / Safepay) plug in here.</div>
-              {err && <div className="form-error">{err}</div>}
-              <div className="row" style={{ gap: 8 }}>
-                <button onClick={() => setStep('details')}>Back</button>
-                <button className="green" style={{ marginLeft: 'auto' }} disabled={busy} onClick={finish}>{busy ? 'Processing…' : `Pay ${money(plan?.pricePkr)} & start`}</button>
-              </div>
-            </div>
-          )}
-
-          <div className="auth-divider"><span>or</span></div>
-          <div className="center">
-            <span className="muted" style={{ fontSize: 14 }}>Already have an account? </span>
-            <Link to="/login" style={{ color: 'var(--accent)', fontWeight: 700 }}>Sign in →</Link>
+                </div>
+              )}
+            </form>
           </div>
-        </div>
+        </section>
+
+        {name !== 'plan' && (
+          <section className="su-preview" aria-hidden="true">
+            <div className="su-preview-stage">
+              <Phone3D><PhoneScreen name={f.restaurantName.trim() || 'Your restaurant'} looping={false} /></Phone3D>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )

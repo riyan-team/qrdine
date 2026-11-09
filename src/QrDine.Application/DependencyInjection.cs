@@ -25,6 +25,14 @@ public static class DependencyInjection
         services.AddScoped<BillingService>();
         services.AddScoped<FiscalSyncService>();
         services.AddScoped<Reports.ReportsService>();
+        services.AddScoped<Reports.BusinessReportService>();
+        services.AddScoped<Purchasing.SupplierService>();
+        services.AddScoped<Expenses.ExpenseService>();
+        services.AddScoped<TicketService>();
+        services.AddScoped<ServiceRequestService>();
+        services.AddScoped<Customers.CustomerService>();
+        services.AddScoped<Staffing.PayrollService>();
+        services.AddScoped<DayCloseService>();
         services.AddScoped<Feedback.FeedbackService>();
         services.AddScoped<Loyalty.LoyaltyService>();
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);

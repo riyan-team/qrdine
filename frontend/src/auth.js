@@ -10,7 +10,7 @@ export const auth = {
   setStaff(s) { localStorage.setItem(STAFF_KEY, JSON.stringify(s)) },
   clearStaff() { localStorage.removeItem(STAFF_KEY) },
   get staffToken() { return this.getStaff()?.token || null },
-  staffSlug() { return this.getStaff()?.slug || 'desidhaba' },
+  staffSlug() { return this.getStaff()?.slug || '' },
   role() { return this.getStaff()?.role || null },
   perms() { return this.getStaff()?.permissions || [] },
   can(p) { return this.perms().includes(p) },
@@ -18,6 +18,28 @@ export const auth = {
   // vanishes until the next login refreshes the flags.
   features() { return this.getStaff()?.features || null },
   hasFeature(f) { const x = this.features(); return x ? !!x[f] : true },
+
+  // One box: a mobile number or username, and a password. The account says which restaurant.
+  async signIn(username, password) {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    if (!res.ok) throw await parseError(res)
+    const session = await res.json()          // { token, displayName, role, permissions, features, restaurantName, slug }
+    this.setStaff(session)
+    return session
+  },
+
+  // Where this person starts their day, going by what they're allowed to do.
+  home() {
+    if (this.can('reports.view') && this.hasFeature('reports')) return '/admin/dashboard'
+    if ((this.can('orders.approve') || this.can('orders.pay')) && (this.hasFeature('ordering') || this.hasFeature('billing'))) return '/cashier'
+    if (this.can('orders.cook') && this.hasFeature('kitchen')) return '/kitchen'
+    if (this.can('orders.serve') && this.hasFeature('waiter')) return '/waiter'
+    if (this.can('menu.manage')) return '/admin/menu'
+    return '/admin/settings'
+  },
 
   async login(slug, username, password) {
     const res = await fetch(`/api/r/${slug}/auth/login`, {

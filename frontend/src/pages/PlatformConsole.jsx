@@ -44,13 +44,20 @@ export default function PlatformConsole() {
     if (typed.trim().toLowerCase() !== r.name.toLowerCase()) { ui.alert("The name didn't match — nothing was deleted."); return }
     try { await platform.deleteRestaurant(r.id); load() } catch (e) { ui.alert(e.message) }
   }
+  const resetPassword = async (r) => {
+    if (!await ui.confirm({ title: `Reset ${r.name}'s password?`, message: "The owner's current password stops working straight away. You'll see the new one once.", confirmText: 'Reset password', danger: true })) return
+    try {
+      const res = await platform.resetOwnerPassword(r.id)
+      await ui.alert(`Sign-in: ${res.username}\nNew password: ${res.password}\n\nGive this to the owner now. It won't be shown again.`)
+    } catch (e) { ui.alert(e.message) }
+  }
   const logout = () => { platformAuth.clear(); nav('/platform/login') }
   const admin = platformAuth.get()
 
   return (
     <div>
       <div className="topbar">
-        <span className="brand">QrDine Operator</span>
+        <span className="brand">Dine In Operator</span>
         <span className="muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{admin?.displayName}</span>
         <button className="ghost" onClick={logout}>Sign out</button>
       </div>
@@ -126,6 +133,7 @@ export default function PlatformConsole() {
                       <button className={r.status === 'Active' ? 'ghost' : 'green'} onClick={() => toggle(r)}>
                         {r.status === 'Active' ? 'Lock' : 'Unlock'}
                       </button>
+                      <button className="ghost" onClick={() => resetPassword(r)}>Reset password</button>
                       <button className="ghost" title="Delete restaurant and all its data" onClick={() => delRestaurant(r)}><TrashIcon size={15} /></button>
                     </div>
                   </td>
@@ -250,7 +258,7 @@ function PaymentModal({ r, onClose, onSaved }) {
           </label>
           <input placeholder="Note (bank ref, JazzCash id…)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
         </div>
-        {kind === 'Monthly' && <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Extends the paid-through date by {Number(months) || 1} month(s) and unlocks the restaurant.</div>}
+        {kind === 'Monthly' && <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Extends the paid-through date by {Number(months) || 1} {(Number(months) || 1) === 1 ? 'month' : 'months'} and unlocks the restaurant.</div>}
         {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
         <div className="row" style={{ gap: 8 }}>
           <button onClick={onClose}>Cancel</button>

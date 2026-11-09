@@ -23,6 +23,15 @@ public class TableSession : Entity, ITenantOwned
     /// reception). Empty for most seatings; never affects the bill.</summary>
     public int? LoyaltyMemberId { get; set; }
 
+    // Parcel and delivery only: who it's for, and what they pay to have it brought.
+    public Ordering.OrderChannel Channel { get; set; } = Ordering.OrderChannel.Dine;
+    public string CustomerName { get; set; } = "";
+    public string CustomerPhone { get; set; } = "";
+    public string DeliveryAddress { get; set; } = "";
+    public string RiderName { get; set; } = "";
+    public decimal DeliveryCharge { get; set; }
+    public int? CustomerId { get; set; }
+
     public static TableSession Open(DiningTable table) => new()
     {
         RestaurantId = table.RestaurantId,
@@ -30,6 +39,7 @@ public class TableSession : Entity, ITenantOwned
         DiningTableId = table.Id,
         TableCode = table.Code,
         TableName = table.Name,
+        Channel = table.Kind,
         IsOpen = true,
         OpenedAt = DateTime.UtcNow,
     };

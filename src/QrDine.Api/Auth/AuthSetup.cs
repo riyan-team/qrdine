@@ -21,6 +21,11 @@ public static class Policies
     public const string CanManageSettings = "CanManageSettings";
     public const string CanViewReports = "CanViewReports";
     public const string CanSyncInvoice = "CanSyncInvoice";   // file/retry with FBR
+    public const string CanManageExpenses = "CanManageExpenses";
+    public const string CanManageSuppliers = "CanManageSuppliers";
+    public const string CanCreateOrders = "CanCreateOrders";
+    public const string CanManageCustomers = "CanManageCustomers";
+    public const string CanManagePayroll = "CanManagePayroll";
     public const string OwnerOnly = "OwnerOnly";       // edit permissions
     public const string GuestOrStaff = "GuestOrStaff";
     public const string Platform = "Platform";
@@ -82,6 +87,11 @@ public static class AuthSetup
             Perm(o, Policies.CanManageSettings, Permissions.SettingsManage);
             Perm(o, Policies.CanViewReports, Permissions.ReportsView);
             Perm(o, Policies.CanSyncInvoice, Permissions.InvoiceSync);
+            Perm(o, Policies.CanManageExpenses, Permissions.ExpensesManage);
+            Perm(o, Policies.CanManageSuppliers, Permissions.SuppliersManage);
+            Perm(o, Policies.CanCreateOrders, Permissions.OrdersCreate);
+            Perm(o, Policies.CanManageCustomers, Permissions.CustomersManage);
+            Perm(o, Policies.CanManagePayroll, Permissions.PayrollManage);
             // Editing permissions is owner-only, so a manager can't grant themselves more.
             o.AddPolicy(Policies.OwnerOnly, p => p.RequireAssertion(c => IsStaff(c.User)).RequireRole("Owner"));
             // Placing an order: a valid guest token OR any staff member (waiter on behalf).

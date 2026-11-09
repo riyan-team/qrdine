@@ -1,102 +1,101 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { auth } from '../auth'
-import { lookupRestaurant } from '../api'
-import { useForm, FormField, required } from '../forms.jsx'
-import { friendlyError } from '../errors'
-import AuthBrand from '../AuthBrand.jsx'
-import BackHome from '../BackHome.jsx'
+import { CONTACT } from '../contact'
+import DineInLogo from '../DineInLogo.jsx'
+import Diorama from '../Diorama.jsx'
+import { PasswordInput } from '../forms.jsx'
+import { useParallax } from '../motion'
 
-const HOME_FOR = { Cashier: '/cashier', Kitchen: '/kitchen', Waiter: '/waiter', Manager: '/admin/dashboard', Owner: '/admin/dashboard' }
-
+// One box for everyone. The owner uses their mobile number, staff use the username the owner
+// gave them, and the account already knows which restaurant it belongs to.
 export default function Login() {
   const nav = useNavigate()
-  const stored = auth.getStaff()?.slug
-  const form = useForm(
-    { place: stored && stored !== 'desidhaba' ? stored : '', username: '', password: '' },
-    {
-      place: (v) => required(v, 'Restaurant name or address'),
-      username: (v) => required(v, 'Username'),
-      password: (v) => required(v, 'Password'),
-    },
-  )
-  const [err, setErr] = useState('')
+  const loc = useLocation()
+  const scene = useParallax()
+  const card = useRef(null)
+  const [who, setWho] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const current = auth.getStaff()
 
-  const doLogin = async (e) => {
+  const shake = () => {
+    card.current?.animate([
+      { transform: 'rotateY(0)' }, { transform: 'rotateY(-5deg)' }, { transform: 'rotateY(4deg)' },
+      { transform: 'rotateY(-2deg)' }, { transform: 'rotateY(0)' },
+    ], { duration: 380, easing: 'ease-out' })
+  }
+
+  const submit = async (e) => {
     e.preventDefault()
-    setErr('')
-    if (!form.validateAll()) return
-    setBusy(true)
+    if (!who.trim() || !password) {
+      setError(!who.trim() ? 'Enter your mobile number or username.' : 'Enter your password.')
+      shake()
+      return
+    }
+    setBusy(true); setError('')
     try {
-      const { place, username, password } = form.values
-      // Resolve the typed restaurant name/address to its sign-in address (slug).
-      const found = await lookupRestaurant(place.trim())
-      if (!found) {
-        setErr("We couldn't find a restaurant with that name or address. Enter the exact restaurant name you registered, or your menu address (the part after /r/ in your QR link).")
-        setBusy(false)
-        return
-      }
-      const session = await auth.login(found.slug, username.trim(), password)
-      nav(HOME_FOR[session.role] || '/cashier')
-    } catch (e2) {
-      // Surface any per-field messages inline, plus a friendly summary.
-      if (e2.fieldErrors) form.setServerErrors(e2.fieldErrors)
-      setErr(friendlyError(e2))
+      await auth.signIn(who.trim(), password)
+      setLeaving(true)
+      setTimeout(() => nav(loc.state?.from || auth.home(), { replace: true }), 460)
+    } catch (err) {
+      setError(err.message || 'Could not sign in. Please try again.')
       setBusy(false)
+      shake()
     }
   }
 
   return (
-    <div className="auth-split">
-      {/* Brand panel */}
-      <AuthBrand />
+    <div className={'au' + (leaving ? ' au-leaving' : '')} ref={scene}>
+      <div className="au-light" />
+      <header className="au-top">
+        <Link to="/" className="au-brand" aria-label="Dine In home"><DineInLogo /></Link>
+        <Link to="/signup" className="au-top-link">Create your restaurant</Link>
+      </header>
 
-      {/* Sign-in panel */}
-      <main className="auth-main">
-        <div className="auth-card">
-          <BackHome />
-          <div className="h" style={{ marginTop: 0 }}>Welcome back</div>
-          <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Sign in to your restaurant.</p>
-          <form onSubmit={doLogin} noValidate>
-            <FormField
-              label="Restaurant name or address"
-              placeholder="e.g. Karachi Biryani House"
-              hint="The exact name you registered, or your menu address (after /r/ in your QR link)."
-              autoFocus
-              {...form.register('place')}
-            />
-            <FormField
-              label="Username"
-              placeholder="The username you created at sign-up"
-              autoComplete="username"
-              {...form.register('username')}
-            />
-            <FormField
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              {...form.register('password')}
-            />
-            {err && <div className="form-error">{err}</div>}
-            <button className="primary" disabled={busy} style={{ width: '100%' }}>
-              {busy ? 'Signing in…' : 'Sign in'}
+      <main className="au-grid">
+        <section className="au-pitch">
+          <h1 className="au-title">Your whole restaurant,<br /><em>in time.</em></h1>
+          <p className="au-sub">Every order, ticket and bill in one place. Sign in and pick up where you left off.</p>
+          <Diorama />
+        </section>
+
+        <section className="au-side">
+          <form className="au-card" ref={card} onSubmit={submit} noValidate>
+            <h2>Sign in</h2>
+            <p className="au-hint">Use your mobile number or the username your owner gave you.</p>
+
+            {error && <div className="au-error" role="alert">{error}</div>}
+
+            <label className="au-field">
+              <span>Mobile number or username</span>
+              <input value={who} onChange={(e) => setWho(e.target.value)} autoComplete="username" autoCapitalize="none"
+                spellCheck="false" placeholder="0300 1234567" autoFocus disabled={busy} />
+            </label>
+            <label className="au-field">
+              <span>Password</span>
+              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+                placeholder="Your password" disabled={busy} />
+            </label>
+
+            <button type="submit" className="au-submit" disabled={busy}>
+              {busy ? <><span className="spinner" /> Signing in</> : 'Sign in'}
             </button>
+
+            {current?.token && !busy && (
+              <button type="button" className="au-continue" onClick={() => nav(auth.home())}>
+                Continue as {current.displayName}
+              </button>
+            )}
+
+            <div className="au-foot">
+              <span>New to Dine In? <Link to="/signup">Create your restaurant</Link></span>
+              <span>Forgot your password? <a href={CONTACT.whatsapp} target="_blank" rel="noreferrer">WhatsApp us</a> or ask your owner.</span>
+            </div>
           </form>
-
-          <div className="auth-divider"><span>or</span></div>
-
-          <div className="center">
-            <span className="muted" style={{ fontSize: 14 }}>New to Dine In? </span>
-            <Link to="/signup" style={{ color: 'var(--accent)', fontWeight: 700 }}>Create your restaurant →</Link>
-          </div>
-
-          <div className="center" style={{ marginTop: 14 }}>
-            <Link to="/platform/login" className="muted" style={{ fontSize: 13, textDecoration: 'underline' }}>
-              Platform operator sign in
-            </Link>
-          </div>
-        </div>
+        </section>
       </main>
     </div>
   )

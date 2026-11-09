@@ -9,4 +9,13 @@ public enum OrderSource
 {
     Qr,      // the guest scanned the table QR and ordered on their own phone
     Waiter,  // a waiter took the order on the guest's behalf
+    Counter, // rung up at the counter for parcel or delivery
+}
+
+/// <summary>How the food reaches the customer.</summary>
+public enum OrderChannel
+{
+    Dine,
+    Takeaway,
+    Delivery,
 }

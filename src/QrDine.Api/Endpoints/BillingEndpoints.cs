@@ -18,17 +18,21 @@ public static class BillingEndpoints
             => Results.Ok(await svc.ReceptionDashboard(q, page ?? 1, pageSize ?? 20)));
 
         // Live bill preview for a table (optional discount override for the cashier).
-        g.MapGet("/tables/{code}/bill", async (string code, decimal? discount, BillingService svc)
-            => Results.Ok(await svc.GetBill(code, discount)));
+        g.MapGet("/tables/{code}/bill", async (string code, decimal? discount, string? method, ClaimsPrincipal user, BillingService svc)
+            => Results.Ok(await svc.GetBill(code, discount, default, method, CanDiscount(user))));
 
         // Settle the table → numbered invoice; closes the session. The settling cashier
         // is passed through so an FBR filing is stamped with their POSID/token.
         g.MapPost("/tables/{code}/settle", async (string code, SettleRequest body, ClaimsPrincipal user, BillingService svc)
-            => Results.Ok(await svc.Settle(code, body, Operator(user))));
+            =>
+            {
+                RequireKhataPermission(user, body.Method);
+                return Results.Ok(await svc.Settle(code, body, Operator(user), default, CanDiscount(user)));
+            });
 
         // Split-bill: record a partial payment; auto-settles when the bill is covered.
         g.MapPost("/tables/{code}/pay-part", async (string code, PayPartRequest body, ClaimsPrincipal user, BillingService svc)
-            => Results.Ok(await svc.PayPartial(code, body, Operator(user))));
+            => Results.Ok(await svc.PayPartial(code, body, Operator(user), default, CanDiscount(user))));
 
         // Reprint a settled invoice.
         g.MapGet("/invoices/{id:int}", async (int id, BillingService svc) =>
@@ -37,6 +41,17 @@ public static class BillingEndpoints
             return inv is null ? Results.NotFound() : Results.Ok(inv);
         });
     }
+
+    // Credit is the customer khata's business, so settling on it needs that permission as well as the till.
+    private static void RequireKhataPermission(ClaimsPrincipal user, string? method)
+    {
+        if (string.Equals(method, BillingService.KhataMethod, StringComparison.OrdinalIgnoreCase)
+            && !user.HasClaim(QrDine.Application.Common.AppClaims.Permission, QrDine.Domain.Identity.Permissions.CustomersManage))
+            throw new QrDine.Domain.Common.DomainException("You don't have permission to put bills on khata.");
+    }
+
+    private static bool CanDiscount(ClaimsPrincipal user) =>
+        user.HasClaim(QrDine.Application.Common.AppClaims.Permission, QrDine.Domain.Identity.Permissions.OrdersDiscount);
 
     private static string? Operator(ClaimsPrincipal user) =>
         user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value

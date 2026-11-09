@@ -9,6 +9,8 @@ public record FeaturesDto(bool Ordering, bool Kitchen, bool Waiter, bool Billing
     bool Inventory, bool Reports, bool Fbr);
 
 public record AuthResponse(string Token, string DisplayName, string Role,
-    IReadOnlyList<string> Permissions, FeaturesDto? Features = null, string RestaurantName = "");
+    IReadOnlyList<string> Permissions, FeaturesDto? Features = null, string RestaurantName = "", string Slug = "");
+
+public record StaffLogin(QrDine.Domain.Identity.StaffMember User, QrDine.Domain.Restaurants.Restaurant Restaurant);
 
 public record GuestSessionResponse(string Token, string TableCode);

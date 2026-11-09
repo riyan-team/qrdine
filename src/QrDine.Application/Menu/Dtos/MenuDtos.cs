@@ -1,6 +1,6 @@
 namespace QrDine.Application.Menu.Dtos;
 
-public record RestaurantDto(string Slug, string Name, string Currency, FeaturesDto Features);
+public record RestaurantDto(string Slug, string Name, string Currency, FeaturesDto Features, string LogoUrl = "");
 public record FeaturesDto(bool Ordering, bool Kitchen, bool Waiter, bool Billing);
 
 public record MenuDto(RestaurantDto Restaurant, IReadOnlyList<MenuCategoryDto> Menu);

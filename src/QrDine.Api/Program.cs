@@ -50,6 +50,7 @@ if (!builder.Environment.IsDevelopment())
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQrDineAuth(builder.Configuration);
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new QrDine.Application.Common.UtcDateTimeConverter()));
 builder.Services.AddSignalR();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database");
 
@@ -188,6 +189,8 @@ app.MapMenu();
 app.MapMenuAdmin();
 app.MapAdminSettings();
 app.MapInventory();
+app.MapBusiness();
+app.MapFloor();
 app.MapOrders();
 app.MapStaff();
 app.MapBilling();

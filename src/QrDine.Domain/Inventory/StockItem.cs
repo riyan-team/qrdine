@@ -10,6 +10,7 @@ public class StockItem : Entity, ITenantOwned
     public string Unit { get; set; } = "unit";     // kg, litre, pcs …
     public decimal Quantity { get; set; }
     public decimal LowThreshold { get; set; }       // alert at or below this
+    public decimal LastCost { get; set; }           // per unit, from the latest supplier bill
 
     public bool IsLow => Quantity <= LowThreshold;
 }

@@ -1,0 +1,10 @@
+{
+  "name": "Dine In",
+  "short_name": "Dine In",
+  "description": "Run your restaurant: QR menu, kitchen screen, billing, khata and reports.",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#1f0f15",
+  "theme_color": "#1f0f15",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

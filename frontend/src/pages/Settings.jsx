@@ -15,6 +15,8 @@ const PERM_LABELS = {
   'orders.cancel': 'Cancel orders', 'menu.manage': 'Manage menu',
   'inventory.manage': 'Manage inventory', 'settings.manage': 'Manage tables & staff',
   'reports.view': 'View reports & dashboard', 'invoice.sync': 'Sync invoices with FBR',
+  'expenses.manage': 'Record expenses', 'suppliers.manage': 'Supplier khata & purchases',
+  'orders.discount': 'Give discounts on bills', 'customers.manage': 'Customer khata', 'payroll.manage': 'Salaries & attendance',
 }
 
 // Which plan feature each permission belongs to (unlisted = always available).
@@ -24,6 +26,8 @@ const PERM_FEATURE = {
   'orders.approve': 'ordering', 'orders.pay': 'ordering', 'orders.cancel': 'ordering',
   'orders.cook': 'kitchen', 'orders.serve': 'waiter',
   'inventory.manage': 'inventory', 'reports.view': 'reports', 'invoice.sync': 'fbr',
+  'expenses.manage': 'reports', 'suppliers.manage': 'inventory',
+  'orders.discount': 'billing', 'customers.manage': 'billing', 'payroll.manage': 'reports',
 }
 const permInPlan = (perm) => { const f = PERM_FEATURE[perm]; return !f || auth.hasFeature(f) }
 
@@ -45,7 +49,7 @@ export default function Settings() {
   return (
     <div className="wrap">
       <div className="h">Settings</div>
-      <p className="muted" style={{ marginTop: -4 }}>Pick a section — related settings are grouped together.</p>
+      <p className="muted" style={{ marginTop: -4 }}>Pick a section.</p>
 
       <div className="settings-nav">
         {SETTINGS_TABS.map((t) => (
@@ -112,7 +116,8 @@ function BillingSettings() {
     try {
       await api.setBillingSettings({
         taxEnabled: !!s.taxEnabled, taxName: (s.taxName || 'GST').trim(),
-        taxPercent: Number(s.taxPercent) || 0, serviceChargePercent: Number(s.serviceChargePercent) || 0,
+        taxPercent: Number(s.taxPercent) || 0, taxPercentCard: s.taxPercentCard === '' || s.taxPercentCard == null ? null : Number(s.taxPercentCard),
+        serviceChargePercent: Number(s.serviceChargePercent) || 0,
         discountEnabled: !!s.discountEnabled, discountIsPercent: !!s.discountIsPercent,
         discountValue: Number(s.discountValue) || 0,
         receiptEnabled: !!s.receiptEnabled, stockTrackingEnabled: !!s.stockTrackingEnabled,
@@ -125,7 +130,7 @@ function BillingSettings() {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="row between"><b>Billing, tax &amp; receipt</b>{msg && <span className="muted" style={{ fontSize: 13 }}>{msg}</span>}</div>
-      <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>These apply to every bill automatically: Items → Subtotal → Discount → Tax → Total.</p>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 12px' }}>These apply to every bill automatically. Tax is worked out after any discount.</p>
 
       <div className="set-grid">
         {/* Tax / GST */}
@@ -137,6 +142,8 @@ function BillingSettings() {
                 <input value={s.taxName || ''} placeholder="GST" onChange={(e) => set('taxName', e.target.value)} /></label>
               <label className="fld"><span>Rate %</span>
                 <input type="number" min="0" max="100" step="0.01" value={s.taxPercent} onChange={(e) => set('taxPercent', e.target.value)} /></label>
+              <label className="fld"><span>Card rate %</span>
+                <input type="number" min="0" max="100" step="0.01" placeholder="Same" value={s.taxPercentCard ?? ''} onChange={(e) => set('taxPercentCard', e.target.value)} /></label>
               <label className="fld"><span>Service %</span>
                 <input type="number" min="0" max="100" step="0.01" value={s.serviceChargePercent} onChange={(e) => set('serviceChargePercent', e.target.value)} /></label>
             </div>
@@ -246,13 +253,13 @@ function ReceiptSettings() {
 
         <div className="brand-fields">
           <label className="fld">
-            <span className="muted" style={{ fontSize: 13 }}>Header — address, phone, tagline</span>
+            <span className="muted" style={{ fontSize: 13 }}>Header: address, phone, tagline</span>
             <textarea rows={2} placeholder={`${s.restaurantName || 'Your restaurant'}\nMain Boulevard, Lahore · 042-000000`}
               value={s.receiptHeader || ''} onChange={(e) => set('receiptHeader', e.target.value)} />
           </label>
           <label className="fld">
-            <span className="muted" style={{ fontSize: 13 }}>Footer — thank-you or policy note</span>
-            <textarea rows={2} placeholder="Thank you — please come again!"
+            <span className="muted" style={{ fontSize: 13 }}>Footer: thank-you or policy note</span>
+            <textarea rows={2} placeholder="Thank you, please come again!"
               value={s.receiptFooter || ''} onChange={(e) => set('receiptFooter', e.target.value)} />
           </label>
           <div className="row" style={{ gap: 8 }}>
@@ -282,11 +289,11 @@ function ServiceSettings() {
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>How a waiter gets attached to a table’s orders.</p>
       <label className="row" style={{ gap: 8, marginBottom: 8, cursor: 'pointer', alignItems: 'flex-start' }}>
         <input type="radio" name="wa" checked={!s.waiterAutoAssign} onChange={() => save(false)} style={{ marginTop: 3 }} />
-        <span><b>Manual</b> — waiters take their own tables (or a manager assigns). <span className="muted">Default. Best if you run fixed sections.</span></span>
+        <span><b>Manual:</b> waiters take their own tables (or a manager assigns). <span className="muted">Default. Best if you run fixed sections.</span></span>
       </label>
       <label className="row" style={{ gap: 8, cursor: 'pointer', alignItems: 'flex-start' }}>
         <input type="radio" name="wa" checked={s.waiterAutoAssign} onChange={() => save(true)} style={{ marginTop: 3 }} />
-        <span><b>Automatic</b> — each approved order goes to the least-busy waiter. <span className="muted">Needs staff with the Waiter role.</span></span>
+        <span><b>Automatic:</b> each approved order goes to the least-busy waiter. <span className="muted">Needs staff with the Waiter role.</span></span>
       </label>
     </div>
   )
@@ -362,15 +369,14 @@ function Branches() {
       <b>Branches</b>
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
         Each location has its own tables, QR codes and (when FBR is on) its own POS registration. Sales report per branch.
-        <span className="hint-inline"> Double-click a branch to edit it.</span>
       </p>
       {rows.map((b) => (
         <div key={b.id} style={{ borderBottom: '1px solid var(--line)' }}>
           {editFor === b.id ? (
             <BranchEdit b={b} onDone={() => { setEditFor(null); load() }} onCancel={() => setEditFor(null)} />
           ) : (
-            <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(b.id)} title="Double-click to edit">
-              <span><b>{b.name}</b> <span className="muted">· {b.address || 'no address'} · {b.tables} table(s)
+            <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(b.id)}>
+              <span><b>{b.name}</b> <span className="muted">· {b.address || 'no address'} · {b.tables} {b.tables === 1 ? 'table' : 'tables'}
                 {fbrOn && b.fbrPosId ? ` · FBR ${b.fbrMode} POS ${b.fbrPosId}` : ''}</span></span>
               <div className="row" style={{ gap: 4 }}>
                 {fbrOn && <button className="ghost btn-sm" onClick={() => setFbrFor(fbrFor === b.id ? null : b.id)}>FBR POS</button>}
@@ -462,7 +468,7 @@ function BranchFbr({ b, onSaved }) {
       </div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
         {f.fbrMode === 'Local'
-          ? 'Local mode posts to the FBR IMS component on this POS PC — no IP whitelisting. Owner/manager can sync.'
+          ? 'Local mode posts to the FBR IMS component on this PC, with no IP whitelisting. Owner/manager can sync.'
           : 'Cloud mode posts to FBR’s gateway with the token above; the static IP must be the one registered with FBR.'}
       </div>
       <div className="row" style={{ gap: 8 }}>
@@ -564,7 +570,7 @@ function Tables() {
       <b>Tables</b>
       <div style={{ margin: '10px 0' }}>
         {rows.map((t) => (
-          <div key={t.id} className="row between list-row" style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }} onDoubleClick={() => rename(t)} title="Double-click to rename">
+          <div key={t.id} className="row between list-row" style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }} onDoubleClick={() => rename(t)}>
             <span><b>{t.code}</b> <span className="muted">· {t.name}</span></span>
             <div className="row" style={{ gap: 4 }}>
               {branches.length > 1 && (
@@ -632,14 +638,13 @@ function Staff() {
   return (
     <div className="card">
       <b>Staff</b>
-      <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}><span className="hint-inline">Double-click a member to edit.</span></p>
       <div style={{ margin: '8px 0' }}>
         {rows.map((s) => (
           <div key={s.id} style={{ borderBottom: '1px solid var(--line)' }}>
             {editFor === s.id ? (
               <StaffEdit s={s} fbrOn={fbrOn} onDone={() => { setEditFor(null); load() }} onCancel={() => setEditFor(null)} />
             ) : (
-              <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(s.id)} title="Double-click to edit">
+              <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(s.id)}>
                 <span><b>{s.displayName}</b> <span className="muted">· {s.username} · {roleLabel(s.role)}
                   {fbrOn && s.fbrPosId ? ` · POS ${s.fbrPosId}` : ''}</span></span>
                 <div className="row" style={{ gap: 4 }}>
@@ -655,8 +660,8 @@ function Staff() {
       </div>
       <div className="cat-title" style={{ fontSize: 13, margin: '6px 0' }}>Add staff</div>
       <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-        <input placeholder="Username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1 }} />
-        <input placeholder="Display name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1 }} />
+        <input placeholder="Their name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1 }} />
+        <input placeholder="Mobile number or username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1 }} autoCapitalize="none" spellCheck="false" />
       </div>
       <div className="row" style={{ gap: 8, marginBottom: 6 }}>
         <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
@@ -695,14 +700,14 @@ function StaffEdit({ s, fbrOn, onDone, onCancel }) {
   return (
     <div className="edit-panel">
       <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <input autoFocus placeholder="Username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
-        <input placeholder="Display name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
+        <input autoFocus placeholder="Their name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
+        <input placeholder="Mobile number or username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1, minWidth: 130 }} autoCapitalize="none" spellCheck="false" />
         <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
       </div>
       {fbrOn && (
         <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <input placeholder="FBR POSID" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 130 }} />
-          <input placeholder={s.hasFbrToken ? 'Token set — type to change' : 'FBR token (cloud)'} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1, minWidth: 150 }} />
+          <input placeholder={s.hasFbrToken ? 'Token set. Type to change' : 'FBR token (cloud)'} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1, minWidth: 150 }} />
         </div>
       )}
       <div className="row" style={{ gap: 8 }}>

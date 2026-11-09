@@ -18,4 +18,13 @@ public class SignalROrderNotifier : IOrderNotifier
         await _hub.Clients.Group(OrderHub.StaffGroup(slug)).SendAsync("orderChanged", order, ct);
         await _hub.Clients.Group(OrderHub.TableGroup(slug, order.TableCode)).SendAsync("orderChanged", order, ct);
     }
+
+    public Task OrderMoved(string slug, string fromTableCode, OrderDto order, CancellationToken ct = default) =>
+        _hub.Clients.Group(OrderHub.TableGroup(slug, fromTableCode)).SendAsync("orderChanged", order, ct);
+
+    public async Task ServiceRequestChanged(string slug, Application.Ordering.ServiceRequestDto request, CancellationToken ct = default)
+    {
+        await _hub.Clients.Group(OrderHub.StaffGroup(slug)).SendAsync("serviceRequest", request, ct);
+        await _hub.Clients.Group(OrderHub.TableGroup(slug, request.TableCode)).SendAsync("serviceRequest", request, ct);
+    }
 }

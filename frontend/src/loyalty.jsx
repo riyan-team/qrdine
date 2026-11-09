@@ -140,7 +140,7 @@ export function RewardsStrip({ loy, onOpen }) {
   const goal = me ? nextGoal(info.rewards, me.availablePoints) : null
   return (
     <button className={'lx-strip' + (bump ? ' lx-bump' : '')} onClick={onOpen}>
-      <span className="lx-strip-ico" aria-hidden="true">{me ? <StarIcon size={18} /> : '🎁'}</span>
+      <span className="lx-strip-ico" aria-hidden="true"><StarIcon size={18} /></span>
       {me ? (
         <span className="lx-strip-txt">
           <b><CountUp value={me.points} /> points</b>
@@ -149,7 +149,7 @@ export function RewardsStrip({ loy, onOpen }) {
       ) : (
         <span className="lx-strip-txt">
           <b>Join {info.name}</b>
-          <span>{info.welcomeBonus > 0 ? `Get ${pts(info.welcomeBonus)} free — earn on every bill` : 'Earn points on every bill'}</span>
+          <span>{info.welcomeBonus > 0 ? `Get ${pts(info.welcomeBonus)} free, and earn on every bill` : 'Earn points on every bill'}</span>
         </span>
       )}
       <span className="lx-strip-go" aria-hidden="true">›</span>
@@ -198,7 +198,7 @@ export function RewardsHub({ loy, slug, code, open, onClose, onRated }) {
       const before = me?.redemptions?.filter((r) => r.status === 'Pending').map((r) => r.id) || []
       const m = await loy.refresh()
       const approved = m?.redemptions?.find((r) => before.includes(r.id) && r.status === 'Approved')
-      if (approved) { burst(); toast.success(`${approved.rewardEmoji} ${approved.rewardTitle} approved — enjoy!`) }
+      if (approved) { burst(); toast.success(`${approved.rewardTitle} approved. Enjoy!`) }
     }, 6000)
     return () => clearInterval(id)
   }, [open, waiting])
@@ -246,7 +246,7 @@ function JoinView({ loy }) {
       const m = await loy.join(name.trim(), phone)
       if (m.justJoined) {
         burst()
-        toast.success(m.welcomeBonusAwarded > 0 ? `Welcome! ${pts(m.welcomeBonusAwarded)} added 🎉` : 'Welcome to rewards!')
+        toast.success(m.welcomeBonusAwarded > 0 ? `Welcome! ${pts(m.welcomeBonusAwarded)} added` : 'Welcome to rewards!')
       } else toast.success(`Welcome back, ${m.name}!`)
     } catch (ex) { setErr(ex.message || 'Could not join right now.') }
     setBusy(false)
@@ -259,8 +259,8 @@ function JoinView({ loy }) {
         <div className="lx-hero-title">{info.tagline || 'Earn points on every visit.'}</div>
         <div className="lx-perks">
           <span><StarIcon size={14} /> {info.earnPoints} pt{info.earnPoints === 1 ? '' : 's'} per {money(info.perAmount)}</span>
-          {info.welcomeBonus > 0 && <span>🎁 {pts(info.welcomeBonus)} welcome gift</span>}
-          {info.feedbackBonus > 0 && <span>💬 {pts(info.feedbackBonus)} for rating us</span>}
+          {info.welcomeBonus > 0 && <span>{pts(info.welcomeBonus)} welcome gift</span>}
+          {info.feedbackBonus > 0 && <span>{pts(info.feedbackBonus)} for rating us</span>}
         </div>
         <div className="lx-hero-note">A {money(sample)} bill earns {Math.floor(sample / info.perAmount) * info.earnPoints} points.</div>
       </div>
@@ -307,13 +307,13 @@ function MemberView({ loy, slug, code }) {
   const recentDone = me.redemptions.filter((r) => r.status !== 'Pending').slice(0, 3)
 
   const redeem = async (r) => {
-    const ok = await ui.confirm({ title: `${r.emoji} ${r.title}`, message: `Use ${pts(r.pointsCost)} for this reward? You'll get a code to show our staff — points come off when they confirm it.`, confirmText: 'Get my code' })
+    const ok = await ui.confirm({ title: r.title, message: `Use ${pts(r.pointsCost)} for this reward? You'll get a code to show our staff. Points come off when they confirm it.`, confirmText: 'Get my code' })
     if (!ok) return
     setBusyId(r.id)
     try {
       await loyalty.redeem(slug, r.id, code)
       await loy.refresh()
-      toast.success('Your code is ready — show it to our staff.')
+      toast.success('Your code is ready. Show it to our staff.')
       document.querySelector('.lx-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (ex) { toast.error(ex.message || 'Could not request this reward.') }
     setBusyId(null)
@@ -388,7 +388,7 @@ function MemberView({ loy, slug, code }) {
             )
           })}
         </div>
-      ) : <div className="muted" style={{ fontSize: 13 }}>Rewards are coming soon — your points are safe.</div>}
+      ) : <div className="muted" style={{ fontSize: 13 }}>Rewards are coming soon. Your points are safe.</div>}
 
       {recentDone.length > 0 && (
         <>
@@ -428,7 +428,7 @@ function MemberView({ loy, slug, code }) {
   )
 }
 
-const TXN_LABEL = { Welcome: '🎁 Welcome gift', Earn: '🧾 Visit', Feedback: '💬 Rating bonus', Redeem: '🎉 Reward', Adjust: '✏️ Adjustment' }
+const TXN_LABEL = { Welcome: 'Welcome gift', Earn: 'Visit', Feedback: 'Rating bonus', Redeem: 'Reward', Adjust: 'Adjustment' }
 
 function ReviewsView({ info, slug, code, loy, onRated }) {
   const r = info.reviews || { average: 0, count: 0 }

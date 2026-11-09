@@ -32,6 +32,10 @@ public class Restaurant : Entity
     public bool TaxEnabled { get; set; } = false;
     public string TaxName { get; set; } = "GST";       // label printed on the bill (e.g. GST, Sales Tax)
 
+    // Provinces charge less tax when the guest pays by card or wallet (PRA: 5% against 16%).
+    // Empty means one rate for everyone.
+    public decimal? TaxPercentCard { get; set; }
+
     // ---- Discount billing settings ----
     // When DiscountEnabled is on, the configured discount is pre-applied to every bill
     // (the cashier can still adjust it). Percentage of subtotal, or a fixed Rs amount.

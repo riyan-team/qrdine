@@ -1,0 +1,191 @@
+/* ============================================================
+   Dine In: the design layer. Loaded after styles.css, so it restyles the
+   whole app by changing tokens, and adds the fonts and the 3D diorama.
+   ============================================================ */
+:root {
+  --bg: #f6f1e9;
+  --surface: #fffdf9;
+  --panel: #fffdf9;
+  --surface2: #f2ebe1;
+  --panel2: #f2ebe1;
+
+  --text: #1f1714;
+  --ink: #1f1714;
+  --muted: #6e6158;
+  --faint: #a2958a;
+
+  --line: #e8dfd2;
+  --line2: #d9cdbd;
+
+  --accent: #a81d48;
+  --accent-strong: #84113a;
+  --accent-tint: #f8e8ed;
+  --saffron: #d6932a;
+  --saffron-tint: #fbefd9;
+  --aubergine: #1f0f15;
+  --aubergine-2: #34161f;
+  --cream: #fbf3e4;
+
+  --accent2: #17794f;
+  --green-tint: #e2f2e9;
+  --blue: #2e5fb8;
+  --red: #c43246;
+  --amber: #a86a12;
+  --amber-tint: #fbefd9;
+
+  --shadow-sm: 0 1px 2px rgba(45, 25, 15, .06);
+  --shadow: 0 1px 2px rgba(45, 25, 15, .05), 0 12px 32px rgba(45, 25, 15, .07);
+  --shadow-lg: 0 2px 4px rgba(45, 25, 15, .06), 0 24px 60px rgba(45, 25, 15, .16);
+  --radius: 16px;
+  --font: "DM Sans Variable", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --spring: cubic-bezier(.2, .9, .25, 1.1);
+  --ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+body { font-family: var(--font); font-size: 15px; font-optical-sizing: auto; }
+.h, .big, h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.012em; }
+.h { font-size: 28px; }
+.stat .num { font-family: var(--display); font-weight: 600; letter-spacing: -.015em; }
+.cat-title { font-family: var(--font); letter-spacing: .08em; font-size: 12.5px; color: var(--muted); }
+
+button { font-weight: 600; border-radius: 11px; }
+button.primary { box-shadow: inset 0 -1px 0 rgba(0,0,0,.14); }
+input, select, textarea { border-radius: 11px; background: #fff; }
+input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(168, 29, 72, .13); }
+.card { border-radius: 16px; }
+.field-error::before { content: ""; }
+.toast { border-radius: 12px; }
+
+/* The Dine In logo is drawn with Georgia italics inside its SVG. */
+.dish-pic { position: relative; overflow: hidden; border-radius: 14px; background: var(--surface2); }
+.dish-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dish-pic.is-art { display: grid; place-items: center; }
+.dish-pic.is-art svg { width: 76%; height: 76%; filter: drop-shadow(0 6px 8px rgba(70, 30, 10, .18)); }
+
+/* ============================================================
+   The diorama. --px / --py come from useParallax().
+   Sizes are in --u so one number scales the whole scene.
+   ============================================================ */
+.dio { --u: 1px; position: relative; width: calc(620 * var(--u)); height: calc(560 * var(--u)); perspective: calc(1500 * var(--u)); perspective-origin: 50% 30%; }
+.dio-stage {
+  position: absolute; inset: 0; transform-style: preserve-3d;
+  transform: rotateX(calc(12deg - var(--py, 0) * 5deg)) rotateY(calc(-20deg + var(--px, 0) * 9deg));
+  animation: dio-in 1.25s var(--ease) both;
+}
+@keyframes dio-in { from { opacity: 0; transform: rotateX(38deg) rotateY(-56deg) translateZ(calc(-180 * var(--u))); } }
+
+.dio-table {
+  position: absolute; left: 3%; right: 3%; bottom: 5%; height: 50%;
+  transform: rotateX(64deg) translateZ(calc(-58 * var(--u)));
+  border-radius: calc(36 * var(--u));
+  background:
+    radial-gradient(90% 70% at 50% 40%, rgba(214, 147, 42, .34), transparent 70%),
+    repeating-linear-gradient(92deg, rgba(255,255,255,.028) 0 2px, transparent 2px 19px),
+    linear-gradient(165deg, #5a2a1b, #33160f);
+  box-shadow: 0 calc(40 * var(--u)) calc(90 * var(--u)) rgba(0,0,0,.5);
+}
+.dio-shadow {
+  position: absolute; left: 27%; top: 88%; width: 44%; height: 9%; border-radius: 50%;
+  background: rgba(0,0,0,.5); filter: blur(calc(20 * var(--u))); transform: translateZ(calc(-30 * var(--u)));
+}
+
+/* ---- phone with thickness ---- */
+.dio-phone {
+  --w: calc(232 * var(--u)); --h: calc(470 * var(--u)); --d: calc(14 * var(--u));
+  position: absolute; left: 50%; top: 50%; width: var(--w); height: var(--h);
+  margin: calc(var(--h) / -2) 0 0 calc(var(--w) / -2);
+  transform-style: preserve-3d; transform: rotateY(6deg) rotateX(-1deg);
+  animation: dio-float 7s ease-in-out infinite;
+}
+@keyframes dio-float { 50% { translate: 0 calc(-12 * var(--u)); } }
+.dio-face {
+  position: absolute; inset: 0; transform: translateZ(calc(var(--d) / 2));
+  background: #120a0d; border-radius: calc(36 * var(--u)); padding: calc(8 * var(--u));
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.14);
+}
+.dio-back { position: absolute; inset: 0; border-radius: calc(36 * var(--u)); background: #2a1a1e; transform: translateZ(calc(var(--d) / -2)) rotateY(180deg); }
+.dio-side { position: absolute; background: linear-gradient(#3c2a2f, #191013); }
+.dio-side.l, .dio-side.r { top: calc(30 * var(--u)); bottom: calc(30 * var(--u)); width: var(--d); left: 50%; margin-left: calc(var(--d) / -2); }
+.dio-side.l { transform: translateX(calc(var(--w) / -2)) rotateY(-90deg); }
+.dio-side.r { transform: translateX(calc(var(--w) / 2)) rotateY(90deg); }
+.dio-side.t, .dio-side.b { left: calc(30 * var(--u)); right: calc(30 * var(--u)); height: var(--d); top: 50%; margin-top: calc(var(--d) / -2); }
+.dio-side.t { transform: translateY(calc(var(--h) / -2)) rotateX(90deg); }
+.dio-side.b { transform: translateY(calc(var(--h) / 2)) rotateX(-90deg); }
+.dio-notch { position: absolute; top: calc(14 * var(--u)); left: 50%; width: calc(62 * var(--u)); height: calc(16 * var(--u)); margin-left: calc(-31 * var(--u)); border-radius: 99px; background: #120a0d; z-index: 3; }
+
+.dio-screen { position: relative; width: 100%; height: 100%; border-radius: calc(29 * var(--u)); overflow: hidden; background: var(--cream); color: var(--ink); font-size: calc(11 * var(--u)); line-height: 1.25; }
+.dio-ui { position: absolute; inset: 0; padding: calc(38 * var(--u)) calc(11 * var(--u)) calc(11 * var(--u)); display: flex; flex-direction: column; gap: calc(9 * var(--u)); backface-visibility: hidden; }
+.dio-ui-head { display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.dio-ui-name { font-family: var(--display); font-weight: 600; font-size: calc(18 * var(--u)); line-height: 1.1; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dio-ui-table { align-self: flex-start; font-size: calc(9.5 * var(--u)); font-weight: 600; color: var(--accent); background: var(--accent-tint); padding: calc(2 * var(--u)) calc(7 * var(--u)); border-radius: 99px; }
+.dio-ui-search { height: calc(26 * var(--u)); border-radius: 99px; background: #fff; box-shadow: 0 0 0 1px var(--line); flex: none; }
+.dio-ui-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: calc(8 * var(--u)); flex: 1; min-height: 0; }
+.dio-tile { position: relative; border-radius: calc(13 * var(--u)); overflow: hidden; display: flex; align-items: flex-end; padding: calc(7 * var(--u)); font-weight: 700; font-size: calc(10.5 * var(--u)); box-shadow: 0 calc(3 * var(--u)) calc(8 * var(--u)) rgba(70,30,10,.14); }
+.dio-tile svg { position: absolute; right: calc(-5 * var(--u)); top: calc(-3 * var(--u)); width: 76%; height: 76%; }
+.dio-tile span { position: relative; }
+.dio-row { display: flex; align-items: center; gap: calc(8 * var(--u)); background: #fff; border-radius: calc(13 * var(--u)); padding: calc(7 * var(--u)); box-shadow: 0 1px 2px rgba(70,30,10,.1); }
+.dio-row-pic { width: calc(40 * var(--u)); height: calc(40 * var(--u)); border-radius: calc(9 * var(--u)); display: grid; place-items: center; flex: none; }
+.dio-row-pic svg { width: 80%; height: 80%; }
+.dio-row-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dio-row-txt b { font-size: calc(10.5 * var(--u)); }
+.dio-row-txt span { color: var(--muted); font-size: calc(9.5 * var(--u)); }
+.dio-add { width: calc(21 * var(--u)); height: calc(21 * var(--u)); border-radius: 50%; display: grid; place-items: center; background: var(--surface2); font-weight: 700; flex: none; }
+.dio-add.on { background: var(--accent); color: #fff; }
+.dio-bar { margin-top: auto; display: flex; justify-content: space-between; align-items: center; background: var(--accent); color: #fff; border-radius: calc(13 * var(--u)); padding: calc(10 * var(--u)) calc(12 * var(--u)); font-weight: 600; }
+.dio-ui-3 { align-items: center; justify-content: center; text-align: center; gap: calc(6 * var(--u)); background: var(--cream); }
+.dio-ui-3 b { font-family: var(--display); font-size: calc(19 * var(--u)); font-weight: 600; }
+.dio-ui-3 span { color: var(--muted); }
+.dio-tick { width: calc(56 * var(--u)); height: calc(56 * var(--u)); border-radius: 50%; background: var(--accent2); display: grid; place-items: center; margin-bottom: calc(5 * var(--u)); }
+.dio-tick svg { width: 58%; height: 58%; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* One order, on a 13 second loop: browse, choose, sent. Each screen turns in like a page. */
+.dio-screen.looping .dio-ui-1 { animation: dio-s1 13s var(--ease) infinite; }
+.dio-screen.looping .dio-ui-2 { animation: dio-s2 13s var(--ease) infinite; }
+.dio-screen.looping .dio-ui-3 { animation: dio-s3 13s var(--ease) infinite; }
+.dio-screen { perspective: calc(700 * var(--u)); }
+@keyframes dio-s1 { 0%, 28% { opacity: 1; transform: none; } 34%, 94% { opacity: 0; transform: translateX(-34%) rotateY(52deg); } 100% { opacity: 1; transform: none; } }
+@keyframes dio-s2 { 0%, 28% { opacity: 0; transform: translateX(40%) rotateY(-55deg); } 34%, 60% { opacity: 1; transform: none; } 66%, 100% { opacity: 0; transform: translateX(-34%) rotateY(52deg); } }
+@keyframes dio-s3 { 0%, 60% { opacity: 0; transform: scale(.8) rotateX(-30deg); } 67%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scale(1.04); } }
+
+/* ---- QR card, stood on the table behind the phone ---- */
+.dio-qr { position: absolute; left: 5%; top: 33%; width: calc(142 * var(--u)); height: calc(188 * var(--u)); transform-style: preserve-3d; transform: translateZ(calc(-70 * var(--u))) rotateY(24deg) rotateZ(-2deg); }
+.dio-qr-face { position: absolute; inset: 0; background: #fffaf0; color: var(--ink); border-radius: calc(13 * var(--u)); padding: calc(12 * var(--u)); display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-shadow: calc(-10 * var(--u)) calc(18 * var(--u)) calc(34 * var(--u)) rgba(0,0,0,.45); }
+.dio-qr-back { position: absolute; inset: 0; background: #e6dbc6; border-radius: calc(13 * var(--u)); transform: translateZ(calc(-4 * var(--u))) translateX(calc(4 * var(--u))); }
+.dio-qr-face small { font-size: calc(10.5 * var(--u)); font-weight: 600; color: var(--accent); }
+.dio-qr-face b { font-family: var(--display); font-size: calc(15 * var(--u)); font-weight: 600; }
+.dio-qr-code { width: 74%; fill: var(--ink); }
+
+/* ---- kitchen ticket comes in once the order is sent ---- */
+.dio-ticket {
+  position: absolute; right: 2%; top: 13%; width: calc(186 * var(--u)); padding: calc(11 * var(--u)) calc(13 * var(--u));
+  background: #fff8e9; color: var(--ink); border-radius: calc(5 * var(--u)); font-size: calc(11.5 * var(--u)); line-height: 1.45;
+  box-shadow: calc(-8 * var(--u)) calc(20 * var(--u)) calc(36 * var(--u)) rgba(0,0,0,.42); border-top: calc(5 * var(--u)) solid var(--saffron);
+  transform: translateZ(calc(95 * var(--u))) rotateZ(3deg); animation: dio-ticket 13s var(--ease) infinite;
+}
+.dio-ticket-top { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: calc(3 * var(--u)); }
+.dio-ticket-top b { color: var(--accent); }
+.dio-ticket-eta { display: flex; align-items: center; gap: calc(6 * var(--u)); color: var(--muted); font-size: calc(10.5 * var(--u)); margin-top: calc(3 * var(--u)); }
+.dio-ticket-eta i { width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; background: var(--accent2); animation: dio-blip 1.2s ease-in-out infinite; }
+@keyframes dio-blip { 50% { opacity: .3; } }
+@keyframes dio-ticket {
+  0%, 60% { opacity: 0; transform: translateZ(calc(280 * var(--u))) translateX(calc(120 * var(--u))) rotateZ(14deg) rotateY(-50deg); }
+  67%, 94% { opacity: 1; transform: translateZ(calc(95 * var(--u))) rotateZ(3deg); }
+  100% { opacity: 0; transform: translateZ(calc(95 * var(--u))) translateY(calc(-30 * var(--u))) rotateZ(3deg); }
+}
+
+/* ---- the bill printing out ---- */
+.dio-receipt { position: absolute; right: 4%; bottom: 13%; width: calc(162 * var(--u)); height: calc(138 * var(--u)); overflow: hidden; transform: translateZ(calc(130 * var(--u))) rotateZ(-3deg); filter: drop-shadow(calc(-6 * var(--u)) calc(16 * var(--u)) calc(18 * var(--u)) rgba(0,0,0,.4)); }
+.dio-receipt-paper {
+  height: 100%; padding: calc(10 * var(--u)) calc(12 * var(--u)); background: #fffdf7; color: var(--ink); font-size: calc(10.5 * var(--u)); line-height: 1.5;
+  background-image: radial-gradient(circle at 6px 100%, transparent 4px, #fffdf7 4.5px); animation: dio-print 13s linear infinite;
+}
+.dio-receipt-paper b { display: block; font-family: var(--display); font-size: calc(14 * var(--u)); font-weight: 600; margin-bottom: calc(4 * var(--u)); }
+.dio-receipt-paper div { display: flex; justify-content: space-between; }
+.dio-receipt-paper .sum { font-weight: 700; border-top: 1px dashed var(--line2); margin-top: calc(5 * var(--u)); padding-top: calc(5 * var(--u)); }
+@keyframes dio-print { 0%, 74% { transform: translateY(-102%); } 88%, 96% { transform: none; } 100% { transform: translateY(-102%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dio-stage, .dio-phone, .dio-screen.looping .dio-ui-1, .dio-ticket, .dio-receipt-paper { animation: none !important; }
+  .dio-screen.looping .dio-ui-2, .dio-screen.looping .dio-ui-3 { animation: none !important; opacity: 0; }
+}

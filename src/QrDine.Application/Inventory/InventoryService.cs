@@ -18,7 +18,7 @@ public class InventoryService
     // ---- stock items ----
     public async Task<IReadOnlyList<StockItemDto>> ListStock(CancellationToken ct = default) =>
         await _db.Stock.AsNoTracking().OrderBy(s => s.Name)
-            .Select(s => new StockItemDto(s.Id, s.Name, s.Unit, s.Quantity, s.LowThreshold, s.Quantity <= s.LowThreshold))
+            .Select(s => new StockItemDto(s.Id, s.Name, s.Unit, s.Quantity, s.LowThreshold, s.Quantity <= s.LowThreshold, s.LastCost))
             .ToListAsync(ct);
 
     public async Task<int> CreateStockItem(StockItemInput input, CancellationToken ct = default)
@@ -58,6 +58,15 @@ public class InventoryService
         var delta = newQty - s.Quantity;
         s.Quantity = newQty;
         await Move(id, delta, StockMovementType.Adjust, reason ?? "Manual adjustment", ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Spoiled, burnt or dropped. Stock goes down and the reports can show what it cost.</summary>
+    public async Task Waste(int id, decimal qty, string? reason, CancellationToken ct = default)
+    {
+        var s = await Get(id, ct);
+        s.Quantity -= qty;
+        await Move(id, -qty, StockMovementType.Waste, string.IsNullOrWhiteSpace(reason) ? "Wasted" : reason.Trim(), ct);
         await _db.SaveChangesAsync(ct);
     }
 

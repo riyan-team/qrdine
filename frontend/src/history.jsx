@@ -8,9 +8,9 @@ export function Pager({ page, totalPages, total, onPage }) {
   if (!total) return null
   return (
     <div className="pager">
-      <button disabled={page <= 1} onClick={() => onPage(page - 1)}>← Prev</button>
+      <button disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
       <span className="muted">Page {page} of {Math.max(1, totalPages)} · {total} total</span>
-      <button disabled={page >= totalPages} onClick={() => onPage(page + 1)}>Next →</button>
+      <button disabled={page >= totalPages} onClick={() => onPage(page + 1)}>Next</button>
     </div>
   )
 }
@@ -57,7 +57,7 @@ export function OrderHistory({ statuses = ['', 'Placed', 'Approved', 'Cooking', 
           {statuses.map((s) => <option key={s} value={s}>{s ? (STATUS_LABEL[s] || s) : 'All statuses'}</option>)}
         </select>
         <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
-        <span className="muted">→</span>
+        <span className="muted">to</span>
         <input type="date" value={to} min={from} max={todayIso()} onChange={(e) => setTo(e.target.value)} />
       </div>
 

@@ -34,7 +34,7 @@ export default function PlatformLogin() {
   return (
     <div className="wrap" style={{ maxWidth: 400 }}>
       <div style={{ marginTop: 28 }}><BackHome /></div>
-      <div className="h" style={{ marginTop: 8 }}>QrDine — Operator</div>
+      <div className="h" style={{ marginTop: 8 }}>Dine In operator</div>
       <div className="card">
         <p className="muted" style={{ marginTop: 0, fontSize: 14 }}>Platform control panel. Manage all restaurants, plans and subscriptions.</p>
         <form onSubmit={go} noValidate>

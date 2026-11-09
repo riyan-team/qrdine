@@ -11,6 +11,7 @@ public static class InventoryEndpoints
     {
         var g = app.MapGroup("/api/r/{slug}/admin")
             .RequireAuthorization(Policies.CanManageInventory)
+            .RequiresPlan(r => r.FeatureInventory)
             .AddEndpointFilter<ValidationFilter>();
 
         g.MapGet("/stock", async (InventoryService svc) => Results.Ok(await svc.ListStock()));

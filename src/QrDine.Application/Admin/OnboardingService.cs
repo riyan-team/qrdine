@@ -28,8 +28,16 @@ public class OnboardingService
 
     public async Task<AuthResponse> Onboard(OnboardRequest req, CancellationToken ct = default)
     {
-        var slug = req.Slug.Trim().ToLowerInvariant();
-        if (await _db.Restaurants.AnyAsync(r => r.Slug == slug, ct))
+        // Sign-in names are unique across every restaurant, so one box is enough to log in.
+        var username = LoginName.Normalize(req.OwnerUsername);
+        if (await _db.Staff.IgnoreQueryFilters().AnyAsync(s => s.Username == username, ct))
+            throw new DomainException("This mobile number already has an account. Please sign in instead.");
+
+        // Nobody chooses an address any more: it comes from the restaurant's name.
+        var slug = string.IsNullOrWhiteSpace(req.Slug)
+            ? await UniqueSlug(req.RestaurantName, ct)
+            : req.Slug.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(req.Slug) && await _db.Restaurants.AnyAsync(r => r.Slug == slug, ct))
             throw new DomainException($"The address '{slug}' is already taken — pick another.");
 
         // Start every restaurant on a 14-day trial so the operator has a window to
@@ -48,7 +56,7 @@ public class OnboardingService
         var owner = new StaffMember
         {
             RestaurantId = restaurant.Id,
-            Username = req.OwnerUsername.Trim().ToLowerInvariant(),
+            Username = username,
             DisplayName = req.OwnerDisplayName.Trim(),
             Role = StaffRole.Owner,
             PasswordHash = _hasher.Hash(req.OwnerPassword),
@@ -72,6 +80,25 @@ public class OnboardingService
 
         var token = _tokens.CreateStaffToken(owner, slug, Permissions.All);
         return BuildResponse(restaurant, owner, token);
+    }
+
+    /// <summary>"Karachi Biryani House" → "karachi-biryani-house", with a number added if that's taken.</summary>
+    private async Task<string> UniqueSlug(string name, CancellationToken ct)
+    {
+        var chars = new List<char>();
+        foreach (var c in name.Trim().ToLowerInvariant())
+        {
+            if (c is >= 'a' and <= 'z' or >= '0' and <= '9') chars.Add(c);
+            else if (chars.Count > 0 && chars[^1] != '-') chars.Add('-');
+        }
+        var baseSlug = new string(chars.ToArray()).Trim('-');
+        if (baseSlug.Length > 50) baseSlug = baseSlug[..50].Trim('-');
+        if (baseSlug.Length < 3) baseSlug = "restaurant";
+
+        var slug = baseSlug;
+        for (var n = 2; await _db.Restaurants.AnyAsync(r => r.Slug == slug, ct); n++)
+            slug = $"{baseSlug}-{n}";
+        return slug;
     }
 
     /// <summary>Seed the ready-to-edit starter menu (categories + items + Half/Full
@@ -108,6 +135,6 @@ public class OnboardingService
         var features = new FeaturesDto(restaurant.FeatureOrdering, restaurant.FeatureKitchen,
             restaurant.FeatureWaiter, restaurant.FeatureBilling, restaurant.FeatureInventory,
             restaurant.FeatureReports, restaurant.FeatureFbr);
-        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All, features, restaurant.Name);
+        return new AuthResponse(token, owner.DisplayName, owner.Role.ToString(), Permissions.All, features, restaurant.Name, restaurant.Slug);
     }
 }

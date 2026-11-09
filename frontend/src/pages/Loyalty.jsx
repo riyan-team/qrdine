@@ -39,7 +39,7 @@ export default function Loyalty() {
     try {
       const p = await loyalty.saveProgram({ ...program, enabled: !program.enabled })
       setProgram(p)
-      toast.success(p.enabled ? 'Rewards are live on your QR menu 🎉' : 'Rewards are switched off.')
+      toast.success(p.enabled ? 'Rewards are live on your QR menu.' : 'Rewards are switched off.')
     } catch (e) { fail(e) }
   }
 
@@ -48,11 +48,11 @@ export default function Loyalty() {
       <div className="row between lx-admin-head" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div className="h" style={{ marginBottom: 2 }}>Loyalty &amp; reviews</div>
-          <p className="muted" style={{ margin: 0 }}>Points on every bill, rewards guests can claim, and your Google reviews — all on the table QR.</p>
+          <p className="muted" style={{ margin: 0 }}>Points on every bill, rewards guests can claim, and your Google reviews, all on the table QR.</p>
         </div>
         {program && (
           <button className={'lx-live ' + (program.enabled ? 'on' : '')} onClick={toggle}>
-            <span className="lx-live-dot" /> {program.enabled ? 'Live on QR menu' : 'Switched off — turn on'}
+            <span className="lx-live-dot" /> {program.enabled ? 'Live on QR menu' : 'Switched off. Turn on'}
           </button>
         )}
       </div>
@@ -227,7 +227,7 @@ function ProgramForm({ program, onSaved }) {
               {f.googleMapsUrl && <a className="lx-btn lx-btn-ghost" href={f.googleMapsUrl} target="_blank" rel="noopener noreferrer">Test</a>}
             </div>
           </label>
-          <div className="field-hint">Google's rules: ask every guest (not only happy ones) and never give points for a Google review — this button follows both.</div>
+          <div className="field-hint">Google's rules: ask every guest (not only happy ones) and never give points for a Google review. This button follows both.</div>
         </div>
       </div>
 
@@ -235,8 +235,8 @@ function ProgramForm({ program, onSaved }) {
         <div className="lx-preview-label">What guests see</div>
         <div className="lx-phone">
           <div className="lx-strip static">
-            <span className="lx-strip-ico">🎁</span>
-            <span className="lx-strip-txt"><b>Join {f.name || 'Rewards'}</b><span>{num(f.welcomeBonus) > 0 ? `Get ${num(f.welcomeBonus)} pts free — earn on every bill` : 'Earn points on every bill'}</span></span>
+            <span className="lx-strip-ico"><StarIcon size={18} /></span>
+            <span className="lx-strip-txt"><b>Join {f.name || 'Rewards'}</b><span>{num(f.welcomeBonus) > 0 ? `Get ${num(f.welcomeBonus)} pts free, and earn on every bill` : 'Earn points on every bill'}</span></span>
             <span className="lx-strip-go">›</span>
           </div>
           <div className="lx-hero lx-hero-join" style={{ marginTop: 10 }}>
@@ -244,10 +244,10 @@ function ProgramForm({ program, onSaved }) {
             <div className="lx-hero-title">{f.tagline || 'Earn points on every visit.'}</div>
             <div className="lx-perks">
               <span><StarIcon size={13} /> {earn} pt{earn === 1 ? '' : 's'} per {money(per || 0)}</span>
-              {num(f.welcomeBonus) > 0 && <span>🎁 {num(f.welcomeBonus)} pts welcome</span>}
+              {num(f.welcomeBonus) > 0 && <span>{num(f.welcomeBonus)} pts welcome</span>}
             </div>
           </div>
-          {!f.enabled && <div className="lx-preview-off">Switched off — guests don't see this yet</div>}
+          {!f.enabled && <div className="lx-preview-off">Switched off. Guests don't see this yet</div>}
         </div>
         <button className="primary" disabled={busy} onClick={save} style={{ width: '100%', marginTop: 14 }}>{busy ? 'Saving…' : 'Save changes'}</button>
       </aside>
@@ -287,7 +287,7 @@ function Rewards() {
     try { await loyalty.updateReward(r.id, { ...r, active: !r.active }); load() } catch (e) { fail(e) }
   }
   const addSamples = async () => {
-    try { for (const s of SAMPLES) await loyalty.addReward(s); load(); toast.success('Sample rewards added — edit them to suit you.') } catch (e) { fail(e) }
+    try { for (const s of SAMPLES) await loyalty.addReward(s); load(); toast.success('Sample rewards added. Edit them to suit you.') } catch (e) { fail(e) }
   }
 
   if (!list) return <div className="loading"><span className="spinner dark" /> Loading…</div>

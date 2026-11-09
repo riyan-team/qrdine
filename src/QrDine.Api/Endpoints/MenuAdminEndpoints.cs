@@ -74,7 +74,8 @@ public static class MenuAdminEndpoints
         // Owner sales dashboard (Owner/Manager).
         app.MapGet("/api/r/{slug}/admin/dashboard", async (int? days, int? branchId, ReportsService svc)
                 => Results.Ok(await svc.GetDashboard(days ?? 7, branchId)))
-            .RequireAuthorization(Policies.CanViewReports);
+            .RequireAuthorization(Policies.CanViewReports)
+            .RequiresPlan(r => r.FeatureReports);
 
         // Paginated sales report (Owner/Manager) — filters, search, server-side paging.
         app.MapGet("/api/r/{slug}/admin/reports/sales", async (DateTime? from, DateTime? to, int? branchId,
@@ -83,7 +84,8 @@ public static class MenuAdminEndpoints
                 var (fromUtc, toUtc) = Window(from, to);
                 return Results.Ok(await svc.GetSales(fromUtc, toUtc, branchId, q, method, page ?? 1, pageSize ?? 20));
             })
-            .RequireAuthorization(Policies.CanViewReports);
+            .RequireAuthorization(Policies.CanViewReports)
+            .RequiresPlan(r => r.FeatureReports);
 
         // Downloadable invoice report / sales-tax return (CSV) — same filters as the report.
         app.MapGet("/api/r/{slug}/admin/reports/invoices.csv", async (DateTime? from, DateTime? to, int? branchId,
@@ -95,7 +97,8 @@ public static class MenuAdminEndpoints
                 var name = $"invoices_{fromUtc:yyyyMMdd}_{toUtc:yyyyMMdd}.csv";
                 return Results.File(new System.Text.UTF8Encoding(true).GetBytes(csv), "text/csv", name);
             })
-            .RequireAuthorization(Policies.CanViewReports);
+            .RequireAuthorization(Policies.CanViewReports)
+            .RequiresPlan(r => r.FeatureReports);
     }
 
     // Normalise a date window: default to the last 31 days; extend an end-date with no
@@ -118,7 +121,7 @@ internal static class ReportsCsv
         sb.AppendLine("Invoice,Date,Branch,Table,Payment,Cashier,NetSales,ServiceCharge,SalesTax,FurtherTax,Discount,Total,Tendered,Change,FiscalStatus,FiscalNumber");
         foreach (var r in rows)
             sb.AppendLine(string.Join(",",
-                $"INV-{r.Number:D5}", Q(r.IssuedAt.ToString("yyyy-MM-dd HH:mm")), Q(r.Branch), Q(r.Table), Q(r.PaymentMethod), Q(r.Cashier),
+                $"INV-{r.Number:D5}", Q(BusinessDay.ToPkt(r.IssuedAt).ToString("yyyy-MM-dd HH:mm")), Q(r.Branch), Q(r.Table), Q(r.PaymentMethod), Q(r.Cashier),
                 r.NetSales, r.ServiceCharge, r.SalesTax, r.FurtherTax, r.Discount, r.Total, r.AmountTendered, r.ChangeGiven, r.FiscalStatus, Q(r.FiscalNumber)));
         // Totals row — the numbers a sales-tax return needs at a glance.
         sb.AppendLine(string.Join(",", "TOTAL", "", "", "", "", "",

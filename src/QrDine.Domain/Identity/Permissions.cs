@@ -19,18 +19,24 @@ public static class Permissions
     public const string SettingsManage = "settings.manage";
     public const string ReportsView = "reports.view";
     public const string InvoiceSync = "invoice.sync";   // file/retry an invoice with FBR
+    public const string ExpensesManage = "expenses.manage";
+    public const string SuppliersManage = "suppliers.manage";
+    public const string OrdersDiscount = "orders.discount";    // change the discount on a bill
+    public const string CustomersManage = "customers.manage";  // customer khata
+    public const string PayrollManage = "payroll.manage";      // salaries, advances, attendance
 
     public static readonly string[] All =
     {
         OrdersCreate, OrdersApprove, OrdersCook, OrdersServe, OrdersPay, OrdersCancel,
-        MenuManage, InventoryManage, SettingsManage, ReportsView, InvoiceSync,
+        MenuManage, InventoryManage, SettingsManage, ReportsView, InvoiceSync, ExpensesManage, SuppliersManage,
+        OrdersDiscount, CustomersManage, PayrollManage,
     };
 
     /// <summary>Sensible starting grants for a role (matches the original fixed rules).</summary>
     public static string[] DefaultsFor(StaffRole role) => role switch
     {
         StaffRole.Owner or StaffRole.Manager => All,
-        StaffRole.Cashier => new[] { OrdersCreate, OrdersApprove, OrdersPay, InvoiceSync },
+        StaffRole.Cashier => new[] { OrdersCreate, OrdersApprove, OrdersPay, InvoiceSync, OrdersDiscount, CustomersManage },
         StaffRole.Kitchen => new[] { OrdersCook },
         StaffRole.Waiter => new[] { OrdersCreate, OrdersServe },
         _ => Array.Empty<string>(),

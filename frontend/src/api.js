@@ -2,6 +2,19 @@ import { auth, staffAuth, platformAuth } from './auth'
 import { parseError } from './errors'
 import { shrinkImage } from './imageShrink'
 
+// Two failures in a row mean the server can't be reached; one success means it's back (see ConnectionBar).
+let netFails = 0
+const report = (good) => {
+  const was = netFails >= 2
+  netFails = good ? 0 : netFails + 1
+  const now = netFails >= 2
+  if (was !== now) window.dispatchEvent(new CustomEvent('dinein:net', { detail: { down: now } }))
+}
+const fetch = (...args) => window.fetch(...args).then(
+  (res) => { report(res.status < 500); return res },
+  (err) => { report(false); throw err },
+)
+
 // Staff calls target the signed-in restaurant; guest calls take an explicit slug.
 const S = () => auth.staffSlug()
 
@@ -124,6 +137,39 @@ export const api = {
   // feedback (owner)
   getFeedback: () => staffGet(`/admin/feedback`),
 
+  // guests: which dishes to show as "most ordered"
+  getPopular: (slug) => fetch(`/api/r/${slug}/popular`).then(j),
+
+  // supplier khata
+  staffPlan: () => staffGet(`/staff/plan`),
+  suppliers: () => staffGet(`/admin/suppliers`),
+  addSupplier: (s) => staffPost(`/admin/suppliers`, s),
+  updateSupplier: (id, s) => staffPut(`/admin/suppliers/${id}`, s),
+  archiveSupplier: (id) => staffDelete(`/admin/suppliers/${id}`),
+  supplierLedger: (id) => staffGet(`/admin/suppliers/${id}/ledger`),
+  addPurchase: (id, p) => staffPost(`/admin/suppliers/${id}/purchases`, p),
+  addSupplierPayment: (id, p) => staffPost(`/admin/suppliers/${id}/payments`, p),
+  addSupplierReturn: (id, r) => staffPost(`/admin/suppliers/${id}/returns`, r),
+  deleteSupplierEntry: (entryId) => staffDelete(`/admin/suppliers/entries/${entryId}`),
+
+  // expenses
+  expenses: ({ from = '', to = '', category = '', branchId = null } = {}) => {
+    const p = new URLSearchParams()
+    if (from) p.set('from', from); if (to) p.set('to', to); if (category) p.set('category', category); if (branchId) p.set('branchId', branchId)
+    return staffGet(`/admin/expenses?${p}`)
+  },
+  addExpense: (e) => staffPost(`/admin/expenses`, e),
+  updateExpense: (id, e) => staffPut(`/admin/expenses/${id}`, e),
+  deleteExpense: (id) => staffDelete(`/admin/expenses/${id}`),
+
+  // reports and waste
+  businessReport: ({ from, to, branchId = null }) => {
+    const p = new URLSearchParams({ from, to })
+    if (branchId) p.set('branchId', branchId)
+    return staffGet(`/admin/reports/business?${p}`)
+  },
+  wasteStock: (id, quantity, reason) => staffPost(`/admin/stock/${id}/waste`, { quantity, reason }),
+
   // ---- staff (slug from session) ----
   getTables: () => staffGet(`/tables`),
   // A waiter/reception takes an order on a table's behalf (staff token → any table).
@@ -136,12 +182,62 @@ export const api = {
   assign: (id, waiterName) => staffPost(`/orders/${id}/assign`, { waiterName }),
   serve: (id) => staffPost(`/orders/${id}/serve`),
   pay: (id) => staffPost(`/orders/${id}/pay`),
-  cancel: (id) => staffPost(`/orders/${id}/cancel`),
+  cancel: (id, reason = null) => staffPost(`/orders/${id}/cancel`, { reason }),
+  voidItem: (orderId, itemId, qty, reason) => staffPost(`/orders/${orderId}/items/${itemId}/void`, { qty, reason }),
+  moveTable: (code, toCode) => staffPost(`/tables/${code}/move`, { toCode }),
+
+  // parcel and delivery: each ticket is its own private table, so nothing can land on the wrong bill
+  placeTicket: (t) => staffPost(`/tickets`, t),
+  tickets: () => staffGet(`/tickets`),
+  updateTicket: (code, t) => staffPut(`/tickets/${code}`, t),
+
+  // a guest tapping "call waiter" or "ask for the bill"
+  callStaff: async (slug, code, kind) => {
+    const token = await auth.guestToken(slug, code)
+    return fetch(`/api/r/${slug}/tables/${code}/call`, {
+      method: 'POST', headers: json({ Authorization: `Bearer ${token}` }), body: JSON.stringify({ kind }),
+    }).then(j)
+  },
+  serviceRequests: () => staffGet(`/staff/requests`),
+  serviceDone: (id) => staffPost(`/staff/requests/${id}/done`),
+
+  // customer khata
+  findCustomers: (q) => staffGet(`/staff/customers/find?q=${encodeURIComponent(q)}`),
+  customers: () => staffGet(`/admin/customers`),
+  addCustomer: (c) => staffPost(`/admin/customers`, c),
+  updateCustomer: (id, c) => staffPut(`/admin/customers/${id}`, c),
+  archiveCustomer: (id) => staffDelete(`/admin/customers/${id}`),
+  customerLedger: (id) => staffGet(`/admin/customers/${id}/ledger`),
+  addCustomerPayment: (id, p) => staffPost(`/admin/customers/${id}/payments`, p),
+  deleteCustomerEntry: (entryId) => staffDelete(`/admin/customers/entries/${entryId}`),
+
+  // salaries and attendance
+  payroll: (month = '') => staffGet(`/admin/payroll${month ? `?month=${month}` : ''}`),
+  addEmployee: (e) => staffPost(`/admin/payroll`, e),
+  updateEmployee: (id, e) => staffPut(`/admin/payroll/${id}`, e),
+  archiveEmployee: (id) => staffDelete(`/admin/payroll/${id}`),
+  employeeEntries: (id, month) => staffGet(`/admin/payroll/${id}/entries?month=${month}`),
+  addEmployeeEntry: (id, e) => staffPost(`/admin/payroll/${id}/entries`, e),
+  deleteEmployeeEntry: (entryId) => staffDelete(`/admin/payroll/entries/${entryId}`),
+  attendance: (month) => staffGet(`/admin/payroll/attendance?month=${month}`),
+  setAttendance: (a) => staffPut(`/admin/payroll/attendance`, a),
+
+  // end-of-day cash count
+  closing: (date = '', branchId = null) => staffGet(`/admin/closing?date=${date}${branchId ? `&branchId=${branchId}` : ''}`),
+  closeDay: (c) => staffPost(`/admin/closing`, c),
+
+  // change every price by a percentage
+  bulkPrice: (p) => staffPost(`/admin/menu/bulk-price`, p),
 
   // billing
-  getBill: (code, discount = null) => staffGet(`/tables/${code}/bill${discount != null ? `?discount=${discount}` : ''}`),
-  settle: (code, method, discount, amountTendered = 0) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered }),
-  payPart: (code, amount, method) => staffPost(`/tables/${code}/pay-part`, { amount, method }),
+  getBill: (code, discount = null, method = null) => {
+    const p = new URLSearchParams()
+    if (discount != null) p.set('discount', discount)
+    if (method) p.set('method', method)
+    return staffGet(`/tables/${code}/bill?${p}`)
+  },
+  settle: (code, method, discount, amountTendered = 0, customerId = null) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered, customerId }),
+  payPart: (code, amount, method, discount = null) => staffPost(`/tables/${code}/pay-part`, { amount, method, discount }),
   invoice: (id) => staffGet(`/invoices/${id}`),
 
   // reception dashboard (today's takings, pending bills, settled history)
@@ -285,13 +381,28 @@ export const platform = {
   updatePlan: (id, p) => fetch(`/api/platform/plans/${id}`, { method: 'PUT', headers: ph(), body: JSON.stringify(p) }).then(pj),
   deletePlan: (id) => fetch(`/api/platform/plans/${id}`, { method: 'DELETE', headers: platformAuth.header() }).then(pj),
   deleteRestaurant: (id) => fetch(`/api/platform/restaurants/${id}`, { method: 'DELETE', headers: platformAuth.header() }).then(pj),
+  resetOwnerPassword: (id) => fetch(`/api/platform/restaurants/${id}/reset-owner-password`, { method: 'POST', headers: ph() }).then(pj),
 }
 
-export const money = (n) => 'Rs ' + Number(n).toLocaleString('en-PK')
+export const money = (n) => 'Rs ' + (Number(n) || 0).toLocaleString('en-PK')
+export const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 export const STATUS_LABEL = {
   Placed: 'Sent to reception', Approved: 'Approved', Cooking: 'Being cooked',
   Ready: 'Ready to serve', Served: 'Served', Paid: 'Paid', Cancelled: 'Cancelled',
+}
+
+// The same steps read differently when the food leaves the building.
+export const statusLabel = (o) => {
+  if (o.channel === 'Takeaway') {
+    if (o.status === 'Ready') return 'Ready for pickup'
+    if (o.status === 'Served') return 'Handed over'
+  }
+  if (o.channel === 'Delivery') {
+    if (o.status === 'Ready') return 'Ready for rider'
+    if (o.status === 'Served') return 'Out for delivery'
+  }
+  return STATUS_LABEL[o.status] || o.status
 }
 
 // The "Cashier" role is presented as "Reception" everywhere in the UI (the stored

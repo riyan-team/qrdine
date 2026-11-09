@@ -1,364 +1,165 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, money } from '../api'
 import { auth } from '../auth'
-import { ui } from '../ui.jsx'
-import { friendlyError } from '../errors'
-import Receipt from './Receipt.jsx'
-import { MenuIcon, BoxIcon, ReceiptIcon, KitchenIcon, UserIcon, QrIcon, GearIcon, SearchIcon,
-  CashIcon, TrendIcon, CalcIcon, BankIcon, WarnIcon, RefreshIcon, PrintIcon, DownloadIcon, StarIcon } from '../icons.jsx'
+import { addDays, Figure, Loading, Problem, todayPk, useData } from '../backoffice.jsx'
+import { useStaffOrders } from '../useStaffOrders'
+import { tilt } from '../motion'
+import { RankedBars, TrendChart } from './Reports.jsx'
+import {
+  BookIcon, BoxIcon, CashIcon, CheckIcon, KitchenIcon, MenuIcon, NoteIcon, QrIcon, ReceiptIcon, TrendIcon, UsersIcon, WalletIcon, WarnIcon,
+} from '../icons.jsx'
 
-// Each tile shows only when the plan includes its feature AND the user has the
-// permission — so the Manage grid matches the top nav (no dead modules).
-const ACTIONS = [
-  { to: '/admin/menu', Icon: MenuIcon, name: 'Menu', sub: 'Items, prices, photos', show: () => auth.can('menu.manage') },
-  { to: '/admin/inventory', Icon: BoxIcon, name: 'Inventory', sub: 'Stock & recipes', show: () => auth.can('inventory.manage') && auth.hasFeature('inventory') },
-  { to: '/cashier', Icon: ReceiptIcon, name: 'Reception', sub: 'Approve & bill', show: () => (auth.can('orders.approve') || auth.can('orders.pay')) && (auth.hasFeature('ordering') || auth.hasFeature('billing')) },
+const TILES = [
+  { to: '/cashier', Icon: ReceiptIcon, name: 'Reception', sub: 'Tables, parcels, bills', show: () => (auth.can('orders.approve') || auth.can('orders.pay')) && (auth.hasFeature('ordering') || auth.hasFeature('billing')) },
   { to: '/kitchen', Icon: KitchenIcon, name: 'Kitchen', sub: 'Live tickets', show: () => auth.can('orders.cook') && auth.hasFeature('kitchen') },
-  { to: '/waiter', Icon: UserIcon, name: 'Waiter', sub: 'Serve tables', show: () => auth.can('orders.serve') && auth.hasFeature('waiter') },
-  { to: '/owner', Icon: QrIcon, name: 'QR codes', sub: 'Print table QRs', show: () => auth.can('settings.manage') },
-  { to: '/admin/settings', Icon: GearIcon, name: 'Settings', sub: 'Tables & staff', show: () => auth.can('settings.manage') },
+  { to: '/waiter', Icon: NoteIcon, name: 'Waiter', sub: 'Serve and take orders', show: () => auth.can('orders.serve') && auth.hasFeature('waiter') },
+  { to: '/admin/closing', Icon: CashIcon, name: 'Day closing', sub: 'Count the cash', show: () => auth.can('orders.pay') && auth.hasFeature('billing') },
+  { to: '/admin/reports', Icon: TrendIcon, name: 'Reports', sub: 'Sales, profit, staff', show: () => auth.can('reports.view') && auth.hasFeature('reports') },
+  { to: '/admin/expenses', Icon: WalletIcon, name: 'Add an expense', sub: 'Rent, gas, bijli', show: () => auth.can('expenses.manage') && auth.hasFeature('reports') },
+  { to: '/admin/suppliers', Icon: BookIcon, name: 'Supplier khata', sub: 'Bills and payments', show: () => auth.can('suppliers.manage') && auth.hasFeature('inventory') },
+  { to: '/admin/inventory', Icon: BoxIcon, name: 'Inventory', sub: 'Stock levels', show: () => auth.can('inventory.manage') && auth.hasFeature('inventory') },
+  { to: '/admin/payroll', Icon: UsersIcon, name: 'Staff & salaries', sub: 'Pay and attendance', show: () => auth.can('payroll.manage') && auth.hasFeature('reports') },
+  { to: '/admin/menu', Icon: MenuIcon, name: 'Menu', sub: 'Dishes and prices', show: () => auth.can('menu.manage') },
+  { to: '/owner', Icon: QrIcon, name: 'Table QR codes', sub: 'Print for your tables', show: () => auth.can('settings.manage') },
 ]
 
+const canSeeFloor = () => auth.hasFeature('ordering') && (auth.can('orders.approve') || auth.can('orders.pay'))
+
+// The owner's front page: how today is going, what needs attention now, and a way into everything else.
 export default function Dashboard() {
-  const nav = useNavigate()
-  const [d, setD] = useState(null)
+  const [params] = useSearchParams()
   const [branchId, setBranchId] = useState('')
-  const [err, setErr] = useState('')
-  const [fb, setFb] = useState(null)
-  const load = (bid = branchId) => api.dashboard(7, bid || null).then(setD).catch((e) => setErr(e.message))
-  useEffect(() => { load(); api.getFeedback().then(setFb).catch(() => {}) }, [])
+  const { data: d, error, loading, reload } = useData(() => api.dashboard(7, branchId || null), [branchId])
 
-  if (!d) return <div className="empty">{err || 'Loading dashboard…'}</div>
-
-  const payTotal = d.payments.reduce((s, p) => s + p.amount, 0) || 1
-  const name = auth.getStaff()?.displayName || 'there'
-  const hour = new Date().getHours()
+  const name = auth.getStaff()?.displayName || ''
+  const hour = (new Date().getUTCHours() + 5) % 24
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const t = d.trend
-  const delta = (t[t.length - 2]?.total ?? 0) > 0 ? Math.round((((t[t.length - 1]?.total ?? 0) - t[t.length - 2].total) / t[t.length - 2].total) * 100) : null
 
   return (
-    <div className="wrap">
-      <div className="row between noprint" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div className="muted">{greet},</div>
-          <div className="h" style={{ margin: '2px 0 0' }}>{name}</div>
+    <div className="bo-wrap">
+      <header className="bo-head">
+        <div className="bo-head-text">
+          <h1 className="h">{greet}{name ? `, ${name.split(' ')[0]}` : ''}</h1>
+          <p>{auth.getStaff()?.restaurantName}</p>
         </div>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          {d.branches?.length > 1 && (
-            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); load(e.target.value) }}>
+        {d?.branches?.length > 1 && (
+          <div className="bo-head-actions">
+            <select value={branchId} aria-label="Branch" onChange={(e) => setBranchId(e.target.value)}>
               <option value="">All branches</option>
               {d.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
-          )}
-          <button onClick={() => load()}><RefreshIcon size={15} /> Refresh</button>
-          <button className="primary" onClick={() => window.print()}><PrintIcon size={15} /> Print report</button>
-        </div>
-      </div>
-
-      {/* KPI tiles */}
-      <div className="grid noprint" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-        <Stat Icon={CashIcon} num={money(d.todaySales)} label="Today's sales" delta={delta} />
-        <Stat Icon={ReceiptIcon} num={d.todayBills} label="Today's bills" />
-        <Stat Icon={TrendIcon} num={money(d.periodSales)} label="7-day sales" />
-        <Stat Icon={CalcIcon} num={money(d.periodAvgBill)} label="Avg bill" />
-        <Stat Icon={BankIcon} num={money((d.periodTax || 0) + (d.periodFurtherTax || 0))} label="Sales tax · 7d" />
-        {auth.hasFeature('inventory') && (
-          <div className="card stat" style={{ cursor: 'pointer' }} onClick={() => nav('/admin/inventory')}>
-            <div className="chip" style={d.lowStock > 0 ? { background: 'var(--amber-tint)', color: 'var(--amber)' } : {}}><WarnIcon size={20} /></div>
-            <div className="num" style={{ color: d.lowStock > 0 ? 'var(--amber)' : 'var(--ink)' }}>{d.lowStock}</div>
-            <div className="lbl">Low stock</div>
           </div>
         )}
-      </div>
+      </header>
 
-      {/* Sales report — filters, search, totals, server-side pagination + CSV export */}
-      <SalesReport branches={d.branches} />
+      <GettingStarted welcome={params.get('welcome') === '1'} />
+      <Problem onRetry={reload}>{error}</Problem>
+      {loading && !d && <Loading />}
 
-      {/* Quick actions */}
-      <div className="cat-title noprint">Manage</div>
-      <div className="grid noprint" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        {ACTIONS.filter((a) => a.show()).map((a) => (
-          <div key={a.to} className="card tile" onClick={() => nav(a.to)}>
-            <div className="chip"><a.Icon size={20} /></div>
-            <div><div className="t-name">{a.name}</div><div className="t-sub">{a.sub}</div></div>
-          </div>
+      {d && (
+        <div className="bo-figs">
+          <Figure tone="lead" label="Sales today" value={money(d.todaySales)} hint={`${d.todayBills} ${d.todayBills === 1 ? 'bill' : 'bills'}`} />
+          {canSeeFloor() && <RightNow />}
+          <Figure label="Last 7 days" value={money(d.periodSales)} hint={`Average bill ${money(d.periodAvgBill)}`} />
+          {auth.hasFeature('inventory') && (
+            <Link to="/admin/inventory" style={{ display: 'contents' }}>
+              <Figure tone={d.lowStock > 0 ? 'bad' : undefined} label="Stock running low" value={d.lowStock}
+                hint={d.lowStock > 0 ? <><WarnIcon size={13} /> Check before service</> : 'All fine'} />
+            </Link>
+          )}
+        </div>
+      )}
+
+      <div className="td-tiles">
+        {TILES.filter((t) => t.show()).map((t) => (
+          <Link key={t.to} to={t.to} className="td-tile" {...tilt(6)}>
+            <i><t.Icon size={18} /></i>
+            <span>{t.name}<small>{t.sub}</small></span>
+          </Link>
         ))}
       </div>
 
-      {/* Charts */}
-      <div className="cat-title noprint">Sales · last 7 days</div>
-      <div className="card noprint"><TrendChart trend={d.trend} /></div>
+      {d && d.trend?.length > 1 && (
+        <section className="bo-card rp-block">
+          <div className="bo-card-head"><h2>Sales, last 7 days</h2></div>
+          <TrendChart rows={d.trend.map((t, i) => ({ date: addDays(todayPk(), i - (d.trend.length - 1)), sales: t.total, bills: t.bills ?? 0 }))} />
+        </section>
+      )}
 
-      <div className="grid g2 noprint" style={{ marginTop: 16 }}>
-        <div className="card">
-          <b>Payment methods · 7 days</b>
-          <div style={{ marginTop: 12 }}>
-            {d.payments.length === 0 && <div className="muted">No sales yet.</div>}
-            {d.payments.map((p) => (
-              <div key={p.method} style={{ marginBottom: 12 }}>
-                <div className="row between" style={{ fontSize: 14 }}><span>{p.method} <span className="muted">· {p.count}</span></span><b>{money(p.amount)}</b></div>
-                <div style={{ height: 8, background: 'var(--surface2)', borderRadius: 6, overflow: 'hidden', marginTop: 5 }}>
-                  <div style={{ width: `${(p.amount / payTotal) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 6 }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="card">
-          <b>Top items · 7 days</b>
-          <div style={{ marginTop: 10 }}>
-            {d.topItems.length === 0 && <div className="muted">No sales yet.</div>}
-            {d.topItems.map((it, i) => (
-              <div key={i} className="row between" style={{ padding: '7px 0', borderBottom: i < d.topItems.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                <span><span className="muted" style={{ marginRight: 6 }}>{i + 1}.</span>{it.name} <span className="muted">×{it.qty}</span></span>
-                <b>{money(it.revenue)}</b>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {fb && fb.count > 0 && <FeedbackPanel fb={fb} />}
-
-      <PrintReport d={d} greet={greet} name={name} />
-    </div>
-  )
-}
-
-const isoDay = (dt) => dt.toISOString().slice(0, 10)
-
-// Full sales report: date range + branch + method + search, server-side paginated,
-// with a totals bar and a CSV export of the exact same filtered set.
-function SalesReport({ branches }) {
-  const [from, setFrom] = useState(isoDay(new Date(Date.now() - 30 * 86400000)))
-  const [to, setTo] = useState(isoDay(new Date()))
-  const [branchId, setBranchId] = useState('')
-  const [method, setMethod] = useState('')
-  const [q, setQ] = useState('')
-  const [page, setPage] = useState(1)
-  const [data, setData] = useState(null)
-  const [dl, setDl] = useState(false)
-  const [err, setErr] = useState('')
-  const timer = useRef(null)
-
-  const load = (p = page) => api.salesReport({ from, to, branchId: branchId || null, q, method, page: p, pageSize: 15 })
-    .then(setData).catch((e) => setErr(friendlyError(e)))
-  useEffect(() => { setPage(1); load(1) }, [from, to, branchId, method])
-  const onSearch = (v) => { setQ(v); setPage(1); clearTimeout(timer.current); timer.current = setTimeout(() => load(1), 300) }
-  const go = (p) => { setPage(p); load(p) }
-  const download = async () => {
-    setDl(true)
-    try { await api.downloadInvoicesCsv(from, to, branchId || null, q, method) } catch (e) { ui.alert(friendlyError(e)) }
-    setDl(false)
-  }
-
-  const [viewInvoice, setViewInvoice] = useState(null)
-  const openInvoice = async (id) => {
-    try {
-      setViewInvoice(await api.invoice(id))
-    } catch (e) {
-      ui.alert(friendlyError(e))
-    }
-  }
-
-  const rows = data?.rows ?? []
-  const cur = data?.currency || 'Rs'
-  return (
-    <div className="card noprint sales-report" style={{ marginTop: 16 }}>
-      <div className="row between" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <b>Sales &amp; tax report</b>
-          <div className="muted" style={{ fontSize: 13 }}>Every settled invoice with its tax breakdown. The CSV exports exactly what you filter here.</div>
-        </div>
-        <button className="primary" disabled={dl} onClick={download}>{dl ? 'Preparing…' : <><DownloadIcon size={15} /> Download CSV</>}</button>
-      </div>
-
-      <div className="hist-filters" style={{ marginTop: 12 }}>
-        <div className="search-box">
-          <SearchIcon size={15} />
-          <input placeholder="Search bill #, table, cashier…" value={q} onChange={(e) => onSearch(e.target.value)} />
-        </div>
-        <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
-        <span className="muted">→</span>
-        <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
-        <select value={method} onChange={(e) => setMethod(e.target.value)}>
-          <option value="">All payments</option>
-          {['Cash', 'Card', 'JazzCash', 'Easypaisa'].map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        {branches?.length > 1 && (
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            <option value="">All branches</option>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
-      </div>
-
-      <div className="table-scroll" style={{ marginTop: 10 }}>
-        <table className="data-table">
-          <thead>
-            <tr><th>Bill</th><th>Date</th><th>Table</th><th>Payment</th><th>Cashier</th>
-              <th className="num">Net</th><th className="num">Discount</th><th className="num">Tax</th><th className="num">Total</th><th></th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{r.number}</td>
-                <td className="muted">{new Date(r.issuedAt).toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                <td>{r.table}</td>
-                <td>{r.paymentMethod}</td>
-                <td className="muted">{r.cashier || '—'}</td>
-                <td className="num">{money(r.subtotal)}</td>
-                <td className="num">{r.discount > 0 ? '− ' + money(r.discount) : '—'}</td>
-                <td className="num">{money(r.tax)}</td>
-                <td className="num"><b>{money(r.total)}</b></td>
-                <td>
-                  <button className="ghost btn-sm" onClick={() => openInvoice(r.id)} title="Reprint invoice" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <PrintIcon size={13} /> Print
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && <tr><td colSpan={10} className="empty-row">{err || 'No sales in this range.'}</td></tr>}
-          </tbody>
-          {rows.length > 0 && (
-            <tfoot>
-              <tr>
-                <td colSpan={5}><b>Totals ({data.total})</b></td>
-                <td className="num"><b>{money(data.sumNet)}</b></td>
-                <td className="num"><b>{money(data.sumDiscount)}</b></td>
-                <td className="num"><b>{money(data.sumTax)}</b></td>
-                <td className="num"><b>{money(data.sumSales)}</b></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-      <div className="pager">
-        <button disabled={(data?.page ?? 1) <= 1} onClick={() => go(page - 1)}>← Prev</button>
-        <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.total ?? 0} bills</span>
-        <button disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)} onClick={() => go(page + 1)}>Next →</button>
-      </div>
-
-      {viewInvoice && (
-        <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') setViewInvoice(null) }}>
-          <div className="modal">
-            <Receipt invoice={viewInvoice} />
-            <div className="noprint row" style={{ marginTop: 12, gap: 8 }}>
-              <button onClick={() => setViewInvoice(null)}>Close</button>
-              <button className="blue" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => window.print()}>
-                <PrintIcon size={15} /> Reprint Invoice
-              </button>
-            </div>
-          </div>
+      {d && (
+        <div className="bo-cols">
+          <section className="bo-card rp-block">
+            <div className="bo-card-head"><h2>Best sellers, last 7 days</h2></div>
+            {d.topItems.length
+              ? <RankedBars rows={d.topItems.map((i) => ({ name: i.name, count: i.qty, amount: i.revenue }))} unit="sold" top={6} />
+              : <div className="bo-small">No sales yet. They show here after your first bill.</div>}
+          </section>
+          <section className="bo-card rp-block">
+            <div className="bo-card-head"><h2>How people paid, last 7 days</h2></div>
+            {d.payments.length
+              ? <RankedBars rows={d.payments.map((p) => ({ name: p.method, count: p.count, amount: p.amount }))} unit="paid" />
+              : <div className="bo-small">No payments yet.</div>}
+          </section>
         </div>
       )}
     </div>
   )
 }
 
-// Customer feedback summary: average, star distribution, recent comments.
-function FeedbackPanel({ fb }) {
-  const maxBar = Math.max(1, ...fb.distribution)
+function RightNow() {
+  const orders = useStaffOrders()
+  const tables = new Set(orders.map((o) => o.tableCode)).size
+  const waiting = orders.filter((o) => o.status === 'Placed').length
+  const ready = orders.filter((o) => o.status === 'Ready').length
   return (
-    <div className="card noprint" style={{ marginTop: 16 }}>
-      <div className="row between"><b>Customer feedback</b>
-        <span className="muted" style={{ fontSize: 13 }}>{fb.count} rating(s)</span>
-      </div>
-      <div className="row" style={{ gap: 20, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="big" style={{ color: 'var(--accent)', fontSize: 34 }}>{fb.average.toFixed(1)}</div>
-          <div className="row" style={{ gap: 2, justifyContent: 'center', color: 'var(--amber, #e0a500)' }}>
-            {Array.from({ length: 5 }).map((_, i) => <StarIcon key={i} size={15} style={{ opacity: i < Math.round(fb.average) ? 1 : .25 }} />)}
-          </div>
-        </div>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          {[5, 4, 3, 2, 1].map((star) => (
-            <div key={star} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 12 }}>
-              <span style={{ width: 24 }}>{star}★</span>
-              <div style={{ flex: 1, height: 7, background: 'var(--surface2)', borderRadius: 5, overflow: 'hidden' }}>
-                <div style={{ width: `${(fb.distribution[star - 1] / maxBar) * 100}%`, height: '100%', background: 'var(--accent)' }} />
-              </div>
-              <span className="muted" style={{ width: 22, textAlign: 'right' }}>{fb.distribution[star - 1]}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {fb.recent.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          <div className="cat-title" style={{ fontSize: 13 }}>Recent comments</div>
-          {fb.recent.slice(0, 8).map((r) => (
-            <div key={r.id} style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontSize: 13 }}>
-                <span style={{ color: 'var(--amber, #e0a500)' }}>{Array.from({ length: r.rating }).map((_, i) => <StarIcon key={i} size={13} />)}</span>
-                <span className="muted"> · {r.tableCode || 'table'} · {new Date(r.createdAt).toLocaleDateString()}</span>
-              </div>
-              <div style={{ fontSize: 14 }}>{r.comment}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <Link to="/cashier" style={{ display: 'contents' }}>
+      <Figure tone={waiting > 0 ? 'bad' : undefined} label="Running now" value={`${tables} ${tables === 1 ? 'table' : 'tables'}`}
+        hint={waiting > 0 ? `${waiting} waiting to be approved` : ready > 0 ? `${ready} ready to serve` : 'Nothing waiting'} />
+    </Link>
   )
 }
 
-function Stat({ Icon, num, label, delta }) {
-  return (
-    <div className="card stat">
-      {delta != null && <span className={'delta ' + (delta >= 0 ? 'up' : 'flat')}>{delta >= 0 ? '+' : ''}{delta}%</span>}
-      <div className="chip">{Icon && <Icon size={20} />}</div>
-      <div className="num">{num}</div>
-      <div className="lbl">{label}</div>
-    </div>
-  )
-}
+// A short list for someone who has just signed up. It goes away when they've finished with it.
+function GettingStarted({ welcome }) {
+  const key = `dinein.setup.${auth.staffSlug()}`
+  const read = () => { try { return JSON.parse(localStorage.getItem(key) || 'null') } catch { return null } }
+  const [state, setState] = useState(() => read() || (welcome ? { done: [] } : null))
+  const [table, setTable] = useState(null)
 
-// Print-only clean report.
-function PrintReport({ d }) {
+  const save = (next) => {
+    setState(next)
+    try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* private mode: it just won't be remembered */ }
+  }
+  useEffect(() => { if (welcome && !read()) save({ done: [] }) }, [welcome])
+  useEffect(() => { if (state && !state.hidden) api.getTables().then((t) => setTable(t[0] || null)).catch(() => {}) }, [state?.hidden])
+  if (!state || state.hidden) return null
+
+  const steps = [
+    { id: 'menu', title: 'Check your menu', sub: "We've put in a starter menu. Change it to yours, or read it from a photo.", to: '/admin/menu', show: auth.can('menu.manage') },
+    { id: 'qr', title: 'Print your table QR codes', sub: 'One for each table.', to: '/owner', show: auth.can('settings.manage') },
+    { id: 'try', title: 'Order something yourself', sub: 'Open a table on your phone and see it reach Reception.', to: table ? `/r/${auth.staffSlug()}/t/${table.code}` : '/owner', show: true },
+    { id: 'staff', title: 'Add your staff', sub: 'Give your cashier, kitchen and waiters their own sign-in.', to: '/admin/settings', show: auth.can('settings.manage') },
+  ].filter((s) => s.show)
+  const tick = (id) => { if (!state.done.includes(id)) save({ ...state, done: [...state.done, id] }) }
+
   return (
-    <div className="print-area" style={{ display: 'none' }}>
-      <div className="receipt" style={{ maxWidth: 620, margin: '0 auto' }}>
-        <div className="r-h"><div style={{ fontWeight: 800, fontSize: 20 }}>Sales Report</div><div style={{ fontSize: 12 }}>Last 7 days</div></div>
-        <div className="r-line"><span>Today's sales</span><b>{money(d.todaySales)}</b></div>
-        <div className="r-line"><span>Today's bills</span><b>{d.todayBills}</b></div>
-        <div className="r-line"><span>7-day sales</span><b>{money(d.periodSales)}</b></div>
-        <div className="r-line"><span>7-day bills</span><b>{d.periodBills}</b></div>
-        <div className="r-line"><span>Average bill</span><b>{money(d.periodAvgBill)}</b></div>
-        <div className="r-line"><span>Net sales (excl. tax)</span><b>{money(d.periodNetSales)}</b></div>
-        <div className="r-line"><span>Sales tax collected</span><b>{money((d.periodTax || 0) + (d.periodFurtherTax || 0))}</b></div>
-        <div style={{ marginTop: 10, fontWeight: 700 }}>Payment methods</div>
-        {d.payments.map((p) => <div key={p.method} className="r-line"><span>{p.method} ({p.count})</span><span>{money(p.amount)}</span></div>)}
-        <div style={{ marginTop: 10, fontWeight: 700 }}>Top items</div>
-        {d.topItems.map((it, i) => <div key={i} className="r-line"><span>{i + 1}. {it.name} ×{it.qty}</span><span>{money(it.revenue)}</span></div>)}
-        {d.lowStockItems.length > 0 && <><div style={{ marginTop: 10, fontWeight: 700 }}>Low stock</div><div style={{ fontSize: 13 }}>{d.lowStockItems.join(', ')}</div></>}
+    <section className="bo-card rp-block">
+      <div className="bo-card-head">
+        <h2>{state.done.length >= steps.length ? "You're ready to open" : 'Four things before you open'}</h2>
+        <button className="ghost btn-sm" onClick={() => save({ ...state, hidden: true })}>Hide this</button>
       </div>
-    </div>
-  )
-}
-
-function TrendChart({ trend }) {
-  const max = Math.max(1, ...trend.map((t) => t.total))
-  const W = 640, H = 190, pad = 30, n = trend.length
-  const gap = (W - pad * 2) / n
-  const bw = gap * 0.55
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }} role="img" aria-label="Daily sales, last 7 days">
-      {trend.map((t, i) => {
-        const h = (t.total / max) * (H - pad * 2)
-        const x = pad + i * gap + (gap - bw) / 2
-        const y = H - pad - h
-        const isToday = i === n - 1
-        return (
-          <g key={i}>
-            <rect x={x} y={y} width={bw} height={Math.max(h, 2)} rx="5" fill={isToday ? 'var(--accent)' : '#d9b3c0'} />
-            {t.total > 0 && <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--muted)">{Math.round(t.total / 1000 * 10) / 10}k</text>}
-            <text x={x + bw / 2} y={H - pad + 15} textAnchor="middle" fontSize="10" fill="var(--muted)">{t.date.split(' ')[0]}</text>
-          </g>
-        )
-      })}
-      <line x1={pad} y1={H - pad} x2={W - pad} y2={H - pad} stroke="var(--line)" />
-    </svg>
+      <div className="td-steps">
+        {steps.map((s) => {
+          const done = state.done.includes(s.id)
+          return (
+            <Link key={s.id} to={s.to} className={`td-step${done ? ' is-done' : ''}`} onClick={() => tick(s.id)}>
+              <i>{done && <CheckIcon size={13} />}</i>
+              <span><b>{s.title}</b><small>{s.sub}</small></span>
+            </Link>
+          )
+        })}
+      </div>
+    </section>
   )
 }

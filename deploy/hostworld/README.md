@@ -32,6 +32,20 @@ Print, from Git Bash in the print repo:
 git archive HEAD server package.json package-lock.json | ssh hostworld 'tar -xf - -C /opt/qrprint/app && cd /opt/qrprint/app && npm ci --omit=dev && chown -R root:root . && systemctl restart qrprint'
 ```
 
+## Reading menus from a photo
+
+Uses Google's Gemini API. The key lives only in `/etc/qrdine/qrdine.env`. To set or change it, get a key at https://aistudio.google.com/apikey, then run this from the PC:
+
+```bash
+ssh -t hostworld /usr/local/sbin/qrdine-set-gemini
+```
+
+It asks for the key without showing it, has Gemini read a small test menu, and saves the key only if that worked. The model defaults to `gemini-flash-latest`, because Google retires dated model names. `qrdine-set-gemini.sh` in this folder is the source; copy it to `/usr/local/sbin/qrdine-set-gemini` if it changes.
+
+## What each plan unlocks
+
+The platform console sets a restaurant's plan. Staff screens hide what the plan leaves out, and pick up a change next time a screen loads. The server also refuses those back-office routes (`RequiresPlan` in `src/QrDine.Api/Auth/PlanGate.cs`). Order, table and bill routes are deliberately not gated that way, so a plan change in the middle of service can't strand food on the floor. Guest ordering is gated separately, in `OrderService`.
+
 ## Paid-date rules
 
 `Restaurant.PlanExpiresAt` is the paid-through date. Sign-up gives 14 days.

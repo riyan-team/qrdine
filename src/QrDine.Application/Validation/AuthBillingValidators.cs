@@ -8,7 +8,7 @@ public class LoginRequestValidator : AbstractValidator<LoginRequest>
 {
     public LoginRequestValidator()
     {
-        RuleFor(x => x.Username).NotEmpty().WithMessage("Enter your username.").MaximumLength(60);
+        RuleFor(x => x.Username).NotEmpty().WithMessage("Enter your mobile number or username.").MaximumLength(60);
         RuleFor(x => x.Password).NotEmpty().WithMessage("Enter your password.").MaximumLength(200);
     }
 }

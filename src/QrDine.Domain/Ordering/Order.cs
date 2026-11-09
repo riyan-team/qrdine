@@ -22,6 +22,7 @@ public class Order : AggregateRoot, ITenantOwned
 
     public OrderStatus Status { get; private set; } = OrderStatus.Placed;
     public OrderSource Source { get; private set; } = OrderSource.Qr;
+    public OrderChannel Channel { get; set; } = OrderChannel.Dine;
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime? AcceptedAt { get; private set; }   // when the kitchen started cooking
     public int EtaMinutes { get; private set; }         // kitchen's promised time → phone countdown
@@ -150,6 +151,35 @@ public class Order : AggregateRoot, ITenantOwned
         CancelReason = reason;
         Status = OrderStatus.Cancelled;
         Raise(new OrderCancelled(Id, reason, DateTime.UtcNow));
+    }
+
+    /// <summary>Takes some or all of one dish off a running order. The last dish can't go: that's a cancellation.</summary>
+    public OrderItem VoidItem(int itemId, int qty)
+    {
+        if (Status is OrderStatus.Paid or OrderStatus.Cancelled)
+            throw new DomainException("This order is already closed.");
+        var item = _items.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new DomainException("That dish is no longer on this order.");
+        if (qty < 1 || qty > item.Qty)
+            throw new DomainException($"There are only {item.Qty} on this order.");
+        if (qty == item.Qty && _items.Count == 1)
+            throw new DomainException("This is the only dish on the order. Cancel the order instead.");
+        if (qty == item.Qty) _items.Remove(item);
+        else item.Qty -= qty;
+        return item;
+    }
+
+    /// <summary>The guests moved, so their running order goes with them.</summary>
+    public void MoveTo(TableSessionInfo table)
+    {
+        if (Status is OrderStatus.Paid or OrderStatus.Cancelled)
+            throw new DomainException("This order is already closed.");
+        TableSessionId = table.SessionId;
+        DiningTableId = table.TableId;
+        TableCode = table.TableCode;
+        TableName = table.TableName;
+        BranchId = table.BranchId;
+        BranchName = table.BranchName;
     }
 
     private void Require(OrderStatus expected, string action)

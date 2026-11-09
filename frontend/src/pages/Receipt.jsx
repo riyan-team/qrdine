@@ -20,12 +20,16 @@ export default function Receipt({ bill, invoice }) {
         {d.logoUrl && <img className="r-logo" src={d.logoUrl} alt="" />}
         <div className="r-name">{d.restaurantName}</div>
         {d.receiptHeader && <div className="r-sub">{d.receiptHeader}</div>}
-        <div className="r-doc">{isInvoice ? 'TAX INVOICE' : 'BILL — NOT PAID'}</div>
+        <div className="r-doc">{isInvoice ? 'TAX INVOICE' : 'BILL, NOT PAID'}</div>
       </div>
 
       {/* Meta: table, invoice number & date — a label/value grid so it stays aligned. */}
       <div className="r-meta">
-        <div className="r-meta-row"><span>Table</span><span>{d.tableName}</span></div>
+        <div className="r-meta-row"><span>{!d.channel || d.channel === 'Dine' ? 'Table' : 'Order'}</span><span>{d.tableName}</span></div>
+        {d.customerName && <div className="r-meta-row"><span>Customer</span><span>{d.customerName}</span></div>}
+        {d.customerPhone && <div className="r-meta-row"><span>Phone</span><span>{d.customerPhone}</span></div>}
+        {d.deliveryAddress && <div className="r-meta-row"><span>Deliver to</span><span>{d.deliveryAddress}</span></div>}
+        {d.riderName && <div className="r-meta-row"><span>Rider</span><span>{d.riderName}</span></div>}
         {isInvoice && <>
           <div className="r-meta-row"><span>Invoice</span><span>{d.number}</span></div>
           <div className="r-meta-row"><span>Date</span><span>{new Date(d.issuedAt).toLocaleString('en-PK')}</span></div>
@@ -95,12 +99,12 @@ export default function Receipt({ bill, invoice }) {
 
       <div className="r-foot">
         {isInvoice
-          ? (d.receiptFooter || 'Thank you — please come again!')
+          ? (d.receiptFooter || 'Thank you, please come again!')
           : 'Bill preview (not yet paid)'}
       </div>
 
       {/* Branded strip — always printed on every slip. */}
-      <div className="r-brand">Powered by Riyan · 0309 8480489</div>
+      <div className="r-brand">Powered by Dine In · 0309 8480389</div>
     </div>
   )
 }

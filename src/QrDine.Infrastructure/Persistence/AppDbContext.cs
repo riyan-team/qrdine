@@ -53,11 +53,145 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Loyalty.LoyaltyReward> LoyaltyRewards => Set<Domain.Loyalty.LoyaltyReward>();
     public DbSet<Domain.Loyalty.LoyaltyTransaction> LoyaltyTransactions => Set<Domain.Loyalty.LoyaltyTransaction>();
     public DbSet<Domain.Loyalty.LoyaltyRedemption> LoyaltyRedemptions => Set<Domain.Loyalty.LoyaltyRedemption>();
+    public DbSet<Domain.Purchasing.Supplier> Suppliers => Set<Domain.Purchasing.Supplier>();
+    public DbSet<Domain.Purchasing.SupplierEntry> SupplierEntries => Set<Domain.Purchasing.SupplierEntry>();
+    public DbSet<Domain.Expenses.Expense> Expenses => Set<Domain.Expenses.Expense>();
+    public DbSet<Domain.Customers.Customer> Customers => Set<Domain.Customers.Customer>();
+    public DbSet<Domain.Customers.CustomerEntry> CustomerEntries => Set<Domain.Customers.CustomerEntry>();
+    public DbSet<Domain.Staffing.Employee> Employees => Set<Domain.Staffing.Employee>();
+    public DbSet<Domain.Staffing.EmployeeEntry> EmployeeEntries => Set<Domain.Staffing.EmployeeEntry>();
+    public DbSet<Domain.Staffing.AttendanceMark> AttendanceMarks => Set<Domain.Staffing.AttendanceMark>();
+    public DbSet<Domain.Ordering.OrderVoid> OrderVoids => Set<Domain.Ordering.OrderVoid>();
+    public DbSet<Domain.Ordering.ServiceRequest> ServiceRequests => Set<Domain.Ordering.ServiceRequest>();
+    public DbSet<Domain.Billing.DayClosing> DayClosings => Set<Domain.Billing.DayClosing>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<Domain.Purchasing.Supplier>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Phone).HasMaxLength(30);
+            e.Property(x => x.Notes).HasMaxLength(500);
+            e.Property(x => x.OpeningBalance).HasPrecision(12, 2);
+            e.HasIndex(x => new { x.RestaurantId, x.Name });
+        });
+        b.Entity<Domain.Purchasing.SupplierEntry>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Ignore(x => x.BalanceEffect);
+            e.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.Reference).HasMaxLength(60);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.PaymentMethod).HasMaxLength(30);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.SupplierId, x.Date });
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.SupplierEntryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<Domain.Purchasing.SupplierEntryLine>(e =>
+        {
+            e.Ignore(x => x.LineTotal);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Qty).HasPrecision(12, 3);
+            e.Property(x => x.UnitCost).HasPrecision(12, 2);
+        });
+        b.Entity<Domain.Expenses.Expense>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Category).HasMaxLength(60);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.PaymentMethod).HasMaxLength(30);
+            e.Property(x => x.PaidTo).HasMaxLength(120);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.Date });
+        });
+
+        b.Entity<Domain.Customers.Customer>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Phone).HasMaxLength(30);
+            e.Property(x => x.Address).HasMaxLength(300);
+            e.Property(x => x.Notes).HasMaxLength(500);
+            e.Property(x => x.OpeningBalance).HasPrecision(12, 2);
+            e.Property(x => x.CreditLimit).HasPrecision(12, 2);
+            e.HasIndex(x => new { x.RestaurantId, x.Phone });
+            e.HasIndex(x => new { x.RestaurantId, x.Name });
+        });
+        b.Entity<Domain.Customers.CustomerEntry>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Ignore(x => x.BalanceEffect);
+            e.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.PaymentMethod).HasMaxLength(30);
+            e.Property(x => x.Reference).HasMaxLength(60);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.CustomerId, x.Date });
+        });
+        b.Entity<Domain.Staffing.Employee>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Phone).HasMaxLength(30);
+            e.Property(x => x.Designation).HasMaxLength(60);
+            e.Property(x => x.Notes).HasMaxLength(300);
+            e.Property(x => x.MonthlySalary).HasPrecision(12, 2);
+            e.HasIndex(x => new { x.RestaurantId, x.Name });
+        });
+        b.Entity<Domain.Staffing.EmployeeEntry>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Ignore(x => x.PaysOutCash);
+            e.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Month).HasMaxLength(7);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.PaymentMethod).HasMaxLength(30);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.EmployeeId, x.Month });
+        });
+        b.Entity<Domain.Staffing.AttendanceMark>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.Status).HasMaxLength(12);
+            e.HasIndex(x => new { x.RestaurantId, x.EmployeeId, x.Date }).IsUnique();
+        });
+        b.Entity<Domain.Ordering.OrderVoid>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.TableName).HasMaxLength(80);
+            e.Property(x => x.ItemName).HasMaxLength(200);
+            e.Property(x => x.UnitPrice).HasPrecision(12, 2);
+            e.Property(x => x.Reason).HasMaxLength(200);
+            e.Property(x => x.VoidedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.VoidedAt });
+        });
+        b.Entity<Domain.Ordering.ServiceRequest>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.TableCode).HasMaxLength(40);
+            e.Property(x => x.TableName).HasMaxLength(80);
+            e.Property(x => x.Kind).HasMaxLength(12);
+            e.Property(x => x.DoneBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.TableCode, x.DoneAt });
+        });
+        b.Entity<Domain.Billing.DayClosing>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            foreach (var p in new[] { "OpeningCash", "CashIn", "CashOut", "Expected", "Counted", "Difference", "TakenOut" })
+                e.Property(p).HasPrecision(12, 2);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.ClosedBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.BranchId, x.Date }).IsUnique();
+        });
+
         b.Entity<Restaurant>(e =>
         {
+            e.Property(x => x.TaxPercentCard).HasPrecision(5, 2);
             e.HasIndex(x => x.Slug).IsUnique();
             e.Property(x => x.Slug).HasMaxLength(60);
             e.Property(x => x.Name).HasMaxLength(120);
@@ -191,6 +325,11 @@ public class AppDbContext : DbContext, IAppDbContext
             // The open-session lookups (by table id, and by table code) hit these constantly.
             e.HasIndex(x => new { x.RestaurantId, x.DiningTableId, x.IsOpen });
             e.HasIndex(x => new { x.RestaurantId, x.TableCode, x.IsOpen });
+            e.Property(x => x.CustomerName).HasMaxLength(120);
+            e.Property(x => x.CustomerPhone).HasMaxLength(30);
+            e.Property(x => x.DeliveryAddress).HasMaxLength(300);
+            e.Property(x => x.RiderName).HasMaxLength(80);
+            e.Property(x => x.DeliveryCharge).HasPrecision(12, 2);
         });
 
         b.Entity<MenuCategory>(e =>

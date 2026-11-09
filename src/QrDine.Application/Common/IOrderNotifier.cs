@@ -10,4 +10,10 @@ namespace QrDine.Application.Common;
 public interface IOrderNotifier
 {
     Task OrderChanged(string slug, OrderDto order, CancellationToken ct = default);
+
+    /// <summary>The order moved to another table: phones still on the old table should drop it.</summary>
+    Task OrderMoved(string slug, string fromTableCode, OrderDto order, CancellationToken ct = default);
+
+    /// <summary>A guest called for a waiter or the bill, or staff dealt with it.</summary>
+    Task ServiceRequestChanged(string slug, Ordering.ServiceRequestDto request, CancellationToken ct = default);
 }

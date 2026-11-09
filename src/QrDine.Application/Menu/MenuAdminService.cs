@@ -17,6 +17,32 @@ public class MenuAdminService
     private readonly IAppDbContext _db;
     public MenuAdminService(IAppDbContext db) => _db = db;
 
+    /// <summary>
+    /// Changes every price by a percentage, for when costs go up. Sizes change with their dish,
+    /// and a running deal keeps its own price until the owner changes it.
+    /// </summary>
+    public async Task<int> BulkPrice(BulkPriceRequest input, CancellationToken ct = default)
+    {
+        var query = _db.MenuItems.Include(m => m.Variants).AsQueryable();
+        if (input.CategoryId is int categoryId) query = query.Where(m => m.CategoryId == categoryId);
+        var items = await query.ToListAsync(ct);
+
+        decimal Adjust(decimal price)
+        {
+            var next = price * (1 + input.Percent / 100m);
+            if (input.RoundTo > 0) next = Math.Round(next / input.RoundTo, 0, MidpointRounding.AwayFromZero) * input.RoundTo;
+            return Math.Max(0, Math.Round(next, 2));
+        }
+
+        foreach (var item in items)
+        {
+            item.Price = Adjust(item.Price);
+            foreach (var v in item.Variants) v.Price = Adjust(v.Price);
+        }
+        await _db.SaveChangesAsync(ct);
+        return items.Count;
+    }
+
     // ---- categories ----
     public async Task<int> AddCategory(CategoryInput input, CancellationToken ct = default)
     {

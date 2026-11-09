@@ -24,7 +24,7 @@ public class RestaurantAdminService
     // ---------- branches ----------
     public async Task<IReadOnlyList<BranchDto>> ListBranches(CancellationToken ct = default)
     {
-        var tableCounts = (await _db.Tables.AsNoTracking().Select(t => t.BranchId).ToListAsync(ct))
+        var tableCounts = (await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).Select(t => t.BranchId).ToListAsync(ct))
             .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
         var branches = await _db.Branches.AsNoTracking().OrderBy(b => b.Id).ToListAsync(ct);
         return branches.Select(b => new BranchDto(b.Id, b.Name, b.Address, b.IsActive, tableCounts.GetValueOrDefault(b.Id),
@@ -71,7 +71,7 @@ public class RestaurantAdminService
     public async Task<IReadOnlyList<TableAdminDto>> ListTables(CancellationToken ct = default)
     {
         var branches = await _db.Branches.AsNoTracking().ToDictionaryAsync(b => b.Id, b => b.Name, ct);
-        var tables = await _db.Tables.AsNoTracking().OrderBy(t => t.Code).ToListAsync(ct);
+        var tables = await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).OrderBy(t => t.Code).ToListAsync(ct);
         return tables.Select(t => new TableAdminDto(t.Id, t.Code, t.Name, t.BranchId, branches.GetValueOrDefault(t.BranchId, ""))).ToList();
     }
 
@@ -126,9 +126,14 @@ public class RestaurantAdminService
         // settings.manage by default) could mint an owner account and take over.
         if (role == StaffRole.Owner && !callerIsOwner)
             throw new DomainException("Only an owner can add another owner.");
-        var username = input.Username.Trim().ToLowerInvariant();
-        if (await _db.Staff.AnyAsync(s => s.Username == username, ct))
-            throw new DomainException($"Username '{username}' is taken.");
+        var username = Auth.LoginName.Normalize(input.Username);
+        // Staff sign in without saying which restaurant, so a name can only be used once anywhere.
+        if (await _db.Staff.IgnoreQueryFilters().AnyAsync(s => s.Username == username, ct))
+        {
+            var suffix = (await _db.Restaurants.AsNoTracking().Where(r => r.Id == _tenant.RestaurantId)
+                .Select(r => r.Slug).FirstOrDefaultAsync(ct)) ?? "team";
+            throw new DomainException($"The username '{username}' is already in use. Try '{username}.{suffix}'.");
+        }
         var s = new StaffMember
         {
             Username = username, DisplayName = input.DisplayName.Trim(), Role = role,
@@ -240,7 +245,7 @@ public class RestaurantAdminService
         return new BillingSettingsDto(r.TaxEnabled, string.IsNullOrWhiteSpace(r.TaxName) ? "GST" : r.TaxName,
             r.TaxPercent, r.ServiceChargePercent,
             r.DiscountEnabled, r.DiscountIsPercent, r.DiscountValue,
-            r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency);
+            r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency, r.TaxPercentCard);
     }
 
     public async Task SetBillingSettings(BillingSettingsInput i, CancellationToken ct = default)
@@ -249,6 +254,7 @@ public class RestaurantAdminService
         r.TaxEnabled = i.TaxEnabled;
         r.TaxName = string.IsNullOrWhiteSpace(i.TaxName) ? "GST" : i.TaxName.Trim();
         r.TaxPercent = Math.Clamp(i.TaxPercent, 0, 100);
+        r.TaxPercentCard = i.TaxPercentCard is decimal card ? Math.Clamp(card, 0, 100) : null;
         r.ServiceChargePercent = Math.Clamp(i.ServiceChargePercent, 0, 100);
         r.DiscountEnabled = i.DiscountEnabled;
         r.DiscountIsPercent = i.DiscountIsPercent;

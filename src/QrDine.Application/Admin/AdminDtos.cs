@@ -39,11 +39,11 @@ public record ServiceSettingsInput(bool WaiterAutoAssign);
 public record BillingSettingsDto(
     bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
     bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
-    bool ReceiptEnabled, bool StockTrackingEnabled, string Currency);
+    bool ReceiptEnabled, bool StockTrackingEnabled, string Currency, decimal? TaxPercentCard = null);
 public record BillingSettingsInput(
     bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
     bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
-    bool ReceiptEnabled, bool StockTrackingEnabled);
+    bool ReceiptEnabled, bool StockTrackingEnabled, decimal? TaxPercentCard = null);
 
 // Onboarding
-public record OnboardRequest(string RestaurantName, string Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);
+public record OnboardRequest(string RestaurantName, string? Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);

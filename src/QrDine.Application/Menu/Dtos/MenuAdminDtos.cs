@@ -18,3 +18,6 @@ public record ModifierGroupInput(string Name, int MinSelect, int MaxSelect, int 
 public record ModifierOptionInput(string Name, decimal Price, int SortOrder);
 
 public record AvailabilityInput(bool Available);
+
+// Change every price by a percentage, optionally rounded to the nearest Rs 5, 10 or 50.
+public record BulkPriceRequest(decimal Percent, decimal RoundTo, int? CategoryId);

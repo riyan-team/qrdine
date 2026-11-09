@@ -14,12 +14,13 @@ public record BillDto(
     decimal AmountPaid, decimal Remaining,
     bool TaxEnabled, string TaxName, bool DiscountEnabled, decimal DiscountAmount,
     bool ReceiptEnabled,
-    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "");
+    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
+    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "");
 
 // Discount is the applied Rs amount the cashier confirmed (pre-filled from settings);
 // AmountTendered is the cash received (used to compute & store the change).
-public record SettleRequest(string Method, decimal Discount, decimal AmountTendered = 0);
-public record PayPartRequest(decimal Amount, string Method);
+public record SettleRequest(string Method, decimal Discount, decimal AmountTendered = 0, int? CustomerId = null);
+public record PayPartRequest(decimal Amount, string Method, decimal? Discount = null);
 public record PayPartResult(bool Settled, decimal Paid, decimal Remaining, InvoiceDto? Invoice);
 
 // ---- Reception dashboard ----
@@ -54,7 +55,8 @@ public record InvoiceDto(
     decimal AmountTendered, decimal ChangeGiven, string TaxLabel,
     string FiscalProvider, string FiscalStatus, string? FiscalNumber, string? FiscalQrPayload,
     string? FiscalError, bool ReceiptEnabled = true,
-    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "")
+    string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
+    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "")
 {
     public static InvoiceDto From(Invoice inv, string restaurantName, string currency,
         string logoUrl = "", string receiptHeader = "", string receiptFooter = "",
@@ -66,5 +68,6 @@ public record InvoiceDto(
         inv.TaxPercent, inv.TaxAmount, inv.DiscountAmount, inv.Total,
         inv.AmountTendered, inv.ChangeGiven, inv.TaxLabel,
         inv.FiscalProvider, inv.FiscalStatus.ToString(), inv.FiscalNumber, inv.FiscalQrPayload,
-        inv.FiscalError, receiptEnabled, logoUrl, receiptHeader, receiptFooter);
+        inv.FiscalError, receiptEnabled, logoUrl, receiptHeader, receiptFooter,
+        inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName);
 }

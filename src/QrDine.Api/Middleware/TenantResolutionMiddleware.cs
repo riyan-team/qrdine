@@ -30,29 +30,15 @@ public class TenantResolutionMiddleware
                 return;
             }
             tenant.Set(r.Id, r.Slug);
+            ctx.Items[Auth.PlanGate.RestaurantKey] = r;
 
-            // A suspended restaurant is switched off until the operator reactivates it.
-            if (r.Status == Domain.Restaurants.RestaurantStatus.Suspended)
+            // Suspended, or unpaid past the grace days: switched off until the operator acts in
+            // the platform console (which lives outside /api/r/, so it is not blocked here).
+            var blocked = RestaurantAccess.Blocked(r, config);
+            if (blocked is not null)
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await ctx.Response.WriteAsJsonAsync(new
-                {
-                    title = "This restaurant is suspended", status = 403, suspended = true,
-                    detail = "This restaurant's QrDine account is suspended. The owner can contact QrDine to restore it.",
-                });
-                return;
-            }
-
-            // Unpaid past the grace days: switched off the same way, until a payment is recorded
-            // in the platform console (which lives outside /api/r/, so it is not blocked here).
-            if (SubscriptionPolicy.For(r.PlanExpiresAt, config).State == Domain.Restaurants.SubscriptionState.Locked)
-            {
-                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await ctx.Response.WriteAsJsonAsync(new
-                {
-                    title = "This restaurant's subscription has ended", status = 403, expired = true,
-                    detail = "This restaurant's QrDine plan has ended, so it is paused. The owner can contact QrDine to renew it.",
-                });
+                await ctx.Response.WriteAsJsonAsync(blocked);
                 return;
             }
 
@@ -92,5 +78,28 @@ public static class SubscriptionPolicy
         var enforce = config.GetValue("Subscription:Enforce", true);
         var grace = config.GetValue("Subscription:GraceDays", Domain.Restaurants.SubscriptionAccess.DefaultGraceDays);
         return Domain.Restaurants.SubscriptionAccess.Evaluate(enforce ? paidThrough : null, DateTime.UtcNow, grace);
+    }
+}
+
+/// <summary>Whether a restaurant is switched off, and what to tell the person who hits that.</summary>
+public static class RestaurantAccess
+{
+    private const string Help = "Please call or WhatsApp Dine In on 0309 8480389.";
+
+    public static object? Blocked(Domain.Restaurants.Restaurant r, IConfiguration config)
+    {
+        if (r.Status == Domain.Restaurants.RestaurantStatus.Suspended)
+            return new
+            {
+                title = "This restaurant is suspended", status = 403, suspended = true,
+                detail = $"This restaurant's account is suspended. {Help}",
+            };
+        if (SubscriptionPolicy.For(r.PlanExpiresAt, config).State == Domain.Restaurants.SubscriptionState.Locked)
+            return new
+            {
+                title = "This restaurant's subscription has ended", status = 403, expired = true,
+                detail = $"This restaurant's plan has ended, so it is paused until it is renewed. {Help}",
+            };
+        return null;
     }
 }

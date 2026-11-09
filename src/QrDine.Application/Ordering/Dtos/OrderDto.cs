@@ -16,13 +16,14 @@ public record OrderDto(
     string? WaiterName,
     string? CustomerNote,
     decimal Total,
-    IReadOnlyList<OrderItemDto> Items)
+    IReadOnlyList<OrderItemDto> Items,
+    string Channel = "Dine")
 {
     public static OrderDto From(Order o) => new(
         o.Id, o.TableCode, o.TableName, o.BranchName, o.Status.ToString(), o.Source.ToString(), AsUtc(o.CreatedAt),
         AsUtc(o.AcceptedAt), o.EtaMinutes, o.WaiterName, o.CustomerNote, o.Total,
         o.Items.Select(i => new OrderItemDto(i.Name, i.VariantName, i.Price, i.Qty, i.Note,
-            i.Modifiers.Select(m => m.Name).ToList())).ToList());
+            i.Modifiers.Select(m => m.Name).ToList(), i.Id)).ToList(), o.Channel.ToString());
 
     // CreatedAt/AcceptedAt are stored as UTC (DateTime.UtcNow) but come back from the
     // DB as Kind=Unspecified, so System.Text.Json serialises them WITHOUT a trailing
@@ -35,7 +36,7 @@ public record OrderDto(
 }
 
 public record OrderItemDto(string Name, string? VariantName, decimal Price, int Qty, string? Note,
-    IReadOnlyList<string> Modifiers);
+    IReadOnlyList<string> Modifiers, int Id = 0);
 
 /// <summary>A page of orders for the Kitchen/Waiter/Reception history views.</summary>
 public record OrderHistoryPage(IReadOnlyList<OrderDto> Rows, int Page, int PageSize, int Total, int TotalPages);

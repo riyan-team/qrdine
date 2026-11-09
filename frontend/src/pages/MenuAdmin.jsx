@@ -3,12 +3,14 @@ import { api, money } from '../api'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { TrashIcon, CloseIcon, ImageIcon, NoteIcon } from '../icons.jsx'
+import { Modal } from '../backoffice.jsx'
 
 // Owner/manager menu management: categories + items, with variants and modifiers.
 export default function MenuAdmin() {
   const [data, setData] = useState(null)
   const [editing, setEditing] = useState(null)   // item being edited, or 'new'
   const [importing, setImporting] = useState(false)
+  const [repricing, setRepricing] = useState(false)
   const [err, setErr] = useState('')
 
   const load = () => api.adminMenu().then(setData).catch((e) => setErr(e.message))
@@ -46,13 +48,15 @@ export default function MenuAdmin() {
         <div className="h" style={{ margin: 0 }}>Menu management</div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setImporting(true)}>Import menu</button>
+          {cats.length > 0 && <button onClick={() => setRepricing(true)}>Change prices</button>}
           <button onClick={addCategory}>+ Category</button>
           <button className="primary" onClick={() => setEditing('new')} disabled={cats.length === 0}>+ Item</button>
         </div>
       </div>
-      <p className="muted">Add or edit your menu — prices, photos (emoji), availability, sizes and add-ons. Changes are live for customers instantly.</p>
+      <p className="muted">Prices, photos, sizes and add-ons. Guests see your changes straight away.</p>
 
       {importing && <MenuImportModal onClose={() => setImporting(false)} onImported={() => { setImporting(false); load() }} />}
+      {repricing && <BulkPrice cats={cats} onClose={() => setRepricing(false)} onDone={() => { setRepricing(false); load() }} />}
 
       {cats.length === 0 && <div className="empty">Add a category first, then add items to it.</div>}
 
@@ -77,7 +81,7 @@ export default function MenuAdmin() {
                     {it.dealPrice != null && <span className="pill s-Cancelled">deal {money(it.dealPrice)}{it.dealActive ? '' : ' (scheduled)'}</span>}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     {it.variants?.length ? it.variants.map((v) => `${v.name} ${money(v.price)}`).join(' · ') : money(it.price)}
-                    {it.modifierGroups?.length ? ` · ${it.modifierGroups.length} option group(s)` : ''}
+                    {it.modifierGroups?.length ? ` · ${it.modifierGroups.length} ${it.modifierGroups.length === 1 ? 'option group' : 'option groups'}` : ''}
                   </div>
                 </div>
                 <div className="row" style={{ gap: 6 }}>
@@ -113,6 +117,50 @@ const blankItem = (categoryId) => ({
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const minToHHMM = (m) => (m == null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
 const hhmmToMin = (s) => { if (!s) return null; const [h, m] = s.split(':').map(Number); return h * 60 + (m || 0) }
+
+// When gas or chicken goes up, every price changes at once. Deal prices stay as they are.
+function BulkPrice({ cats, onClose, onDone }) {
+  const [percent, setPercent] = useState('10')
+  const [roundTo, setRoundTo] = useState('10')
+  const [categoryId, setCategoryId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const pct = Number(percent) || 0
+  const round = Number(roundTo) || 0
+  const example = (cats.find((c) => String(c.id) === categoryId) || cats[0])?.items.find((i) => i.price > 0)
+  const after = (p) => { const n = p * (1 + pct / 100); return round > 0 ? Math.round(n / round) * round : Math.round(n * 100) / 100 }
+  const save = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await api.bulkPrice({ percent: pct, roundTo: round, categoryId: categoryId ? Number(categoryId) : null })
+      toast.success(`${r.changed} prices changed`)
+      onDone()
+    } catch (e) { setErr(friendlyError(e)); setBusy(false) }
+  }
+  return (
+    <Modal title="Change prices" sub="All at once, by a percentage. Deals keep their price." onClose={onClose} footer={<>
+      <button onClick={onClose}>Cancel</button>
+      <button className="primary push" disabled={busy || pct === 0} onClick={save}>{busy ? 'Changing…' : pct > 0 ? `Raise by ${pct}%` : `Lower by ${-pct}%`}</button>
+    </>}>
+      <div className="bo-form">
+        <div className="field"><label className="field-label">Change by (%)</label><input autoFocus type="number" inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} /></div>
+        <div className="field"><label className="field-label">Round to the nearest</label>
+          <select value={roundTo} onChange={(e) => setRoundTo(e.target.value)}>
+            <option value="0">Don't round</option><option value="5">Rs 5</option><option value="10">Rs 10</option><option value="50">Rs 50</option>
+          </select>
+        </div>
+        <div className="field is-full"><label className="field-label">Which dishes</label>
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">The whole menu</option>
+            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      </div>
+      {example && pct !== 0 && <div className="bo-small" style={{ marginTop: 12 }}>For example, {example.name} goes from {money(example.price)} to {money(after(example.price))}.</div>}
+      {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
+    </Modal>
+  )
+}
 
 function ItemEditor({ item, categories, onClose, onSaved }) {
   const [f, setF] = useState(() => item ? {
@@ -218,7 +266,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
           <input type="number" placeholder="Base price" value={f.price} onChange={(e) => set('price', e.target.value)} style={inp} />
           <input type="number" placeholder="Prep min" value={f.prepMinutes} onChange={(e) => set('prepMinutes', e.target.value)} style={{ ...inp, width: 90 }} />
         </div>
-        <label className="muted" style={{ fontSize: 12 }}>Tax (for FBR — leave rate blank to use the restaurant default)</label>
+        <label className="muted" style={{ fontSize: 12 }}>Tax for FBR. Leave the rate blank to use the restaurant's default.</label>
         <div className="row" style={{ gap: 8 }}>
           <input type="number" placeholder="Tax %" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} style={{ ...inp, flex: 1 }} />
           <input type="number" placeholder="Further tax %" value={f.furtherTaxRate} onChange={(e) => set('furtherTaxRate', e.target.value)} style={{ ...inp, flex: 1 }} />
@@ -230,7 +278,7 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         {f.variants.length > 0 && <div className="muted" style={{ fontSize: 12 }}>If sizes are set, the base price is ignored.</div>}
 
         {/* Deal / offer */}
-        <div className="cat-title" style={{ fontSize: 14 }}>Deal / offer <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(optional — shows an “OFF” price)</span></div>
+        <div className="cat-title" style={{ fontSize: 14 }}>Deal / offer <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(optional, shows a reduced price)</span></div>
         <div className="row" style={{ gap: 8 }}>
           <input type="number" placeholder="Deal price" title="Deal price (must be below the base price)" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={{ ...inp, flex: 1 }} />
           <input placeholder="What’s included (combo)" value={f.dealDescription} onChange={(e) => set('dealDescription', e.target.value)} style={{ ...inp, flex: 2 }} />
@@ -352,7 +400,7 @@ function MenuImportModal({ onClose, onImported }) {
         })),
       }))
       const r = await api.applyMenuImport(categories)
-      await ui.alert(`Added ${r.created} item(s) to your menu.`)
+      await ui.alert(`Added ${r.created} ${r.created === 1 ? 'dish' : 'dishes'} to your menu.`)
       onImported()
     } catch (e) { setErr(e.message); setBusy(false) }
   }
@@ -374,12 +422,12 @@ function MenuImportModal({ onClose, onImported }) {
                 <textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={'Category,Item,Price\nBiryani,Chicken Biryani,350'} style={{ width: '100%', minHeight: 120, marginBottom: 8 }} />
                 <div className="row" style={{ gap: 8 }}>
                   <input type="file" accept=".csv,text/csv" onChange={onCsvFile} />
-                  <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy || !csvText.trim()} onClick={runCsv}>{busy ? 'Reading…' : 'Preview →'}</button>
+                  <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy || !csvText.trim()} onClick={runCsv}>{busy ? 'Reading…' : 'Preview'}</button>
                 </div>
               </>
             ) : (
               <>
-                <p className="muted" style={{ fontSize: 13 }}>Upload a clear photo of your printed menu — we’ll read the items and prices for you to review.</p>
+                <p className="muted" style={{ fontSize: 13 }}>Upload a clear photo of your printed menu and we’ll read the items and prices for you to review.</p>
                 <input type="file" accept="image/*" onChange={onPhoto} />
                 {busy && <div className="muted" style={{ marginTop: 8 }}>Reading the menu photo…</div>}
               </>
@@ -390,7 +438,7 @@ function MenuImportModal({ onClose, onImported }) {
 
         {preview && (
           <>
-            <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Review &amp; fix prices, then add. <b>{total}</b> item(s) across {preview.categories.length} categories.</p>
+            <p className="muted" style={{ fontSize: 13, margin: '8px 0' }}>Check the prices, then add. <b>{total}</b> {total === 1 ? 'dish' : 'dishes'} in {preview.categories.length} {preview.categories.length === 1 ? 'category' : 'categories'}.</p>
             <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
               {preview.categories.map((c, ci) => (
                 <div key={ci} style={{ marginBottom: 12 }}>
@@ -419,7 +467,7 @@ function MenuImportModal({ onClose, onImported }) {
             {err && <div style={{ color: 'var(--red)', fontSize: 14, marginTop: 8 }}>{err}</div>}
             <div className="row" style={{ gap: 8, marginTop: 10 }}>
               <button onClick={() => setPreview(null)}>← Back</button>
-              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || total === 0} onClick={apply}>{busy ? 'Adding…' : `Add ${total} item(s)`}</button>
+              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || total === 0} onClick={apply}>{busy ? 'Adding…' : `Add ${total} ${total === 1 ? 'dish' : 'dishes'}`}</button>
             </div>
           </>
         )}

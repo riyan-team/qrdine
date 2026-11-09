@@ -39,6 +39,17 @@ public interface IAppDbContext
     DbSet<QrDine.Domain.Loyalty.LoyaltyReward> LoyaltyRewards { get; }
     DbSet<QrDine.Domain.Loyalty.LoyaltyTransaction> LoyaltyTransactions { get; }
     DbSet<QrDine.Domain.Loyalty.LoyaltyRedemption> LoyaltyRedemptions { get; }
+    DbSet<QrDine.Domain.Purchasing.Supplier> Suppliers { get; }
+    DbSet<QrDine.Domain.Purchasing.SupplierEntry> SupplierEntries { get; }
+    DbSet<QrDine.Domain.Expenses.Expense> Expenses { get; }
+    DbSet<QrDine.Domain.Customers.Customer> Customers { get; }
+    DbSet<QrDine.Domain.Customers.CustomerEntry> CustomerEntries { get; }
+    DbSet<QrDine.Domain.Staffing.Employee> Employees { get; }
+    DbSet<QrDine.Domain.Staffing.EmployeeEntry> EmployeeEntries { get; }
+    DbSet<QrDine.Domain.Staffing.AttendanceMark> AttendanceMarks { get; }
+    DbSet<QrDine.Domain.Ordering.OrderVoid> OrderVoids { get; }
+    DbSet<QrDine.Domain.Ordering.ServiceRequest> ServiceRequests { get; }
+    DbSet<QrDine.Domain.Billing.DayClosing> DayClosings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
