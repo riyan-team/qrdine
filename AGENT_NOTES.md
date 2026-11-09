@@ -138,6 +138,12 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-09** — **One change at a time per restaurant** (migration `OneOpenSeatingOneBill`, adds two unique indexes):
+  - A whole-day test on real Postgres with requests sent at the same moment found: two cashiers settling one table made 4 bills, a double approve took stock twice, orders from ten phones at once landed on a seating nobody billed, part payments could pass the bill, and two tables moved onto one lost a bill.
+  - Fix: `RestaurantGate` / `FloorTurn` (Application/Common) and `FloorGateFilter` (Api/Middleware) make each restaurant's writes take turns. They're applied to the `floor` route group in `Program.cs` (orders, billing, floor, inventory, business, staff, loyalty). GETs are never queued. Settling hands back its turn before FBR filing. The order, table and bill rules themselves are unchanged.
+  - Database backstop: one open seating per table (`IX_Sessions_OneOpenPerTable`, filtered on `IsOpen`) and one bill per seating (`IX_Invoices_OnePerSeating`).
+  - **Single process only.** A second app instance would need a Postgres advisory lock instead. New write routes for orders, bills, stock or khatas go in the `floor` group.
+  - Whole-day check scripts: `deploy/hostworld/e2e/` (see the README).
 - **2026-11-09** — **Dine In: redesign, back office and floor features** (branch `hostworld-production`, migrations `AddSuppliersExpenses`, `AddFloorTicketsKhataPayroll`, both additive):
   - The user-facing name is **Dine In**. New look in `frontend/src/design/*.css`, CSS-only 3D (`Diorama.jsx`, `motion.js`). Never put a transform on a scroll-snap element, and don't use a forwards animation fill on a container with `position: fixed` children.
   - **Sign-in** is `POST /api/auth/login`: mobile or username plus password, and the account says which restaurant (`Auth/LoginName.cs`). Sign-up has no address field.

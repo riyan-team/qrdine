@@ -19,6 +19,8 @@ public static class DependencyInjection
         services.AddScoped<Admin.OnboardingService>();
         services.AddScoped<Inventory.InventoryService>();
         services.AddScoped<Platform.PlatformService>();
+        services.AddSingleton<Common.RestaurantGate>();
+        services.AddScoped<Common.FloorTurn>();
         services.AddScoped<OrderService>();
         services.AddScoped<AuthService>();
         services.AddScoped<PermissionService>();

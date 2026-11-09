@@ -248,6 +248,10 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasIndex("RestaurantId", "Number")
                         .IsUnique();
 
+                    b.HasIndex("RestaurantId", "TableSessionId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Invoices_OnePerSeating");
+
                     b.HasIndex("RestaurantId", "Usin")
                         .IsUnique();
 
@@ -2183,6 +2187,11 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "DiningTableId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Sessions_OneOpenPerTable")
+                        .HasFilter("\"IsOpen\"");
 
                     b.HasIndex("RestaurantId", "DiningTableId", "IsOpen");
 

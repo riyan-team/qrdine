@@ -325,6 +325,9 @@ public class AppDbContext : DbContext, IAppDbContext
             // The open-session lookups (by table id, and by table code) hit these constantly.
             e.HasIndex(x => new { x.RestaurantId, x.DiningTableId, x.IsOpen });
             e.HasIndex(x => new { x.RestaurantId, x.TableCode, x.IsOpen });
+            // A table has one running seating at most, or some of its orders would never reach the bill.
+            e.HasIndex(x => new { x.RestaurantId, x.DiningTableId })
+                .IsUnique().HasFilter("\"IsOpen\"").HasDatabaseName("IX_Sessions_OneOpenPerTable");
             e.Property(x => x.CustomerName).HasMaxLength(120);
             e.Property(x => x.CustomerPhone).HasMaxLength(30);
             e.Property(x => x.DeliveryAddress).HasMaxLength(300);
@@ -409,6 +412,8 @@ public class AppDbContext : DbContext, IAppDbContext
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
             e.HasIndex(x => new { x.RestaurantId, x.Number }).IsUnique();
             e.HasIndex(x => new { x.RestaurantId, x.Usin }).IsUnique();
+            // A seating is billed once.
+            e.HasIndex(x => new { x.RestaurantId, x.TableSessionId }).IsUnique().HasDatabaseName("IX_Invoices_OnePerSeating");
             e.Property(x => x.Usin).HasMaxLength(50);
             e.Property(x => x.FiscalStatus).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.FiscalProvider).HasMaxLength(20);

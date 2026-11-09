@@ -284,7 +284,7 @@ public class BackOfficeTests : IDisposable
     {
         var (supplier, _) = await Khata();
         Invoice(1000, "Cash");
-        Invoice(500, "Card");
+        Invoice(500, "Card", session: 2);
         Invoice(900, "Split (Cash+Card)", session: 7);
         await _db.SaveChangesAsync();
         _db.Payments.Add(new Payment { BranchId = _db.Branches.First().Id, TableSessionId = 7, Amount = 400, Method = "Cash" });

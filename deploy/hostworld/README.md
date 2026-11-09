@@ -32,6 +32,20 @@ Print, from Git Bash in the print repo:
 git archive HEAD server package.json package-lock.json | ssh hostworld 'tar -xf - -C /opt/qrprint/app && cd /opt/qrprint/app && npm ci --omit=dev && chown -R root:root . && systemctl restart qrprint'
 ```
 
+## One change at a time
+
+Settling, approving, shifting a table and every other change to orders, bills, stock or khatas run one at a time per restaurant (`RestaurantGate`, applied by `FloorGateFilter` in `Program.cs`). Without this, two cashiers or a double tap could make two bills, take stock twice or lose orders. Unique indexes also refuse a second open seating on a table and a second bill for a seating.
+
+**This relies on the app running as one process.** Don't start a second copy of `qrdine.service` against the same database without first moving the gate to a Postgres advisory lock. New routes that change this data belong in the `floor` group in `Program.cs`.
+
+To re-run the whole-day check, including the same-moment tests, on a throwaway copy with its own Postgres on the server (production's data isn't touched):
+
+```bash
+ssh hostworld bash -s < deploy/hostworld/e2e/e2e-up.sh
+ssh hostworld python3 - < deploy/hostworld/e2e/e2e.py
+ssh hostworld bash -s < deploy/hostworld/e2e/e2e-down.sh
+```
+
 ## Reading menus from a photo
 
 Uses Google's Gemini API. The key lives only in `/etc/qrdine/qrdine.env`. To set or change it, get a key at https://aistudio.google.com/apikey, then run this from the PC:

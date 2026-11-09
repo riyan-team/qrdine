@@ -27,12 +27,14 @@ public class BillingService
     private readonly IPrintDispatcher _print;
     private readonly LoyaltyService _loyalty;
     private readonly ILogger<BillingService> _log;
+    private readonly FloorTurn? _turn;
 
     public BillingService(IAppDbContext db, ICurrentTenant tenant, IOrderNotifier notifier,
-        FiscalSyncService fiscalSync, IPrintDispatcher print, LoyaltyService loyalty, ILogger<BillingService> log)
+        FiscalSyncService fiscalSync, IPrintDispatcher print, LoyaltyService loyalty, ILogger<BillingService> log,
+        FloorTurn? turn = null)
     {
         _db = db; _tenant = tenant; _notifier = notifier; _fiscalSync = fiscalSync; _print = print;
-        _loyalty = loyalty; _log = log;
+        _loyalty = loyalty; _log = log; _turn = turn;
     }
 
     private int TenantId => _tenant.RestaurantId ?? throw new DomainException("No restaurant in context.");
@@ -312,6 +314,10 @@ public class BillingService
             khataEntry.Reference = invoice.FormattedNumber;
             khataEntry.Note = invoice.TableName;
         }
+
+        // The bill is saved. Filing it can take seconds and only touches this invoice, so the rest
+        // of the restaurant doesn't need to wait for it.
+        _turn?.Finish();
 
         // File with FBR (no-op if fiscal is off). Never blocks the sale — a failure is
         // captured on the invoice and shows in the owner's pending list for retry.

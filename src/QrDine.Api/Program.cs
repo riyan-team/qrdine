@@ -181,20 +181,24 @@ app.UseAuthorization();                              // enforce role policies on
 app.MapOnboarding();
 app.MapFiles();
 app.MapFeedback();
-app.MapLoyalty();
 app.MapPayments();
 app.MapPlatform();
 app.MapAuth();
 app.MapMenu();
 app.MapMenuAdmin();
 app.MapAdminSettings();
-app.MapInventory();
-app.MapBusiness();
-app.MapFloor();
-app.MapOrders();
-app.MapStaff();
-app.MapBilling();
 app.MapFiscal();
+
+// These change orders, tables, bills, stock, khatas and points, so each restaurant's changes take turns.
+var floor = app.MapGroup("").AddEndpointFilter<FloorGateFilter>();
+floor.MapLoyalty();
+floor.MapInventory();
+floor.MapBusiness();
+floor.MapFloor();
+floor.MapOrders();
+floor.MapStaff();
+floor.MapBilling();
+
 app.MapHub<OrderHub>("/hub/orders");
 app.MapHealthChecks("/health");
 
