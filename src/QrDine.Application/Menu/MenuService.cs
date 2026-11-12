@@ -13,6 +13,9 @@ public class MenuService
     // The tenant is already resolved by middleware, so the global query filter
     // scopes every query below to the current restaurant automatically.
 
+    /// <summary>The order QR makes Parcel / Delivery tickets, so the plan needs guest ordering and billing.</summary>
+    public static bool PickupInPlan(Domain.Restaurants.Restaurant r) => r.FeatureOrdering && r.FeatureBilling;
+
     public async Task<MenuDto?> GetMenu(string slug, bool forAdmin = false, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.AsNoTracking().FirstOrDefaultAsync(x => x.Slug == slug, ct);
@@ -44,7 +47,9 @@ public class MenuService
             .ToList();
 
         var dto = new RestaurantDto(r.Slug, r.Name, r.Currency,
-            new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter, r.FeatureBilling), r.LogoUrl);
+            new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter, r.FeatureBilling), r.LogoUrl,
+            new PickupDto(r.GuestTakeaway && PickupInPlan(r), r.GuestDelivery && PickupInPlan(r), r.DeliveryFee, r.DeliveryNote ?? "",
+                r.Latitude, r.Longitude, r.DeliveryRadiusKm));
         return new MenuDto(dto, menu);
     }
 

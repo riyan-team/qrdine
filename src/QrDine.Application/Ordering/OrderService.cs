@@ -54,6 +54,9 @@ public class OrderService
             .FirstOrDefaultAsync(ct);
         if (session is null)
         {
+            // A parcel or delivery ticket is one customer's order: once it's settled or cancelled it stays closed.
+            if (table.Kind != OrderChannel.Dine)
+                throw new DomainException("This order is already closed. Please start a new one.");
             session = TableSession.Open(table);
             _db.Sessions.Add(session);
             await _db.SaveChangesAsync(ct);   // materialise the session id
@@ -178,6 +181,10 @@ public class OrderService
         var dto = await Publish(order, ct);
         if (wasConsumed && await StockEnabled(ct))
             await _inventory.ApplyOrderConsumption(Lines(order), restore: true, ct);
+        // A takeaway or delivery with nothing left on it is over (its private table is never reused);
+        // a dine-in table stays open, since the guests are still sitting there.
+        if (await _db.Sessions.AnyAsync(s => s.Id == order.TableSessionId && s.Channel != OrderChannel.Dine, ct))
+            await CloseSessionIfSettled(order.TableSessionId, ct);
         return dto;
     }
 

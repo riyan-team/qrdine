@@ -7,7 +7,7 @@ import { CONTACT } from './contact'
 import DineInLogo from './DineInLogo.jsx'
 import {
   BookIcon, BoxIcon, CashIcon, ChartIcon, GearIcon, KitchenIcon, ListIcon, LogoutIcon, MenuIcon, NoteIcon,
-  QrIcon, ReceiptIcon, StarIcon, TrendIcon, UsersIcon, WalletIcon, BankIcon, CloseIcon,
+  QrIcon, ReceiptIcon, StarIcon, TrendIcon, UsersIcon, WalletIcon, BankIcon, CloseIcon, TruckIcon,
 } from './icons.jsx'
 
 // Each screen is fetched when it's first opened. If a new version went live while this tab was open,
@@ -46,6 +46,8 @@ const Customers = screen(() => import('./pages/Customers.jsx'))
 const Expenses = screen(() => import('./pages/Expenses.jsx'))
 const Payroll = screen(() => import('./pages/Payroll.jsx'))
 const DayClose = screen(() => import('./pages/DayClose.jsx'))
+const Deliveries = screen(() => import('./pages/Deliveries.jsx'))
+const Ride = screen(() => import('./pages/Ride.jsx'))
 
 // The server has the last word on a saved sign-in: a removed account, a new password or a deleted
 // restaurant all end it. Ask once per sign-in per page load, before any staff screen shows, so an
@@ -117,6 +119,7 @@ function navGroups() {
       title: 'Orders',
       items: [
         (can('orders.approve') || can('orders.pay')) && (has('ordering') || has('billing')) && { to: '/cashier', label: 'Reception', Icon: ReceiptIcon },
+        can('orders.create') && (has('ordering') || has('billing')) && { to: '/deliveries', label: 'Deliveries', Icon: TruckIcon },
         can('orders.cook') && has('kitchen') && { to: '/kitchen', label: 'Kitchen', Icon: KitchenIcon },
         can('orders.serve') && has('waiter') && { to: '/waiter', label: 'Waiter', Icon: NoteIcon },
         can('orders.pay') && has('billing') && { to: '/admin/closing', label: 'Day closing', Icon: CashIcon },
@@ -126,7 +129,7 @@ function navGroups() {
       title: 'Menu',
       items: [
         can('menu.manage') && { to: '/admin/menu', label: 'Menu', Icon: MenuIcon },
-        can('settings.manage') && { to: '/owner', label: 'Table QR codes', Icon: QrIcon },
+        can('settings.manage') && { to: '/owner', label: 'QR codes', Icon: QrIcon },
       ],
     },
     {
@@ -284,9 +287,11 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/platform/login" element={<PlatformLogin />} />
         <Route path="/platform" element={<PlatformConsole />} />
+        <Route path="/r/:slug/go" element={<Menu />} />
         <Route path="/r/:slug/t/:code" element={<Menu />} />
         <Route path="/r/:slug/order/:id" element={<OrderDetails />} />
         <Route path="/r/:slug/t/:code/order/:id" element={<OrderDetails />} />
+        <Route path="/r/:slug/ride/:code" element={<Ride />} />
 
         <Route path="/admin/dashboard" element={page(<Dashboard />, { perm: 'reports.view', feature: 'reports' })} />
         <Route path="/admin/reports" element={page(<Reports />, { perm: 'reports.view', feature: 'reports' })} />
@@ -303,6 +308,7 @@ export default function App() {
         <Route path="/admin/loyalty" element={page(<Loyalty />, { perm: 'settings.manage' })} />
         <Route path="/cashier" element={page(<Cashier />, { anyOf: ['orders.approve', 'orders.pay'], anyFeature: ['ordering', 'billing'] })} />
         <Route path="/kitchen" element={page(<Kitchen />, { perm: 'orders.cook', feature: 'kitchen' })} />
+        <Route path="/deliveries" element={page(<Deliveries />, { perm: 'orders.create', anyFeature: ['ordering', 'billing'] })} />
         <Route path="/waiter" element={page(<Waiter />, { perm: 'orders.serve', feature: 'waiter' })} />
         {/* Typing /admin: signed in goes to your own first screen, otherwise to sign-in. */}
         <Route path="/admin" element={<Navigate to={auth.staffToken ? auth.home() : '/login'} replace />} />

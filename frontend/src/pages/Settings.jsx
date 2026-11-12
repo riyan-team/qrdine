@@ -1,10 +1,12 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { api, roleLabel } from '../api'
 import { auth } from '../auth'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { PasswordInput } from '../forms.jsx'
-import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon } from '../icons.jsx'
+import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon, LocateIcon } from '../icons.jsx'
+import MapView, { myLocation } from '../MapView.jsx'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -62,7 +64,7 @@ export default function Settings() {
         {tab === 'receipt' && <ReceiptSettings />}
         {tab === 'venue' && <><Branches /><Tables /></>}
         {tab === 'staff' && <><Staff />{isOwner && <Permissions />}</>}
-        {tab === 'service' && <ServiceSettings />}
+        {tab === 'service' && <><ServiceSettings /><PickupSettings /></>}
         {tab === 'fbr' && <FbrSettings />}
         {tab === 'account' && <AccountSettings />}
       </div>
@@ -300,6 +302,96 @@ function ServiceSettings() {
         <input type="radio" name="wa" checked={s.waiterAutoAssign} onChange={() => save(true)} style={{ marginTop: 3 }} />
         <span><b>Automatic:</b> each approved order goes to the least-busy waiter. <span className="muted">Needs staff with the Waiter role.</span></span>
       </label>
+    </div>
+  )
+}
+
+// Takeaway and delivery from the guest's own phone: one "order QR" for the counter, a flyer,
+// Instagram or WhatsApp. Orders land on reception as Parcel / Delivery tickets and need approving.
+function PickupSettings() {
+  const [s, setS] = useState(null)
+  const [fee, setFee] = useState('')
+  const [note, setNote] = useState('')
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    api.getServiceSettings().then((x) => { setS(x); setFee(String(x.deliveryFee ?? 0)); setNote(x.deliveryNote || '') }).catch(() => {})
+  }, [])
+  if (!s) return null
+  const save = async (changes) => {
+    setS((x) => ({ ...x, ...changes }))
+    try { await api.setServiceSettings(changes); setMsg('Saved'); setTimeout(() => setMsg(''), 1200) }
+    catch (e) { ui.alert(e.message) }
+  }
+  const saveDelivery = () => {
+    const n = Number(fee)
+    if (!Number.isFinite(n) || n < 0) return ui.alert('Enter the delivery charge in rupees (0 for free delivery).')
+    save({ deliveryFee: n, deliveryNote: note.trim() })
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between"><b>Takeaway &amp; delivery QR</b>
+        {!s.pickupInPlan ? <span className="pill s-Placed">Not in your plan</span> : msg && <span className="muted" style={{ fontSize: 13 }}>{msg}</span>}</div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
+        One QR for your counter, flyers, Instagram or WhatsApp. Customers order on their own phone, choose takeaway or delivery,
+        and give their name and number. The order arrives on Reception as a Parcel or Delivery ticket, for you to approve.
+        Print it from <Link to="/owner">Table QR codes</Link>.
+      </p>
+      <label className="row" style={{ gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+        <input type="checkbox" disabled={!s.pickupInPlan} checked={s.guestTakeaway} onChange={(e) => save({ guestTakeaway: e.target.checked })} />
+        <span><b>Takeaway:</b> customers order ahead and collect it ready.</span>
+      </label>
+      <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
+        <input type="checkbox" disabled={!s.pickupInPlan} checked={s.guestDelivery} onChange={(e) => save({ guestDelivery: e.target.checked })} />
+        <span><b>Delivery:</b> customers give their address; you send a rider.</span>
+      </label>
+      {s.guestDelivery && (
+        <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ flex: '0 0 150px' }}><span className="muted" style={{ fontSize: 12.5 }}>Delivery charge (Rs)</span>
+            <input type="number" min="0" step="10" value={fee} onChange={(e) => setFee(e.target.value)} /></label>
+          <label style={{ flex: '1 1 240px' }}><span className="muted" style={{ fontSize: 12.5 }}>Note for customers</span>
+            <input value={note} maxLength={120} onChange={(e) => setNote(e.target.value)} placeholder="Within 5 km · about 45 minutes" /></label>
+          <button className="primary" onClick={saveDelivery}>Save</button>
+        </div>
+      )}
+      {s.pickupInPlan && <ShopLocation s={s} save={save} />}
+    </div>
+  )
+}
+
+// Where the restaurant is: riders start here, customers see how far they are, and pins outside the
+// delivery area are turned away before the order is placed.
+function ShopLocation({ s, save }) {
+  const [at, setAt] = useState(s.latitude != null ? { lat: s.latitude, lng: s.longitude } : null)
+  const [km, setKm] = useState(String(s.deliveryRadiusKm || 0))
+  const [busy, setBusy] = useState(false)
+  const dirty = at && (at.lat !== s.latitude || at.lng !== s.longitude)
+  const locate = async () => {
+    setBusy(true)
+    try { setAt(await myLocation()) } catch (e) { ui.alert(e.message) }
+    setBusy(false)
+  }
+  const saveAll = () => {
+    const r = Number(km)
+    if (!Number.isFinite(r) || r < 0 || r > 100) return ui.alert('The delivery area is in km, from 0 (no limit) to 100.')
+    save({ ...(at ? { latitude: +at.lat.toFixed(6), longitude: +at.lng.toFixed(6) } : {}), deliveryRadiusKm: r })
+  }
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+      <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <b>Your restaurant on the map</b>
+        <button className="btn-sm" disabled={busy} onClick={locate}><LocateIcon size={14} /> Use this device's location</button>
+      </div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
+        Riders start here and customers see how far away they are. Tap the map or drag the pin onto your door.
+      </p>
+      <MapView height={240} center={[30.3753, 69.3451]} area={at && Number(km) > 0 ? { ...at, km: Number(km) } : null}
+        pick={{ ...(at || { lat: NaN, lng: NaN }), kind: 'shop', label: 'Your restaurant', onMove: (p) => setAt({ lat: p.lat, lng: p.lng }) }} />
+      <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ flex: '0 0 190px' }}><span className="muted" style={{ fontSize: 12.5 }}>Deliver within (km, 0 = no limit)</span>
+          <input type="number" min="0" max="100" step="0.5" value={km} onChange={(e) => setKm(e.target.value)} /></label>
+        <button className="primary" disabled={!dirty && Number(km) === Number(s.deliveryRadiusKm || 0)} onClick={saveAll}>Save location</button>
+        {at && <span className="muted" style={{ fontSize: 12.5 }}>{at.lat.toFixed(5)}, {at.lng.toFixed(5)}</span>}
+      </div>
     </div>
   )
 }

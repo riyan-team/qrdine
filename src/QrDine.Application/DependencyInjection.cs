@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<Purchasing.SupplierService>();
         services.AddScoped<Expenses.ExpenseService>();
         services.AddScoped<TicketService>();
+        services.AddScoped<DeliveryService>();
         services.AddScoped<ServiceRequestService>();
         services.AddScoped<Customers.CustomerService>();
         services.AddScoped<Staffing.PayrollService>();

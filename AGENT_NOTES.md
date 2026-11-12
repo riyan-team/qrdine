@@ -138,6 +138,26 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-12**: **Takeaway and delivery from the guest's own phone, with a map, a rider screen and live tracking.** Deployed to Hostworld on 2026-11-13. It adds migrations `AddGuestPickupDelivery` and `AddDeliveryTracking`, both additive.
+  - **Order QR.** One restaurant-wide "order" QR, separate from the table QRs (Owner → QR codes). A guest picks Takeaway or Delivery and gives a name, number and address. For delivery they drop a map pin or tap "Use my location".
+    - The order reaches reception as a Parcel or Delivery ticket that needs approving.
+    - Off by default: `Restaurant.GuestTakeaway` / `GuestDelivery`.
+    - Related settings: `DeliveryFee`, `DeliveryNote`, the restaurant's own pin (`Latitude`/`Longitude`), and `DeliveryRadiusKm` (0 means no limit).
+  - **Deliveries board** (`pages/Deliveries.jsx`, staff). It shows each ticket on the map.
+    - Approve the ticket and set a promised time (`POST /tickets/{code}/promise`). For a delivery that is "at the door by", for a takeaway "ready by".
+    - Send a rider link (`/rider-link`, with the rider's name and phone) and share it on WhatsApp.
+  - **Rider screen** (`pages/Ride.jsx`, `/r/{slug}/ride/{code}?k=…`). There's no account: the private `RiderKey` in the link is the only pass, and a new link replaces it.
+    - It shows the address, distance, the bag's contents, the cash to collect and the promised time.
+    - The rider taps "Picked up" and then "Delivered". While on the road the phone posts its GPS to `/ride/{code}/location`.
+  - **Guest tracking** (`TrackCard` in `Menu.jsx`, `GET /tickets/{code}/track`, `DeliveryService.Track`). It shows the stage, the rider on the map, "Arrives by" / "Ready at" with minutes left, and how early or late it arrived.
+    - A takeaway's ETA is the kitchen's ready time, otherwise the promised time.
+    - The pass for a takeaway or delivery ticket is handed out once, when the order is placed, and kept on that phone (`auth.keepTicket`). Another phone can't follow the order.
+  - **Map:** `MapView.jsx` (Leaflet, loaded only when a map shows) on OpenStreetMap's public tiles, which need no key. OSM's tile policy suits light use only. If traffic grows, move to a tile provider with a key.
+  - **Landing page and plans** list takeaway and delivery QR, map tracking and the rider screen. There's a new FAQ entry.
+  - 13 new tests in `FloorTests`. Before deploying, the whole-day check ran 545 checks and 543 passed.
+    - The 2 failures are an older bug this change didn't touch. `/admin/reports/sales` and `invoices.csv` read `from`/`to` as UTC days (`Window` in `MenuAdminEndpoints.cs`), while the main report uses Pakistan days.
+    - So bills made between 00:00 and 05:00 Pakistan time land on the previous date in the sales list. The check only fails when it runs in those hours.
+  - **Promo videos** for these features live in the shopify repo, under `qrdine-videos/`. They are recorded on the local copy with the demo restaurant, which has only tables T1–T4.
 - **2026-11-09** — **Sign-in and access checks tightened** (no migration; every existing pass stops working once):
   - Found: anyone with an order number could read the order, and anyone could list a table's live orders. The live feed let anyone listen to a whole restaurant's orders. A reset password, removed staff member or role change didn't end an existing pass. Passwords could be guessed without limit by changing address. The print bridge was handed a long-lived pass.
   - Staff and platform passes carry `stf` and `stm` (a stamp of the password hash). `TenantResolutionMiddleware` checks them against the database on every request (`Auth/StaffSessions.cs`) and uses the current role and permissions, not the ones in the pass.

@@ -1716,6 +1716,16 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal>("DeliveryFee")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("DeliveryNote")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("DeliveryRadiusKm")
+                        .HasColumnType("numeric");
+
                     b.Property<bool>("DiscountEnabled")
                         .HasColumnType("boolean");
 
@@ -1750,12 +1760,24 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("FeatureWaiter")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("GuestDelivery")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("GuestTakeaway")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LastPaymentAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("LogoUrl")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2149,6 +2171,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("DeliveryAddress")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -2158,8 +2183,17 @@ namespace QrDine.Infrastructure.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
+                    b.Property<double?>("DeliveryLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("DeliveryLng")
+                        .HasColumnType("double precision");
+
                     b.Property<int>("DiningTableId")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<bool>("IsOpen")
                         .HasColumnType("boolean");
@@ -2170,13 +2204,33 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("OpenedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("PromisedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("RiderKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<double?>("RiderLat")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RiderLng")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("RiderName")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RiderPhone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RiderSeenAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("TableCode")
                         .IsRequired()

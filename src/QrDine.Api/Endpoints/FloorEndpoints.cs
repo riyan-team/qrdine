@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using QrDine.Api.Auth;
 using QrDine.Api.Validation;
+using QrDine.Application.Auth;
 using QrDine.Application.Billing;
 using QrDine.Application.Common;
 using QrDine.Application.Customers;
@@ -33,6 +34,44 @@ public static class FloorEndpoints
             .RequireAuthorization(Policies.StaffAny);
         root.MapPut("/tickets/{code}", async (string code, TicketUpdate body, TicketService svc) => Results.Ok(await svc.Update(code, body)))
             .RequireAuthorization(Policies.CanCreateOrders);
+        // A guest's own takeaway/delivery from the restaurant's order QR (no table). Public, so it is rate-limited
+        // tightly; the order still waits for reception to approve it, and the pass it returns is for this ticket only.
+        root.MapPost("/tickets/guest", async (GuestTicketRequest body, TicketService svc, ITokenService tokens, ICurrentTenant tenant) =>
+        {
+            var placed = await svc.PlaceGuest(body);
+            var token = tokens.CreateGuestToken(tenant.RestaurantId ?? 0, tenant.Slug ?? "", placed.Ticket.TableCode);
+            return Results.Ok(new GuestTicketPlaced(placed.Order, placed.Ticket, token));
+        }).RequireRateLimiting("guest-ticket");
+
+        // ---- delivery handling: promised time, rider link, out for delivery, delivered / collected ----
+        root.MapGet("/tickets/{code}/track", async (string code, ClaimsPrincipal user, DeliveryService svc) =>
+            Access.MayReadTable(user, code) ? Results.Ok(await svc.Track(code))
+                : Results.Problem(detail: "This session is for a different order.", statusCode: 403))
+            .RequireAuthorization(Policies.GuestOrStaff);
+        root.MapGet("/tickets/shop", async (DeliveryService svc) => Results.Ok(new { point = await svc.ShopPoint() }))
+            .RequireAuthorization(Policies.CanCreateOrders);
+        root.MapPost("/tickets/{code}/promise", async (string code, PromiseInput body, DeliveryService svc) =>
+            { await svc.Promise(code, body.Minutes); return Results.NoContent(); }).RequireAuthorization(Policies.CanCreateOrders);
+        root.MapPost("/tickets/{code}/rider-link", async (string code, RiderLinkInput body, DeliveryService svc) =>
+            Results.Ok(await svc.RiderLink(code, body))).RequireAuthorization(Policies.CanCreateOrders);
+        root.MapPost("/tickets/{code}/dispatch", async (string code, DeliveryService svc) =>
+            { await svc.Dispatch(code); return Results.NoContent(); }).RequireAuthorization(Policies.CanCreateOrders);
+        root.MapPost("/tickets/{code}/delivered", async (string code, DeliveryService svc) =>
+            { await svc.Delivered(code); return Results.NoContent(); }).RequireAuthorization(Policies.CanCreateOrders);
+
+        // ---- the rider's phone: no account, just the private link reception sent (?k=…) ----
+        root.MapGet("/ride/{code}", async (string code, string? k, DeliveryService svc, BillingService billing) =>
+        {
+            decimal collect = 0;
+            try { collect = (await billing.GetBill(code)).Total; } catch (DomainException) { }
+            return Results.Ok(await svc.Ride(code, k, collect));
+        }).RequireRateLimiting("public");
+        root.MapPost("/ride/{code}/location", async (string code, string? k, RiderLocationInput body, DeliveryService svc) =>
+            { await svc.RiderAt(code, k, body); return Results.NoContent(); }).RequireRateLimiting("public");
+        root.MapPost("/ride/{code}/pickup", async (string code, string? k, DeliveryService svc) =>
+            { await svc.RiderPickup(code, k); return Results.NoContent(); }).RequireRateLimiting("public");
+        root.MapPost("/ride/{code}/delivered", async (string code, string? k, DeliveryService svc) =>
+            { await svc.RiderDelivered(code, k); return Results.NoContent(); }).RequireRateLimiting("public");
 
         // ---- shift guests to another table ----
         root.MapPost("/tables/{code}/move", async (string code, MoveTableRequest body, OrderService svc) =>

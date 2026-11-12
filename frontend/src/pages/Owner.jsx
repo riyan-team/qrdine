@@ -4,28 +4,32 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { auth } from '../auth'
 import { Empty, Loading, PageHead, Problem, useData } from '../backoffice.jsx'
-import { BankIcon, PrintIcon } from '../icons.jsx'
+import { BagIcon, BankIcon, PrintIcon } from '../icons.jsx'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 
 // One QR per table. Each opens the menu for that exact table, so an order can't land on the wrong one.
 export default function Owner() {
   const { data: tables, error, loading, reload } = useData(() => api.getTables(), [])
+  const { data: service } = useData(() => api.getServiceSettings().catch(() => null), [])
   const sheet = useRef(null)
   const slug = auth.staffSlug()
   const place = auth.getStaff()?.restaurantName || ''
   const urlFor = (code) => `${window.location.origin}/r/${slug}/t/${code}`
+  const orderUrl = `${window.location.origin}/r/${slug}/go`
+  const orderOn = !!(service?.guestTakeaway || service?.guestDelivery)
+  const orderWays = [service?.guestTakeaway && 'takeaway', service?.guestDelivery && 'delivery'].filter(Boolean).join(' or ')
 
   const groups = {}
   for (const t of tables || []) (groups[t.branchName || ''] ??= []).push(t)
   const entries = Object.entries(groups)
 
   // Printed in its own window on A4, six to a page, ready to cut and stand on the tables.
-  const print = () => {
-    const cards = [...sheet.current.querySelectorAll('[data-qr]')].map((el) => `
+  const print = (only) => {
+    const cards = [...sheet.current.querySelectorAll(only || '[data-qr]')].map((el) => `
       <div class="card">
         <div class="place">${esc(place)}</div>
-        <div class="scan">Scan to see the menu and order</div>
+        <div class="scan">${esc(el.dataset.scan || 'Scan to see the menu and order')}</div>
         ${el.querySelector('svg').outerHTML}
         <div class="table">${esc(el.dataset.qr)}</div>
       </div>`).join('')
@@ -48,8 +52,8 @@ export default function Owner() {
 
   return (
     <div className="bo-wrap">
-      <PageHead title="Table QR codes" sub="Print these and put one on each table. A guest scans it and that table's menu opens, with nothing to install.">
-        {tables?.length > 0 && <button className="primary" onClick={print}><PrintIcon size={16} /> Print all</button>}
+      <PageHead title="QR codes" sub="One QR on each table, plus one order QR for takeaway and delivery. A guest scans and the menu opens, with nothing to install.">
+        {tables?.length > 0 && <button className="primary" onClick={() => print()}><PrintIcon size={16} /> Print all</button>}
       </PageHead>
       <Problem onRetry={reload}>{error}</Problem>
       {loading && !tables && <Loading />}
@@ -57,6 +61,31 @@ export default function Owner() {
         <div className="bo-card"><Empty title="No tables yet" action={<Link to="/admin/settings"><button className="primary">Add tables in Settings</button></Link>}>Add your tables and their QR codes appear here.</Empty></div>
       )}
       <div ref={sheet}>
+        {service && (
+          <div className="bo-card qr-order" style={{ marginBottom: 18 }}>
+            <div className="qr-card" data-qr={orderOn ? `Takeaway & delivery` : undefined} data-order-qr="1"
+              data-scan={`Scan to order ${orderWays || 'takeaway or delivery'}`}>
+              <QRCodeSVG value={orderUrl} size={148} level="M" />
+              <b>Takeaway &amp; delivery</b>
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <h2 style={{ margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8 }}><BagIcon size={18} /> Order QR, no table needed</h2>
+              <p className="muted" style={{ margin: '0 0 10px', fontSize: 14 }}>
+                Put it on your counter, a flyer, your Instagram or WhatsApp. Customers order {orderWays || 'takeaway or delivery'} on
+                their own phone; it arrives on Reception as a Parcel or Delivery ticket.
+              </p>
+              {orderOn ? (
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <button className="primary" onClick={() => print('[data-order-qr]')}><PrintIcon size={16} /> Print this QR</button>
+                  <a href={orderUrl} target="_blank" rel="noreferrer"><button className="ghost">Open the order page</button></a>
+                  <button className="ghost" onClick={() => navigator.clipboard?.writeText(orderUrl)}>Copy link</button>
+                </div>
+              ) : (
+                <Link to="/admin/settings"><button className="primary">Turn on takeaway or delivery in Settings → Service</button></Link>
+              )}
+            </div>
+          </div>
+        )}
         {entries.map(([branch, list]) => (
           <div key={branch} style={{ marginBottom: 18 }}>
             {entries.length > 1 && <div className="fl-section"><h2><BankIcon size={15} /> {branch || 'Main branch'}</h2></div>}

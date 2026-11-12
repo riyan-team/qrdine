@@ -184,6 +184,9 @@ function PlanEditor({ plan, onClose, onSaved }) {
             </label>
           ))}
         </div>
+        <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+          Order + Billing also unlock the takeaway &amp; delivery QR. Billing unlocks loyalty points. Star ratings and the Google review button come with every plan.
+        </p>
         <label className="row" style={{ gap: 8, cursor: 'pointer', margin: '10px 0' }}>
           <input type="checkbox" checked={f.isActive} onChange={(e) => set('isActive', e.target.checked)} /> Show on sign-up
         </label>

@@ -119,6 +119,10 @@ export const api = {
     const token = await passFor(slug, code)
     return fetch(`/api/r/${slug}/tables/${code}/orders`, { headers: bearer(token) }).then(g)
   },
+  // Takeaway or delivery from the restaurant's order QR: no table, no pass needed. Returns { order, ticket, token }.
+  placeGuestTicket: (slug, body) => fetch(`/api/r/${slug}/tickets/guest`, {
+    method: 'POST', headers: json(), body: JSON.stringify(body),
+  }).then(g),
   placeOrder: async (slug, body) => {
     const token = await auth.guestToken(slug, body.tableCode)
     return fetch(`/api/r/${slug}/orders`, {
@@ -209,6 +213,25 @@ export const api = {
   placeTicket: (t) => staffPost(`/tickets`, t),
   tickets: () => staffGet(`/tickets`),
   updateTicket: (code, t) => staffPut(`/tickets/${code}`, t),
+
+  // delivery handling: the promised time, the rider's link, out for delivery, delivered / collected
+  shopPoint: () => staffGet(`/tickets/shop`).then((x) => x?.point || null),
+  promiseTicket: (code, minutes) => staffPost(`/tickets/${code}/promise`, { minutes }),
+  riderLink: (code, riderName, riderPhone) => staffPost(`/tickets/${code}/rider-link`, { riderName, riderPhone }),
+  dispatchTicket: (code) => staffPost(`/tickets/${code}/dispatch`),
+  deliveredTicket: (code) => staffPost(`/tickets/${code}/delivered`),
+  // the guest following their takeaway / delivery (only the phone that placed it, or staff)
+  trackTicket: async (slug, code) => {
+    const token = await passFor(slug, code)
+    return fetch(`/api/r/${slug}/tickets/${code}/track`, { headers: bearer(token) }).then(g)
+  },
+  // the rider's phone: no account, only the private key from the link reception sent
+  ride: (slug, code, k) => fetch(`/api/r/${slug}/ride/${code}?k=${encodeURIComponent(k)}`).then(g),
+  rideLocation: (slug, code, k, lat, lng) => fetch(`/api/r/${slug}/ride/${code}/location?k=${encodeURIComponent(k)}`, {
+    method: 'POST', headers: json(), body: JSON.stringify({ lat, lng }),
+  }).then(g),
+  ridePickup: (slug, code, k) => fetch(`/api/r/${slug}/ride/${code}/pickup?k=${encodeURIComponent(k)}`, { method: 'POST' }).then(g),
+  rideDelivered: (slug, code, k) => fetch(`/api/r/${slug}/ride/${code}/delivered?k=${encodeURIComponent(k)}`, { method: 'POST' }).then(g),
 
   // a guest tapping "call waiter" or "ask for the bill"
   callStaff: async (slug, code, kind) => {

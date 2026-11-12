@@ -5,31 +5,37 @@ import Diorama, { Phone3D, PhoneScreen } from '../Diorama.jsx'
 import { CONTACT } from '../contact'
 import { getPlans, money } from '../api'
 import { tilt, useParallax } from '../motion'
-import { BookIcon, ChatIcon, CheckIcon, PhoneIcon } from '../icons.jsx'
+import { BagIcon, BookIcon, ChatIcon, CheckIcon, PhoneIcon, StarIcon, TruckIcon } from '../icons.jsx'
 
-// What a plan includes, in the words an owner would use.
+// What a plan includes, in the words an owner would use. A line shows when the plan has every feature it names.
 const PLAN_LINES = [
   [null, 'QR menu and table QR codes'],
+  [null, 'Star ratings and a Google review button'],
   ['ordering', 'Guests and staff place orders'],
+  [['ordering', 'billing'], 'Takeaway & delivery QR: customers order on their own phone'],
   ['kitchen', 'Kitchen screen with timers'],
   ['waiter', 'Waiter screen on any phone'],
   ['billing', 'Bills, split payments, parcels, deliveries, customer khata, day closing'],
+  ['billing', 'Loyalty points and rewards for regulars'],
   ['inventory', 'Stock, recipes and supplier khata'],
   ['reports', 'Reports, expenses, salaries and attendance'],
 ]
+const planHas = (p, key) => !key || [].concat(key).every((k) => p[k])
 
 const EVERYTHING = [
   'Menu in English and Urdu', 'Sizes, add-ons and deals', 'Read your menu from a photo', 'Change all prices by a percentage',
   'Guests call a waiter from the table', 'Shift a table, join two bills', 'Remove an item, with a reason on record', 'Parcel and delivery tickets',
+  'Takeaway & delivery QR, no table needed', 'Customers add their own address', 'Delivery charge added for you', 'Live status: ready for pickup, out for delivery',
   'Saved customers by mobile number', 'Rider name and delivery charge', 'Split a bill any way', 'Cash, card, JazzCash, Easypaisa',
   'Separate tax rate for card and cash', 'Discounts only for staff you allow', 'Customer khata with limits', 'Supplier khata with statements',
   'Purchases add to stock', 'Recipes take stock off by themselves', 'Waste recorded with a reason', 'Expenses by category',
   'Salaries, advances, attendance', 'Night-time cash count', 'Sales by dish, hour, table, cashier and waiter', 'Excel and print on every report',
-  'Rewards and points for regulars', 'Several branches', 'Each staff member sees only their screens', 'Receipts on your thermal printer',
+  'Rewards and points for regulars', 'Star ratings after the meal', 'Google review button', 'Live cooking timer on the guest\'s phone', 'Several branches', 'Each staff member sees only their screens', 'Receipts on your thermal printer',
 ]
 
 const FAQ = [
   ['Do guests need to install anything?', 'No. They point the phone camera at the QR code on the table and the menu opens in the browser.'],
+  ['Can customers order takeaway or delivery without a table?', 'Yes. Turn on the order QR in Settings and share it on your counter, flyers, Instagram or WhatsApp. Customers pick takeaway or delivery, add their name, number and address, and order from their own phone. It reaches Reception as a Parcel or Delivery ticket for you to approve.'],
   ['Do I need new hardware?', "No. It runs on whatever phone, tablet or computer you have. Bills and kitchen slips print on a normal thermal receipt printer connected to that device."],
   ['Can a mistake put an order on the wrong table?', 'Each QR code belongs to one table, and the server works out every price itself. Staff can shift a table or join two bills, and each change stays on record.'],
   ['What happens if the internet goes down?', "Dine In runs online, so it needs a connection. A phone hotspot is enough to keep going. Your data is backed up every day."],
@@ -65,6 +71,40 @@ function FloorPicture() {
         {tiles.map(([name, state, amount, kind]) => (
           <div key={name} className={`ln-tile is-${kind}`}><b>{name}</b><small>{state}</small>{amount && <span>{amount}</span>}</div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function PickupPicture() {
+  return (
+    <div className="ln-device ln-pick" {...tilt(5)}>
+      <div className="ln-device-bar"><i /><i /><i /><span>Order QR · Karachi Grill</span></div>
+      <div className="ln-pick-body">
+        <div className="ln-pick-ways">
+          <div><BagIcon size={18} /><b>Takeaway</b><small>Collect it yourself</small></div>
+          <div className="on"><TruckIcon size={18} /><b>Delivery</b><small>Rs 150 · within 5 km</small></div>
+        </div>
+        <div className="ln-pick-field"><small>Name</small><b>Sara Ahmed</b></div>
+        <div className="ln-pick-field"><small>Mobile number</small><b>0300 1234567</b></div>
+        <div className="ln-pick-field"><small>Delivery address</small><b>House 12, Street 4, DHA Phase 5</b></div>
+        <div className="ln-pick-total"><span>Food Rs 1,450 · Delivery Rs 150</span><b>Rs 1,600</b></div>
+        <div className="ln-pick-status"><TruckIcon size={15} /> Delivery #4 · Out for delivery</div>
+      </div>
+    </div>
+  )
+}
+
+function LoyaltyPicture() {
+  return (
+    <div className="ln-device ln-loyal" {...tilt(5)}>
+      <div className="ln-device-bar"><i /><i /><i /><span>Rewards &amp; reviews</span></div>
+      <div className="ln-loyal-body">
+        <div className="ln-loyal-card"><small>Sara's rewards</small><b>1,240 points</b>
+          <i><em style={{ width: '83%' }} /></i><span>260 more for a free Kheer</span></div>
+        <div className="ln-loyal-rate"><b>Rate your visit</b>
+          <div>{[1, 2, 3, 4, 5].map((n) => <StarIcon key={n} size={24} />)}</div></div>
+        <div className="ln-loyal-google"><StarIcon size={15} /> Review us on Google</div>
       </div>
     </div>
   )
@@ -154,7 +194,7 @@ export default function Landing() {
         <div className="ln-hero-grid">
           <div className="ln-hero-text">
             <h1>Your whole restaurant, <em>one screen.</em></h1>
-            <p>Guests order from the table, the kitchen sees it at once, and bills, khata, expenses and reports keep themselves up to date.</p>
+            <p>Guests order from the table, or takeaway and delivery from their own phone. The kitchen sees it at once, and bills, khata, expenses and reports keep themselves up to date.</p>
             <div className="ln-cta">
               <Link to="/signup" className="ln-btn primary">Start free for 14 days</Link>
               <a href={CONTACT.whatsapp} target="_blank" rel="noreferrer" className="ln-btn quiet"><ChatIcon size={17} /> Ask on WhatsApp</a>
@@ -169,7 +209,7 @@ export default function Landing() {
         <h2 data-rise>One order, from table to till</h2>
         <ol>
           {[
-            ['Guest scans', 'The menu for their table opens on their phone. They choose and send.'],
+            ['Guest scans', 'The menu opens on their phone, for their table or for takeaway and delivery. They choose and send.'],
             ['Reception approves', 'It appears on your floor with a chime. One tap sends it to the kitchen.'],
             ['Kitchen cooks', 'The ticket shows on the kitchen screen with a timer. The waiter hears when it\'s ready.'],
             ['Bill settles', 'Split it, take cash, card or JazzCash, or put it on khata. Sales and stock update themselves.'],
@@ -188,28 +228,40 @@ export default function Landing() {
           <p>Today's deals and the most ordered dishes come first, and a suggestion appears before they send the order. It's quick to choose, and easy to add one more thing.</p>
         </Row>
 
-        <Row flip kicker="At the counter" title="Every table at a glance"
+        <Row flip kicker="Takeaway & delivery" title="One QR for takeaway and delivery"
+          picture={<PickupPicture />}>
+          <p>Put one order QR on your counter, a flyer, your Instagram or WhatsApp. Customers choose takeaway or delivery, add their name, number and address, and order from their own phone. No table, no app.</p>
+          <p>It lands on Reception as a Parcel or Delivery ticket with your delivery charge already on it. Approve it, the kitchen cooks, and the customer watches it go to ready for pickup or out for delivery.</p>
+        </Row>
+
+        <Row kicker="At the counter" title="Every table at a glance"
           picture={<FloorPicture />}>
           <p>See who's waiting, what's cooking and what's ready, with the running bill on each table. Take a parcel or delivery from the same screen, with the customer found by their mobile number.</p>
           <p>Shift a table, join two bills, remove an item with a reason, send the address to your rider on WhatsApp. Guests can call a waiter or ask for the bill from their phone.</p>
         </Row>
 
-        <Row kicker="In the kitchen" title="Fewer shouted orders"
+        <Row flip kicker="In the kitchen" title="Fewer shouted orders"
           picture={<KitchenPicture />}>
           <p>Tickets arrive on a screen as soon as they're approved, oldest first, each with its own timer. Tap when it's ready and the waiter's phone chimes.</p>
           <p>Prefer paper? Kitchen slips print on your thermal printer too.</p>
         </Row>
 
-        <Row flip kicker="The khata" title="The khata you already keep, kept for you"
+        <Row kicker="The khata" title="The khata you already keep, kept for you"
           picture={<KhataPicture />}>
           <p>Every supplier bill and payment, with the balance worked out on each line. Bills add to your stock. Send a statement on WhatsApp in one tap.</p>
           <p>Offices and regulars get a customer khata too, with a limit you set, and a reminder when it's time to pay.</p>
         </Row>
 
-        <Row kicker="The numbers" title="Know what you actually made"
+        <Row flip kicker="The numbers" title="Know what you actually made"
           picture={<ReportPicture />}>
           <p>Sales by dish, hour, table, cashier and waiter. Expenses by category. Salaries and advances. Cancelled orders and discounts, and who gave them. Every report prints or opens in Excel.</p>
           <p>At night, count the drawer and Dine In tells you if it's short.</p>
+        </Row>
+
+        <Row kicker="Your regulars" title="Bring them back, and get found on Google"
+          picture={<LoyaltyPicture />}>
+          <p>Guests join your rewards with their mobile number and earn points on every bill. They swap points for the rewards you choose, and your staff confirm each one with a code.</p>
+          <p>After the meal every guest can rate the visit, and you read every rating. A one-tap button takes them to your Google reviews, so more diners find you.</p>
         </Row>
       </div>
 
@@ -233,7 +285,7 @@ export default function Landing() {
                   <h3>{p.name}</h3>
                   <div className="ln-price">{money(p.pricePkr)}<small>/month</small></div>
                   {p.setupFeePkr > 0 && <div className="ln-setup">{money(p.setupFeePkr)} one-time setup</div>}
-                  <ul>{PLAN_LINES.filter(([k]) => !k || p[k]).map(([k, label]) => <li key={label}><CheckIcon size={14} /> {label}</li>)}</ul>
+                  <ul>{PLAN_LINES.filter(([k]) => planHas(p, k)).map(([, label]) => <li key={label}><CheckIcon size={14} /> {label}</li>)}</ul>
                   <Link to="/signup" className={`ln-btn ${top ? 'primary' : 'outline'}`}>Start free</Link>
                 </div>
               )

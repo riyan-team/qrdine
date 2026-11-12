@@ -10,6 +10,7 @@ using QrDine.Application.Expenses;
 using QrDine.Application.Inventory;
 using QrDine.Application.Loyalty;
 using QrDine.Application.Menu;
+using QrDine.Application.Menu.Dtos;
 using QrDine.Application.Ordering;
 using QrDine.Application.Ordering.Dtos;
 using QrDine.Application.Printing;
@@ -56,7 +57,8 @@ public class FloorTests : IDisposable
     private OrderService Orders => new(_db, _tenant, _notifier, new NoPrinter(), new InventoryService(_db));
     private BillingService Billing => new(_db, _tenant, _notifier, new FiscalSyncService(_db, _tenant, new NoFiscal()),
         new NoPrinter(), new LoyaltyService(_db, _tenant), NullLogger<BillingService>.Instance);
-    private TicketService Tickets => new(_db, Orders);
+    private TicketService Tickets => new(_db, Orders, _tenant);
+    private DeliveryService Delivery_ => new(_db, Orders, _tenant);
     private CustomerService Customers => new(_db);
     private PayrollService Payroll => new(_db);
     private BusinessReportService Reports => new(_db, _tenant);
@@ -195,6 +197,195 @@ public class FloorTests : IDisposable
         Assert.NotNull(await auth.IssueGuestSession("T1"));
     }
 
+    // ---- takeaway and delivery from the guest's own phone (the restaurant's order QR) ----
+
+    private Task<TicketPlaced> GuestOrder(string channel, string? name = "Sara", string? phone = "0300 1234567",
+        string? address = "House 5, Gulberg") =>
+        Tickets.PlaceGuest(new GuestTicketRequest(channel, name, phone, address, Lines(), null));
+
+    [Fact]
+    public async Task Guest_takeaway_and_delivery_are_off_until_the_restaurant_turns_them_on()
+    {
+        await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Takeaway"));
+        await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Delivery"));
+        await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Dine"));
+        Assert.Empty(await _db.Tables.Where(t => t.Kind != OrderChannel.Dine).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_guest_delivery_waits_for_reception_and_pays_the_restaurants_delivery_charge()
+    {
+        await Configure(r => { r.GuestDelivery = true; r.DeliveryFee = 120; });
+        var placed = await GuestOrder("Delivery");
+
+        Assert.Equal("Delivery 1", placed.Ticket.TableName);
+        Assert.Equal("03001234567", placed.Ticket.CustomerPhone);
+        Assert.Equal(120, placed.Ticket.DeliveryCharge);
+        Assert.Equal("Qr", placed.Order.Source);
+        Assert.Equal("Placed", placed.Order.Status);             // reception approves it first, like a table order
+        Assert.Equal(500 + 120, (await Billing.GetBill(placed.Ticket.TableCode)).Total);
+        Assert.Contains(await Tickets.Open(), t => t.TableCode == placed.Ticket.TableCode);
+    }
+
+    [Fact]
+    public async Task A_guest_takeaway_never_carries_an_address_or_a_delivery_charge()
+    {
+        await Configure(r => { r.GuestTakeaway = true; r.DeliveryFee = 120; });
+        var placed = await GuestOrder("Takeaway");
+        Assert.Equal("Parcel 1", placed.Ticket.TableName);
+        Assert.Equal(0, placed.Ticket.DeliveryCharge);
+        Assert.Equal("", placed.Ticket.Address);
+        await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Delivery"));   // only takeaway is on
+    }
+
+    [Theory]
+    [InlineData("", "03001234567", "House 5, Gulberg")]
+    [InlineData("Sara", "", "House 5, Gulberg")]
+    [InlineData("Sara", "12345", "House 5, Gulberg")]
+    [InlineData("Sara", "03001234567", "")]
+    public async Task A_guest_delivery_needs_a_name_a_mobile_number_and_an_address(string name, string phone, string address)
+    {
+        await Configure(r => r.GuestDelivery = true);
+        await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Delivery", name, phone, address));
+        Assert.Empty(await _db.Tables.Where(t => t.Kind != OrderChannel.Dine).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_guest_never_changes_the_restaurants_customer_cards()
+    {
+        _db.Customers.Add(new Domain.Customers.Customer { Name = "Ahmed (regular)", Phone = "03001234567", Address = "Shop 2, Mall Road" });
+        await _db.SaveChangesAsync();
+        await Configure(r => r.GuestDelivery = true);
+
+        await GuestOrder("Delivery", name: "Someone else", address: "Somewhere else");
+
+        var card = await _db.Customers.SingleAsync();
+        Assert.Equal("Ahmed (regular)", card.Name);
+        Assert.Equal("Shop 2, Mall Road", card.Address);
+    }
+
+    [Fact]
+    public async Task A_settled_ticket_cant_be_ordered_on_again()
+    {
+        await Configure(r => r.GuestTakeaway = true);
+        var placed = await GuestOrder("Takeaway");
+        await Orders.Approve(placed.Order.Id);
+        await Billing.Settle(placed.Ticket.TableCode, new SettleRequest("Cash", 0));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            Orders.Place(new PlaceOrderRequest(placed.Ticket.TableCode, Lines(), null), OrderSource.Qr));
+        Assert.Contains("already closed", ex.Message);
+    }
+
+    [Fact]
+    public async Task The_order_qr_needs_a_plan_with_ordering_and_billing()
+    {
+        await Configure(r => { r.GuestTakeaway = true; r.FeatureBilling = false; });
+        var ex = await Assert.ThrowsAsync<DomainException>(() => GuestOrder("Takeaway"));
+        Assert.Contains("plan", ex.Message);
+        Assert.False((await new MenuService(_db).GetMenu("test"))!.Restaurant.Pickup!.Takeaway);
+    }
+
+    [Fact]
+    public async Task The_guest_menu_says_what_the_order_qr_offers()
+    {
+        await Configure(r => { r.GuestTakeaway = true; r.DeliveryFee = 99; r.DeliveryNote = "Within 5 km"; });
+        var menu = await new MenuService(_db).GetMenu("test");
+        Assert.Equal(new PickupDto(true, false, 99, "Within 5 km"), menu!.Restaurant.Pickup);
+    }
+
+    // ---- delivery handling: map pin, promised time, rider link and trip, tracking ----
+
+    private const double ShopLat = 31.5108, ShopLng = 74.3440;   // Liberty, Lahore
+    private Task<TicketPlaced> PinnedDelivery(double lat, double lng) =>
+        Tickets.PlaceGuest(new GuestTicketRequest("Delivery", "Sara", "03001234567", "House 12, Street 4, Gulberg III", Lines(), null, lat, lng));
+
+    private async Task Cooked(TicketPlaced t) { await Orders.Approve(t.Order.Id); await Orders.Cook(t.Order.Id, 15); await Orders.Ready(t.Order.Id); }
+
+    [Fact]
+    public async Task A_pin_outside_the_delivery_area_is_refused_and_one_inside_is_kept()
+    {
+        await Configure(r => { r.GuestDelivery = true; r.Latitude = ShopLat; r.Longitude = ShopLng; r.DeliveryRadiusKm = 5; });
+        var far = await Assert.ThrowsAsync<DomainException>(() => PinnedDelivery(31.4700, 74.4100));   // ~7.8 km
+        Assert.Contains("delivers within 5 km", far.Message);
+
+        var near = await PinnedDelivery(31.5260, 74.3570);                                             // ~2.1 km
+        var row = (await Tickets.Open()).Single(t => t.TableCode == near.Ticket.TableCode);
+        Assert.Equal(31.5260, row.Home!.Lat, 4);
+        Assert.InRange(row.DistanceKm!.Value, 1.8, 2.5);
+    }
+
+    [Fact]
+    public async Task A_rider_needs_the_link_and_cant_leave_before_the_food_is_ready()
+    {
+        await Configure(r => r.GuestDelivery = true);
+        var t = await PinnedDelivery(31.5260, 74.3570);
+        var link = await Delivery_.RiderLink(t.Ticket.TableCode, new RiderLinkInput("Imran Khan", "0321 1112233"));
+        var key = link.Path.Split("k=")[1];
+
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.Ride(t.Ticket.TableCode, "wrong-key-wrong-key-xx", 0));
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.Ride(t.Ticket.TableCode, null, 0));
+        var ride = await Delivery_.Ride(t.Ticket.TableCode, key, 500);
+        Assert.Equal("Sara", ride.CustomerName);
+        Assert.False(ride.FoodReady);
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.RiderPickup(t.Ticket.TableCode, key));
+
+        // a new link switches the old one off
+        var again = await Delivery_.RiderLink(t.Ticket.TableCode, new RiderLinkInput(null, null));
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.Ride(t.Ticket.TableCode, key, 0));
+        Assert.NotNull(await Delivery_.Ride(t.Ticket.TableCode, again.Path.Split("k=")[1], 0));
+    }
+
+    [Fact]
+    public async Task The_guest_follows_a_delivery_from_kitchen_to_door()
+    {
+        await Configure(r => { r.GuestDelivery = true; r.Latitude = ShopLat; r.Longitude = ShopLng; });
+        var t = await PinnedDelivery(31.5260, 74.3570);
+        var code = t.Ticket.TableCode;
+        Assert.Equal("Received", (await Delivery_.Track(code)).Stage);
+
+        await Delivery_.Promise(code, 40);
+        await Orders.Approve(t.Order.Id); await Orders.Cook(t.Order.Id, 15);
+        var cooking = await Delivery_.Track(code);
+        Assert.Equal("Cooking", cooking.Stage);
+        Assert.NotNull(cooking.ReadyAt);
+        Assert.InRange((cooking.EtaAt!.Value - DateTime.UtcNow).TotalMinutes, 38, 41);   // the promised time wins
+
+        await Orders.Ready(t.Order.Id);
+        var key = (await Delivery_.RiderLink(code, new RiderLinkInput("Imran", null))).Path.Split("k=")[1];
+        await Delivery_.RiderPickup(code, key);
+        Assert.Equal("Served", (await Orders.GetOrder(t.Order.Id)).Status);                   // out for delivery
+        await Delivery_.RiderAt(code, key, new RiderLocationInput(31.5200, 74.3520));
+        var onTheWay = await Delivery_.Track(code);
+        Assert.Equal("OnTheWay", onTheWay.Stage);
+        Assert.Equal("Imran", onTheWay.RiderName);
+        Assert.NotNull(onTheWay.Rider);
+        Assert.InRange((onTheWay.EtaAt!.Value - DateTime.UtcNow).TotalMinutes, 4, 10);       // ~1 km left
+
+        await Delivery_.RiderDelivered(code, key);
+        var done = await Delivery_.Track(code);
+        Assert.Equal("Delivered", done.Stage);
+        Assert.NotNull(done.DeliveredAt);
+        Assert.Null(done.Rider);
+        Assert.Null(done.EtaAt);
+    }
+
+    [Fact]
+    public async Task A_takeaway_shows_the_kitchens_ready_time_and_is_collected_at_the_counter()
+    {
+        await Configure(r => r.GuestTakeaway = true);
+        var t = await GuestOrder("Takeaway");
+        await Orders.Approve(t.Order.Id); await Orders.Cook(t.Order.Id, 12);
+        var track = await Delivery_.Track(t.Ticket.TableCode);
+        Assert.Equal(track.ReadyAt, track.EtaAt);
+        Assert.InRange((track.EtaAt!.Value - DateTime.UtcNow).TotalMinutes, 11, 12.1);
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.Delivered(t.Ticket.TableCode));   // not ready yet
+        await Orders.Ready(t.Order.Id);
+        await Delivery_.Delivered(t.Ticket.TableCode);
+        Assert.Equal("Collected", (await Delivery_.Track(t.Ticket.TableCode)).Stage);
+        await Assert.ThrowsAsync<DomainException>(() => Delivery_.RiderLink(t.Ticket.TableCode, new RiderLinkInput("x", null)));
+    }
+
     [Fact]
     public async Task Ticket_tables_stay_out_of_every_table_list()
     {
@@ -283,6 +474,21 @@ public class FloorTests : IDisposable
 
         Assert.Equal("Cooking", moved.Single().Status);
         Assert.Equal("Ready", (await Orders.Ready(order.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_last_order_on_a_ticket_closes_it_but_a_table_stays_open()
+    {
+        await Configure(r => { r.GuestDelivery = true; });
+        var placed = await GuestOrder("Delivery");
+        await Orders.Cancel(placed.Order.Id, "customer changed their mind");
+        Assert.DoesNotContain(await Tickets.Open(), t => t.TableCode == placed.Ticket.TableCode);
+        await Assert.ThrowsAsync<DomainException>(() => Orders.Place(
+            new PlaceOrderRequest(placed.Ticket.TableCode, Lines(), null), OrderSource.Qr, null));
+
+        var dine = await Dine("T1");
+        await Orders.Cancel(dine.Id, null);
+        Assert.True(await _db.Sessions.AnyAsync(s => s.TableCode == "T1" && s.IsOpen));
     }
 
     [Fact]

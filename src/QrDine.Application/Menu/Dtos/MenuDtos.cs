@@ -1,6 +1,9 @@
 namespace QrDine.Application.Menu.Dtos;
 
-public record RestaurantDto(string Slug, string Name, string Currency, FeaturesDto Features, string LogoUrl = "");
+public record RestaurantDto(string Slug, string Name, string Currency, FeaturesDto Features, string LogoUrl = "", PickupDto? Pickup = null);
+/// <summary>What the restaurant's takeaway/delivery QR offers a guest.</summary>
+public record PickupDto(bool Takeaway, bool Delivery, decimal DeliveryFee, string DeliveryNote,
+    double? ShopLat = null, double? ShopLng = null, decimal RadiusKm = 0);
 public record FeaturesDto(bool Ordering, bool Kitchen, bool Waiter, bool Billing);
 
 public record MenuDto(RestaurantDto Restaurant, IReadOnlyList<MenuCategoryDto> Menu);

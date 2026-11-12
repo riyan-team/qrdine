@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, money, statusLabel } from '../api'
 import { auth } from '../auth'
 import { NOT_LOADED, loadUntilOk, useStaffOrders, useCalls } from '../useStaffOrders'
@@ -7,6 +7,7 @@ import { OrderActions, useCart, plusOrCustomize, cartToItems, Customizer } from 
 import { toast, playBell, ui } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { Modal, Tabs, waLink } from '../backoffice.jsx'
+import { directionsUrl } from '../MapView.jsx'
 import Receipt from './Receipt.jsx'
 import { Requests as LoyaltyRequests, BillMember } from './Loyalty.jsx'
 import {
@@ -366,7 +367,7 @@ function TicketDetails({ ticket, total, onChanged }) {
       onChanged()
     } catch (e) { toast.error(friendlyError(e)) }
   }
-  const riderText = `Delivery from ${auth.getStaff()?.restaurantName || 'us'}\n${ticket.tableName}\nCustomer: ${f.customerName || '-'} ${f.customerPhone || ''}\nAddress: ${f.address || '-'}\nCollect: ${money(total)}`
+  const riderText = `Delivery from ${auth.getStaff()?.restaurantName || 'us'}\n${ticket.tableName}\nCustomer: ${f.customerName || '-'} ${f.customerPhone || ''}\nAddress: ${f.address || '-'}${ticket.home ? `\nMap: ${directionsUrl(ticket.home)}` : ''}\nCollect: ${money(total)}`
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   return (
     <div className="ts-who">
@@ -380,6 +381,7 @@ function TicketDetails({ ticket, total, onChanged }) {
       <div className="is-full row" style={{ gap: 8 }}>
         {isDelivery && <a className="btn-link" href={waLink('', riderText)} target="_blank" rel="noreferrer"><button className="btn-sm"><ChatIcon size={15} /> Send to rider</button></a>}
         {f.customerPhone && <a href={`tel:${f.customerPhone}`}><button className="btn-sm">Call customer</button></a>}
+        {auth.can('orders.create') && <Link className="btn-link" to="/deliveries"><button className="btn-sm"><TruckIcon size={15} /> Time, rider &amp; tracking</button></Link>}
         {dirty && <button className="primary btn-sm" style={{ marginLeft: 'auto' }} onClick={save}>Save details</button>}
       </div>
     </div>

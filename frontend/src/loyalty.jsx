@@ -483,7 +483,12 @@ export function RateUs({ slug, code, loy, onRated, compact }) {
   if (done) return (
     <div className={'card lx-rated' + (compact ? '' : ' fade-up')}>
       <span className="ok-check"><CheckIcon size={22} /></span>
-      <div><b>Thanks for your rating!</b><div className="muted" style={{ fontSize: 13 }}>We hope to see you again soon.</div></div>
+      <div style={{ flex: 1 }}><b>Thanks for your rating!</b><div className="muted" style={{ fontSize: 13 }}>We hope to see you again soon.</div>
+        {!compact && loy?.info?.googleReviewUrl && (
+          <a className="lx-btn lx-btn-ghost" style={{ marginTop: 8 }} href={loy.info.googleReviewUrl} target="_blank" rel="noopener noreferrer">
+            <StarIcon size={14} /> Share it on Google too</a>
+        )}
+      </div>
     </div>
   )
   return (

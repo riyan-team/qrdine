@@ -56,6 +56,16 @@ public class Restaurant : Entity
     // waiter; when false (default) waiters take their own tables / a manager assigns.
     public bool WaiterAutoAssign { get; set; } = false;
 
+    // ---- Takeaway and delivery from the guest's own phone (the restaurant's "order" QR, not a table QR) ----
+    // Off by default. Orders arrive on reception as Parcel / Delivery tickets and need approving like table orders.
+    public bool GuestTakeaway { get; set; } = false;
+    public bool GuestDelivery { get; set; } = false;
+    public decimal DeliveryFee { get; set; } = 0;      // added to every guest delivery (reception can change it per ticket)
+    public string DeliveryNote { get; set; } = "";     // shown to the guest, e.g. "Within 5 km · about 45 minutes"
+    public double? Latitude { get; set; }              // the restaurant's map pin (riders start here)
+    public double? Longitude { get; set; }
+    public decimal DeliveryRadiusKm { get; set; } = 0; // 0 = no limit; otherwise a guest's pin must be inside it
+
     // ---- Seller identity (printed on the fiscal invoice / sent to FBR) ----
     public string BusinessName { get; set; } = "";    // registered business name (defaults to Name)
     public string Ntn { get; set; } = "";             // National Tax Number

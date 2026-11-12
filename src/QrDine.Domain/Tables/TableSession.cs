@@ -32,6 +32,18 @@ public class TableSession : Entity, ITenantOwned
     public decimal DeliveryCharge { get; set; }
     public int? CustomerId { get; set; }
 
+    // Delivery handling: where (the guest's map pin), when (the time promised), and the rider's trip.
+    public double? DeliveryLat { get; set; }
+    public double? DeliveryLng { get; set; }
+    public DateTime? PromisedAt { get; set; }      // delivery: at the door by; takeaway: ready by
+    public DateTime? DispatchedAt { get; set; }    // the rider left with it
+    public DateTime? DeliveredAt { get; set; }     // handed over (delivery) or collected (takeaway)
+    public string RiderPhone { get; set; } = "";
+    public string RiderKey { get; set; } = "";     // the secret in the rider's link; a new link replaces it
+    public double? RiderLat { get; set; }
+    public double? RiderLng { get; set; }
+    public DateTime? RiderSeenAt { get; set; }
+
     public static TableSession Open(DiningTable table) => new()
     {
         RestaurantId = table.RestaurantId,

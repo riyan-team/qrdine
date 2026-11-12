@@ -26,13 +26,13 @@ public partial class SecurityHeadersMiddleware
         var sockets = SafeHost().IsMatch(host) ? $" wss://{host} ws://{host}" : "";
         h["Content-Security-Policy"] =
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data: blob:; font-src 'self' data:; " +
+            "img-src 'self' data: blob: https://tile.openstreetmap.org; font-src 'self' data:; " +
             $"connect-src 'self'{sockets}; manifest-src 'self'; worker-src 'self' blob:; " +
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
         h["X-Content-Type-Options"] = "nosniff";
         h["X-Frame-Options"] = "DENY";
         h["Referrer-Policy"] = "strict-origin-when-cross-origin";
-        h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
+        h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self), payment=(), usb=()";
         h["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
         h["Strict-Transport-Security"] = "max-age=31536000";
         return _next(ctx);

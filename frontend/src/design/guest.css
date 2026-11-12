@@ -309,3 +309,69 @@
 .gm-help svg { color: var(--accent); flex: none; }
 
 .gm-slow { margin: 14px 0 0; text-align: center; font-size: 14px; color: var(--muted); }
+
+/* ---- The order QR: takeaway or delivery from the guest's own phone ---- */
+.gm-pickways { display: flex; gap: 8px; margin: 12px 0 2px; }
+.gm-pickways > div { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 11px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.gm-pickways svg { grid-row: span 2; align-self: start; margin-top: 2px; color: var(--accent); }
+.gm-pickways b { font-size: 14.5px; }
+.gm-pickways small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.gm-mytickets { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 2px; }
+.gm-mytickets button { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 0; border-radius: 13px; background: var(--accent-tint); color: var(--ink); font-size: 14px; text-align: left; }
+.gm-mytickets svg { color: var(--accent); flex: none; }
+.gm-mytickets span { flex: 1; min-width: 0; }
+.gm-mytickets em { font-style: normal; font-weight: 700; color: var(--accent); font-size: 13px; }
+.gm-checkout { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.gm-ways { display: flex; gap: 8px; margin-bottom: 10px; }
+.gm-ways button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 13px; border: 0; border-radius: 14px; background: var(--surface2); color: var(--ink); text-align: left; transition: background .2s, box-shadow .2s, transform .18s var(--spring); }
+.gm-ways button:active { transform: scale(.97); }
+.gm-ways button svg { color: var(--muted); margin-bottom: 4px; }
+.gm-ways button b { font-size: 15px; }
+.gm-ways button small { color: var(--muted); font-size: 12.5px; }
+.gm-ways button.on { background: var(--accent-tint); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.gm-ways button.on svg { color: var(--accent); }
+.gm-ways-note { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.gm-field { display: block; margin-top: 10px; }
+.gm-field span { display: block; font-weight: 700; font-size: 14px; margin-bottom: 5px; }
+.gm-field input, .gm-field textarea { width: 100%; background: var(--surface2); border: 0; padding: 12px 14px; font: inherit; color: var(--ink); border-radius: 12px; resize: none; }
+.gm-field-err { margin: 10px 0 0; color: var(--red, #c62828); font-size: 13.5px; font-weight: 600; }
+
+/* the delivery pin at checkout */
+.gm-pin { margin-top: 12px; }
+.gm-pin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.gm-pin-head > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+.gm-pin-head > span svg { color: var(--accent); }
+.gm-pin-head button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 0; border-radius: 99px; background: var(--accent-tint); color: var(--accent); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.gm-pin-head button .spinner { width: 13px; height: 13px; }
+.gm-pin small { display: block; margin-top: 6px; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.gm-pin small.bad { color: var(--red, #c62828); font-weight: 700; }
+
+/* the customer following a takeaway / delivery */
+.gm-track { margin: 12px 0 4px; padding: 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 10px 26px rgba(31, 15, 21, .08); animation: au-rise .5s var(--ease) backwards; }
+.gm-track-top { display: flex; align-items: center; gap: 11px; }
+.gm-track-top > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gm-track-top b { font-size: 16px; line-height: 1.25; }
+.gm-track-top small { color: var(--muted); font-size: 12.5px; }
+.gm-track-ico { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-tint); color: var(--accent); }
+.gm-track.s-OnTheWay .gm-track-ico, .gm-track.s-Ready .gm-track-ico { background: var(--green-tint); color: var(--accent2); }
+.gm-track.s-Delivered .gm-track-ico, .gm-track.s-Collected .gm-track-ico { background: var(--accent2); color: #fff; }
+.gm-track-eta { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 2px; padding: 11px 13px; border-radius: 14px; background: var(--aubergine); color: var(--cream); }
+.gm-track-eta span { font-size: 13px; opacity: .75; }
+.gm-track-eta b { font-family: var(--display); font-size: 25px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.gm-track-eta em { margin-left: auto; font-style: normal; font-weight: 700; font-size: 13.5px; color: #f2b75a; }
+.gm-track-wait, .gm-track-done { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 11px 0 0; font-size: 13.5px; color: var(--muted); }
+.gm-track-done { color: var(--ink); font-weight: 600; }
+.gm-track-done svg { color: var(--accent2); }
+.gm-track-done em { font-style: normal; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--accent-tint); color: var(--accent); font-size: 12px; }
+.gm-track-done em.ok { background: var(--green-tint); color: var(--accent2); }
+.gm-track-steps { list-style: none; display: flex; gap: 4px; margin: 13px 0 0; padding: 0; }
+.gm-track-steps li { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.gm-track-steps i { height: 4px; border-radius: 9px; background: var(--line); transition: background .4s; }
+.gm-track-steps li.done i { background: var(--accent2); }
+.gm-track-steps li.now { color: var(--ink); }
+.gm-track-steps li.now i { background: linear-gradient(90deg, var(--accent2) 0 50%, var(--line) 50%); background-size: 200% 100%; animation: gm-track-run 1.4s linear infinite; }
+@keyframes gm-track-run { from { background-position: 100% 0 } to { background-position: 0 0 } }
+.gm-track-map { margin-top: 12px; }
+.gm-track-promise { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .gm-track-steps li.now i { animation: none; background: var(--accent2); } }
+.gm-subline { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-bottom: 2px; }

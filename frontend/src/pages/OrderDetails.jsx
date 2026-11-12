@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, money, STATUS_LABEL } from '../api'
+import { api, money, statusLabel } from '../api'
 import { useHub } from '../useHub'
 import { auth } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
 import { friendlyError } from '../errors'
-import { CheckIcon, BellIcon, RefreshIcon, TableIcon } from '../icons.jsx'
+import { BagIcon, CheckIcon, BellIcon, RefreshIcon, TableIcon, TruckIcon } from '../icons.jsx'
 
 const LIFECYCLE_STEPS = ['Placed', 'Approved', 'Cooking', 'Ready', 'Served', 'Paid']
 
@@ -136,14 +136,14 @@ export default function OrderDetails() {
   const currentStepIdx = LIFECYCLE_STEPS.indexOf(order.status)
 
   return (
-    <div className="wrap" style={{ paddingBottom: 100, maxWidth: 640 }}>
-      {/* Back Button & Header */}
+    <div className="wrap" style={{ paddingBottom: 100, maxWidth: 640, paddingTop: 'max(14px, env(safe-area-inset-top))' }}>
+      {/* Back Button & Header (clear of the phone's status bar) */}
       <div className="row between" style={{ marginBottom: 12 }}>
         <button className="ghost" onClick={goBackToMenu} style={{ padding: '8px 12px', fontSize: 13.5 }}>
           ← Back to Menu
         </button>
         <div className="menu-table-badge">
-          <TableIcon size={14} />
+          {order.channel === 'Delivery' ? <TruckIcon size={14} /> : order.channel === 'Takeaway' ? <BagIcon size={14} /> : <TableIcon size={14} />}
           <span>{order.tableName || `Table ${order.tableCode}`}</span>
         </div>
       </div>
@@ -158,7 +158,7 @@ export default function OrderDetails() {
             </div>
           </div>
           <span className={'pill s-' + order.status} style={{ fontSize: 13, padding: '5px 12px' }}>
-            {STATUS_LABEL[order.status] || order.status}
+            {statusLabel(order)}
           </span>
         </div>
 
@@ -177,7 +177,7 @@ export default function OrderDetails() {
                     <div className="stepper-circle">
                       {isCompleted ? '✓' : idx + 1}
                     </div>
-                    <span className="stepper-label">{step}</span>
+                    <span className="stepper-label">{(step === 'Ready' || step === 'Served') && order.channel && order.channel !== 'Dine' ? statusLabel({ status: step, channel: order.channel }) : step}</span>
                   </div>
                 )
               })}

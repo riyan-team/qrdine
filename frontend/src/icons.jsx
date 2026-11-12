@@ -55,3 +55,8 @@ export const SwapIcon = (p) => <Svg {...p}><path d="M4 8h14" /><path d="m14 4 4 
 export const ChatIcon = (p) => <Svg {...p}><path d="M21 12a8.6 8.6 0 0 1-12.7 7.6L3 21l1.5-5A8.6 8.6 0 1 1 21 12Z" /></Svg>
 export const EyeIcon = (p) => <Svg {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Svg>
 export const EyeOffIcon = (p) => <Svg {...p}><path d="M3 3l18 18" /><path d="M10.6 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4-.9" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></Svg>
+export const PinIcon = (p) => <Svg {...p}><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></Svg>
+export const NavIcon = (p) => <Svg {...p}><path d="M3 11 21 3l-8 18-2-8Z" /></Svg>
+export const CallIcon = (p) => <Svg {...p}><path d="M5 3h3.5l1.8 4.5-2.3 1.4a11 11 0 0 0 7.1 7.1l1.4-2.3L21 15.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2Z" /></Svg>
+export const BikeIcon = (p) => <Svg {...p}><circle cx="5.5" cy="17" r="3" /><circle cx="18.5" cy="17" r="3" /><path d="M5.5 17 9 9h5l4.5 8" /><path d="M12 9 10 5H7" /></Svg>
+export const LocateIcon = (p) => <Svg {...p}><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></Svg>

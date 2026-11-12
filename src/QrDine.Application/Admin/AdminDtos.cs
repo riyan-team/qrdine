@@ -32,8 +32,11 @@ public record FbrSettingsDto(bool FeatureFbr, bool FbrEnabled, string BusinessNa
 public record FbrSettingsInput(bool FbrEnabled, string BusinessName, string Ntn, string Strn);
 
 // Front-of-house service settings (currently: how waiters get assigned to tables).
-public record ServiceSettingsDto(bool WaiterAutoAssign);
-public record ServiceSettingsInput(bool WaiterAutoAssign);
+public record ServiceSettingsDto(bool WaiterAutoAssign, bool GuestTakeaway, bool GuestDelivery, decimal DeliveryFee, string DeliveryNote,
+    bool PickupInPlan, double? Latitude = null, double? Longitude = null, decimal DeliveryRadiusKm = 0);
+// Every field is optional: each settings card sends only its own, and leaves the others as they are.
+public record ServiceSettingsInput(bool? WaiterAutoAssign = null, bool? GuestTakeaway = null, bool? GuestDelivery = null,
+    decimal? DeliveryFee = null, string? DeliveryNote = null, double? Latitude = null, double? Longitude = null, decimal? DeliveryRadiusKm = null);
 
 // Billing settings: Tax/GST, discount, receipt and stock behaviour. Owner-managed.
 public record BillingSettingsDto(

@@ -15,9 +15,11 @@ const STEPS = ['name', 'you', 'password', 'plan', 'making']
 
 const FEATURES = [
   ['ordering', 'Guests order from their phone'],
+  [['ordering', 'billing'], 'Takeaway & delivery QR'],
   ['kitchen', 'Kitchen screen'],
   ['waiter', 'Waiter ordering'],
   ['billing', 'Billing and tax'],
+  ['billing', 'Loyalty points'],
   ['inventory', 'Stock and supplier khata'],
   ['reports', 'Sales reports and expenses'],
 ]
@@ -181,7 +183,7 @@ export default function Signup() {
                           {p.setupFeePkr > 0 && <span className="su-plan-setup">Rs {Number(p.setupFeePkr).toLocaleString('en-PK')} one-time setup, after the trial</span>}
                           <ul>
                             <li><CheckIcon size={14} /> Menu and table QR codes</li>
-                            {FEATURES.filter(([key]) => !!p[key]).map(([key, label]) => <li key={key}><CheckIcon size={14} /> {label}</li>)}
+                            {FEATURES.filter(([key]) => [].concat(key).every((k) => !!p[k])).map(([, label]) => <li key={label}><CheckIcon size={14} /> {label}</li>)}
                           </ul>
                         </button>
                       )

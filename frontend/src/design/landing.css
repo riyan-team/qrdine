@@ -184,3 +184,28 @@
   .ln-hero h1, .ln-hero-text > p, .ln-hero-text > small, .ln-cta { animation: none; }
   .ln-in .ln-bars em { animation: none; }
 }
+
+/* takeaway & delivery QR, rewards & reviews */
+.ln-pick-body, .ln-loyal-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ln-pick-ways { display: flex; gap: 8px; }
+.ln-pick-ways div { flex: 1; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 10px 11px; border-radius: 12px; background: var(--surface2); font-size: 13.5px; }
+.ln-pick-ways svg { grid-row: span 2; color: var(--muted); }
+.ln-pick-ways small { color: var(--muted); font-size: 11.5px; }
+.ln-pick-ways .on { background: var(--accent-tint); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.ln-pick-ways .on svg { color: var(--accent); }
+.ln-pick-field { display: flex; flex-direction: column; padding: 8px 11px; border-radius: 10px; background: var(--surface2); }
+.ln-pick-field small { color: var(--muted); font-size: 11px; }
+.ln-pick-field b { font-size: 13.5px; font-weight: 600; }
+.ln-pick-total { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 2px 0; font-size: 12.5px; color: var(--muted); }
+.ln-pick-total b { font-size: 18px; color: var(--ink); }
+.ln-pick-status { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 10px; background: var(--green-tint); color: #1d6b43; font-weight: 700; font-size: 13px; }
+.ln-loyal-card { padding: 13px 14px; border-radius: 13px; color: #fff; background: linear-gradient(135deg, #b6214f, #6e0f31); display: flex; flex-direction: column; gap: 3px; }
+.ln-loyal-card small { opacity: .8; font-size: 12px; }
+.ln-loyal-card b { font-size: 22px; }
+.ln-loyal-card i { display: block; height: 6px; border-radius: 9px; background: rgba(255,255,255,.25); margin-top: 6px; overflow: hidden; }
+.ln-loyal-card em { display: block; height: 100%; border-radius: 9px; background: #ffd27a; }
+.ln-loyal-card span { font-size: 12px; opacity: .9; }
+.ln-loyal-rate { padding: 11px 13px; border-radius: 12px; background: var(--surface2); display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; }
+.ln-loyal-rate div { display: flex; gap: 2px; color: #f0a92e; }
+.ln-loyal-google { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; border-radius: 11px; border: 1.5px solid var(--line2); font-weight: 700; font-size: 13.5px; }
+.ln-loyal-google svg { color: #f0a92e; }

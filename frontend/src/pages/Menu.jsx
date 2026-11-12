@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { api, money, STATUS_LABEL } from '../api'
+import { api, money, STATUS_LABEL, statusLabel } from '../api'
 import { useHub } from '../useHub'
 import { loadUntilOk } from '../useStaffOrders'
-import { auth } from '../auth'
+import { auth, isTicketCode, ticketLabel } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
 import { useCart, plusOrCustomize, cartToItems, needsCustomizing } from '../ordering.jsx'
-import { ArrowLeftIcon, BellIcon, CheckIcon, CloseIcon, ClockIcon, SearchIcon } from '../icons.jsx'
+import { ArrowLeftIcon, BagIcon, BellIcon, BikeIcon, CheckIcon, CloseIcon, ClockIcon, LocateIcon, PinIcon, SearchIcon, TruckIcon } from '../icons.jsx'
+import MapView, { kmBetween, myLocation } from '../MapView.jsx'
 import { DishPicture, FoodArt, foodKind, foodTone } from '../foodArt.jsx'
 import { flyToCart, reducedMotion, tilt, useParallax, useScrollDepth } from '../motion'
 import { useLoyalty, RewardsStrip, RewardsHub, GoogleReviewCard, RateUs, burst } from '../loyalty.jsx'
@@ -17,11 +18,22 @@ import { useLoyalty, RewardsStrip, RewardsHub, GoogleReviewCard, RateUs, burst }
 //
 // Everything about an order is unchanged from before: useCart, plusOrCustomize, cartToItems and
 // api.placeOrder are the same calls, and the server still works out every price itself.
+//
+// Three ways in:
+//   /r/:slug/t/T4          a table QR: dine in, call a waiter, ask for the bill
+//   /r/:slug/go            the restaurant's order QR: takeaway or delivery, no table (checkout asks name/phone/address)
+//   /r/:slug/t/P251112-3   that takeaway/delivery order afterwards, followed on the phone that placed it
 
 const DEALS = 'deals'
 
 const fromPrice = (it) => (it.variants?.length ? Math.min(...it.variants.map((v) => v.price)) : it.price)
 const isDeal = (it) => it.dealActive && it.dealPrice != null && !it.variants?.length
+
+// The guest's name, number and address, remembered on their own phone for the next order.
+const detailsKey = (slug) => `qrdine.guest.${slug}`
+const loadDetails = (slug) => { try { return JSON.parse(localStorage.getItem(detailsKey(slug)) || 'null') || {} } catch { return {} } }
+const saveDetails = (slug, d) => { try { localStorage.setItem(detailsKey(slug), JSON.stringify(d)) } catch {} }
+const digits = (s) => String(s || '').replace(/\D/g, '')
 
 /** Keeps something on screen long enough to animate out. */
 function usePresence(open, ms = 320) {
@@ -37,7 +49,11 @@ function usePresence(open, ms = 320) {
 }
 
 export default function Menu() {
-  const { slug, code } = useParams()
+  const { slug, code: tableParam } = useParams()
+  const pickup = !tableParam                 // the restaurant's takeaway/delivery QR
+  const code = tableParam || ''
+  const ticket = isTicketCode(code)          // a takeaway/delivery order this phone placed
+  const mode = pickup ? 'pickup' : ticket ? 'ticket' : 'table'
   const navigate = useNavigate()
   const location = useLocation()
   const [params] = useSearchParams()
@@ -45,11 +61,13 @@ export default function Menu() {
 
   const [data, setData] = useState(null)
   const [unavailable, setUnavailable] = useState(false)   // restaurant paused or address not found
-  const cart = useCart(`qrdine.cart.${slug}.${code}`)
+  const cart = useCart(`qrdine.cart.${slug}.${code || 'go'}`)
   const [note, setNote] = useState('')
   const [orders, setOrders] = useState([])
   const [placing, setPlacing] = useState(false)
-  const [placed, setPlaced] = useState(null)
+  const [placed, setPlaced] = useState(location.state?.placed || null)
+  const [details, setDetails] = useState(() => loadDetails(slug))
+  const [myTickets, setMyTickets] = useState([])
   const [popularIds, setPopularIds] = useState([])
   const notifiedBellRef = useRef(new Set())
   // Loyalty & reviews (additive: hidden until the restaurant switches rewards on)
@@ -66,7 +84,8 @@ export default function Menu() {
       if (e?.status === 403 || e?.status === 404) setUnavailable(true)
       throw e
     }), setData)
-    api.tableOrders(slug, code).then(setOrders).catch(() => {})
+    if (code) api.tableOrders(slug, code).then(setOrders).catch(() => {})
+    else { setOrders([]); setMyTickets(auth.myTickets(slug)) }
     api.getPopular(slug).then(setPopularIds).catch(() => {})
 
     // Load previously notified orders for this session to prevent repeated ring on reload
@@ -78,7 +97,7 @@ export default function Menu() {
   }, [slug, code])
 
   // Real-time updates via SignalR
-  useHub(slug, code, (o) => {
+  useHub(slug, code || null, (o) => {
     setOrders((prev) => {
       const others = prev.filter((x) => x.id !== o.id)
       if (o.status === 'Paid' || o.status === 'Cancelled') return others
@@ -92,7 +111,9 @@ export default function Menu() {
         sessionStorage.setItem(`qrdine.bell.${slug}`, JSON.stringify([...notifiedBellRef.current]))
       } catch {}
       playBell()
-      toast.success(`Order #${o.id} is ready and on its way to you.`)
+      toast.success(o.channel === 'Takeaway' ? `Order #${o.id} is ready. Come and collect it.`
+        : o.channel === 'Delivery' ? `Order #${o.id} is packed. The rider brings it next.`
+        : `Order #${o.id} is ready and on its way to you.`)
     }
 
     // The bill was settled: a member sees the points it earned.
@@ -104,6 +125,9 @@ export default function Menu() {
       }, 1500)
     }
   }, null)
+
+  // Moving from the order QR to the new ticket's page: start at the top, where its live status is.
+  useEffect(() => { document.querySelector('.gm-view.gm-home')?.scrollTo?.(0, 0) }, [code])
 
   // A returning member with a running order: make sure this seating earns for them.
   useEffect(() => {
@@ -141,7 +165,10 @@ export default function Menu() {
   const panels = useMemo(() => (deals.length ? [{ id: DEALS, name: 'Deals', items: deals }, ...categories] : categories), [deals, categories])
 
   // Guests on a menu-only plan can look but there's nothing behind an order button for them.
-  const canOrder = data?.restaurant?.features?.ordering !== false
+  // The order QR also needs the restaurant to have takeaway or delivery switched on.
+  const pk = data?.restaurant?.pickup
+  const pickupOpen = !!(pk?.takeaway || pk?.delivery)
+  const canOrder = data?.restaurant?.features?.ordering !== false && (!pickup || pickupOpen)
 
   const catParam = params.get('c')
   const itemParam = params.get('i')
@@ -158,9 +185,31 @@ export default function Menu() {
     plusOrCustomize(it, (line) => { cart.addToCart(line); flyToCart(el) }, (toCustomize) => open({ i: toCustomize.id }))
   }
 
-  const place = async () => {
+  const place = async (how) => {
     if (cart.list.length === 0) return
     setPlacing(true)
+    if (pickup) {
+      try {
+        const res = await api.placeGuestTicket(slug, {
+          channel: how.channel, customerName: how.name.trim(), customerPhone: how.phone.trim(),
+          address: how.channel === 'Delivery' ? how.address.trim() : null, items: cartToItems(cart.list), note: note || null,
+          lat: how.channel === 'Delivery' ? how.lat ?? null : null, lng: how.channel === 'Delivery' ? how.lng ?? null : null,
+        })
+        auth.keepTicket(slug, res.ticket, res.token)
+        saveDetails(slug, { name: how.name.trim(), phone: how.phone.trim(), address: how.address?.trim() || details.address || '', channel: how.channel,
+          lat: how.lat ?? details.lat ?? null, lng: how.lng ?? details.lng ?? null })
+        cart.clear()
+        setNote('')
+        const shown = { ...res.order, ticketName: res.ticket.tableName }
+        setPlaced(shown)
+        // From here on it is that ticket's own page: live status, add more, rewards.
+        navigate(`/r/${slug}/t/${res.ticket.tableCode}`, { replace: true, state: { placed: shown } })
+      } catch (e) {
+        ui.alert('Could not place order: ' + e.message)
+      }
+      setPlacing(false)
+      return
+    }
     try {
       const newOrder = await api.placeOrder(slug, { tableCode: code, items: cartToItems(cart.list), note: note || null })
       cart.clear()
@@ -185,12 +234,22 @@ export default function Menu() {
   if (!data) return <MenuSkeleton />
 
   const r = data.restaurant
+  if (pickup && !pickupOpen && data.restaurant?.features?.ordering !== false) return (
+    <div className="gm-closed">
+      <div className="gm-closed-card">
+        <h1>{r.name} isn't taking online orders right now</h1>
+        <p>Takeaway and delivery orders are closed for the moment. Please call the restaurant, or try again later.</p>
+      </div>
+    </div>
+  )
   const tableNo = code.replace(/^[Tt]/, '')
+  const where = mode === 'table' ? `Table ${tableNo}` : mode === 'ticket' ? ticketLabel(code)
+    : pk?.takeaway && pk?.delivery ? 'Order online' : pk?.delivery ? 'Delivery' : 'Takeaway'
 
   return (
     <div className="gm" ref={scene}>
       <div className={'gm-stage' + (pushedBack ? ' pushed' : '')}>
-        <HomeView r={r} tableNo={tableNo} slug={slug} code={code} loy={loy} orders={orders} navigate={navigate}
+        <HomeView r={r} where={where} mode={mode} pk={pk} myTickets={myTickets} slug={slug} code={code} loy={loy} orders={orders} navigate={navigate}
           deals={deals} popular={popular} categories={categories} covered={!!catParam} canOrder={canOrder}
           onCategory={(id) => open({ c: id })} onFind={() => open({ find: 1 })} onItem={(it) => open({ i: it.id })}
           onPlus={onPlus} cart={cart} onHub={() => setHubOpen(true)} />
@@ -215,10 +274,12 @@ export default function Menu() {
       <ItemSheet item={itemRef.current} open={!!itemNow} canOrder={canOrder} onClose={() => close('i')}
         onAdd={(line, el) => { cart.addToCart(line); close('i'); setTimeout(() => flyToCart(el), 60) }} />
 
-      <CartSheet open={cartOpen} cart={cart} note={note} setNote={setNote} placing={placing} place={place} tableNo={tableNo}
+      <CartSheet open={cartOpen} cart={cart} note={note} setNote={setNote} placing={placing} place={place} where={where}
+        mode={mode} pk={pk} details={details} setDetails={setDetails}
         allItems={allItems} onClose={() => close('cart')} onPlus={onPlus} onItem={(it) => open({ i: it.id })} />
 
-      {placed && <PlacedOverlay order={placed} tableNo={tableNo} onDone={() => setPlaced(null)} />}
+      {placed && <PlacedOverlay order={placed} where={placed.ticketName ? (placed.channel === 'Delivery' ? 'delivery' : 'takeaway') : where}
+        mode={placed.ticketName ? 'ticket' : mode} onDone={() => { setPlaced(null); if (location.state?.placed) navigate(location.pathname + location.search, { replace: true }) }} />}
 
       <RewardsHub loy={loy} slug={slug} code={code} open={hubOpen} onClose={() => setHubOpen(false)} />
     </div>
@@ -251,11 +312,12 @@ function TableHelp({ slug, code, hasOrders }) {
 }
 
 // ---- Opening screen ----
-function HomeView({ r, tableNo, slug, code, loy, orders, navigate, deals, popular, categories, covered, canOrder, onCategory, onFind, onItem, onPlus, cart, onHub }) {
+function HomeView({ r, where, mode, pk, myTickets, slug, code, loy, orders, navigate, deals, popular, categories, covered, canOrder, onCategory, onFind, onItem, onPlus, cart, onHub }) {
   const hour = (new Date().getUTCHours() + 5) % 24
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const seen = useRef(false)
   useEffect(() => { seen.current = true }, [])
+  const [handedOver, setHandedOver] = useState('')   // 'Delivered' / 'Collected' once the tracker says so
 
   return (
     <div className={'gm-view gm-home' + (covered ? ' covered' : '')}>
@@ -271,17 +333,36 @@ function HomeView({ r, tableNo, slug, code, loy, orders, navigate, deals, popula
         </div>
         <div className="gm-hero-txt">
           <h1>{r.name}</h1>
-          <p>{greet}. What are you in the mood for?</p>
+          <p>{greet}. {mode === 'pickup' ? 'Takeaway or delivery?' : mode === 'ticket' ? 'Your order is below. Forgot something? Add it.' : 'What are you in the mood for?'}</p>
         </div>
-        <span className="gm-table">Table {tableNo}</span>
+        <span className="gm-table">{where}</span>
       </header>
 
       <div className="gm-body">
         <button className="gm-search" onClick={onFind}><SearchIcon size={18} /> Search the menu</button>
 
-        {orders.length > 0 && <LiveOrders orders={orders} onOpen={(o) => navigate(`/r/${slug}/order/${o.id}`)} />}
+        {orders.length > 0 && <LiveOrders orders={orders} handedOver={handedOver} onOpen={(o) => navigate(`/r/${slug}/order/${o.id}`)} />}
 
-        {canOrder && <TableHelp slug={slug} code={code} hasOrders={orders.length > 0} />}
+        {canOrder && mode === 'table' && <TableHelp slug={slug} code={code} hasOrders={orders.length > 0} />}
+
+        {mode === 'pickup' && <PickupWays pk={pk} />}
+        {mode === 'pickup' && myTickets.length > 0 && (
+          <div className="gm-mytickets">
+            {myTickets.slice(0, 3).map((t) => (
+              <button key={t.code} onClick={() => navigate(`/r/${slug}/t/${t.code}`)}>
+                {t.channel === 'Delivery' ? <TruckIcon size={16} /> : <BagIcon size={16} />}
+                <span>Your {t.channel === 'Delivery' ? 'delivery' : 'takeaway'} order <b>{ticketLabel(t.code).split(' ')[1]}</b></span>
+                <em>Follow it</em>
+              </button>
+            ))}
+          </div>
+        )}
+        {mode === 'ticket' && <TrackCard slug={slug} code={code} onHandedOver={setHandedOver} />}
+        {mode === 'ticket' && (
+          <div className="gm-help">
+            <button onClick={() => navigate(`/r/${slug}/go`)}><BagIcon size={16} /> Start a new order</button>
+          </div>
+        )}
 
         <RewardsStrip loy={loy} onOpen={onHub} />
 
@@ -688,7 +769,37 @@ function ItemSheet({ item, open, canOrder, onClose, onAdd }) {
   )
 }
 
-function CartSheet({ open, cart, note, setNote, placing, place, tableNo, allItems, onClose, onPlus, onItem }) {
+function CartSheet({ open, cart, note, setNote, placing, place, where, mode, pk, details, setDetails, allItems, onClose, onPlus, onItem }) {
+  const pickup = mode === 'pickup'
+  const ways = [pk?.takeaway && 'Takeaway', pk?.delivery && 'Delivery'].filter(Boolean)
+  const channel = ways.includes(details.channel) ? details.channel : ways[0]
+  const delivery = pickup && channel === 'Delivery'
+  const fee = delivery ? Number(pk?.deliveryFee) || 0 : 0
+  const [err, setErr] = useState('')
+  const set = (k) => (e) => { setErr(''); setDetails((d) => ({ ...d, [k]: e.target.value })) }
+  // The door on a map: the rider drives to the pin, not to a guess from the address.
+  const shop = pk?.shopLat != null && pk?.shopLng != null ? { lat: pk.shopLat, lng: pk.shopLng } : null
+  const pin = details.lat != null && details.lng != null ? { lat: details.lat, lng: details.lng } : null
+  const radius = Number(pk?.radiusKm) || 0
+  const km = kmBetween(shop, pin)
+  const tooFar = radius > 0 && km != null && km > radius
+  const [locating, setLocating] = useState(false)
+  const movePin = (p) => { setErr(''); setDetails((d) => ({ ...d, lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) })) }
+  const locate = async () => {
+    setLocating(true)
+    try { movePin(await myLocation()) } catch (e) { setErr(e.message) }
+    setLocating(false)
+  }
+  const send = () => {
+    if (!pickup) return place()
+    const how = { channel, name: details.name || '', phone: details.phone || '', address: details.address || '', lat: pin?.lat, lng: pin?.lng }
+    if (!how.name.trim()) return setErr('Please enter your name.')
+    if (digits(how.phone).length < 10) return setErr('Please enter your mobile number, so the restaurant can call you.')
+    if (delivery && how.address.trim().length < 6) return setErr('Please enter the delivery address.')
+    if (delivery && tooFar) return setErr(`That pin is ${km.toFixed(1)} km away. Delivery is within ${radius} km.`)
+    return place(how)
+  }
+
   // A drink, dessert or bread they haven't got yet: the natural last-second add.
   const extras = useMemo(() => {
     const inCart = new Set(cart.list.map((x) => x.item.id))
@@ -704,7 +815,7 @@ function CartSheet({ open, cart, note, setNote, placing, place, tableNo, allItem
     <Sheet open={open} onClose={onClose} label="Your order" className="gm-cartsheet">
       <div className="gm-cart-head">
         <h2>Your order</h2>
-        <span className="gm-table light">Table {tableNo}</span>
+        <span className="gm-table light">{pickup ? channel : where}</span>
         <button className="gm-sheet-x inline" onClick={onClose} aria-label="Close"><CloseIcon size={18} /></button>
       </div>
       <div className="gm-cart-scroll">
@@ -744,19 +855,142 @@ function CartSheet({ open, cart, note, setNote, placing, place, tableNo, allItem
           <span>Anything for the kitchen?</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder="No onion, extra spicy…" />
         </label>
+
+        {pickup && (
+          <div className="gm-checkout">
+            {ways.length > 1 && (
+              <div className="gm-ways" role="radiogroup" aria-label="Takeaway or delivery">
+                {ways.map((w) => (
+                  <button key={w} role="radio" aria-checked={channel === w} className={channel === w ? 'on' : ''}
+                    onClick={() => { setErr(''); setDetails((d) => ({ ...d, channel: w })) }}>
+                    {w === 'Delivery' ? <TruckIcon size={20} /> : <BagIcon size={20} />}
+                    <b>{w}</b>
+                    <small>{w === 'Delivery' ? (Number(pk.deliveryFee) > 0 ? `${money(pk.deliveryFee)} delivery` : 'Free delivery') : 'Collect it yourself'}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+            {delivery && pk?.deliveryNote && <p className="gm-ways-note"><TruckIcon size={14} /> {pk.deliveryNote}</p>}
+            <label className="gm-field"><span>Your name</span>
+              <input value={details.name || ''} onChange={set('name')} maxLength={60} autoComplete="name" placeholder="Name" /></label>
+            <label className="gm-field"><span>Mobile number</span>
+              <input value={details.phone || ''} onChange={set('phone')} maxLength={16} inputMode="tel" autoComplete="tel" placeholder="03xx xxxxxxx" /></label>
+            {delivery && (
+              <label className="gm-field"><span>Delivery address</span>
+                <textarea value={details.address || ''} onChange={set('address')} maxLength={300} rows={2} autoComplete="street-address" placeholder="House, street, area, landmark" /></label>
+            )}
+            {delivery && (
+              <div className="gm-pin">
+                <div className="gm-pin-head">
+                  <span><PinIcon size={16} /> {pin ? 'Your door on the map' : 'Pin your door on the map'}</span>
+                  <button type="button" onClick={locate} disabled={locating}>
+                    {locating ? <span className="spinner" /> : <LocateIcon size={15} />} {pin ? 'Locate me again' : 'Use my location'}
+                  </button>
+                </div>
+                {(shop || pin) && (
+                  <MapView className="gm-pin-map" height={190} points={shop ? [{ ...shop, kind: 'shop', label: 'Restaurant' }] : []}
+                    area={shop && radius > 0 ? { ...shop, km: radius } : null}
+                    pick={pin ? { ...pin, onMove: movePin } : { lat: NaN, lng: NaN, onMove: movePin }} />
+                )}
+                <small className={tooFar ? 'bad' : ''}>
+                  {pin
+                    ? (km != null ? `${km.toFixed(1)} km from the restaurant. ` : '') + (tooFar ? `Outside the ${radius} km delivery area.` : 'Drag the pin if it is not exactly on your door.')
+                    : shop ? 'Tap the map at your door, or use your location. The rider follows this pin.' : 'Share your location so the rider can find you.'}
+                </small>
+              </div>
+            )}
+            {err && <p className="gm-field-err" role="alert">{err}</p>}
+          </div>
+        )}
       </div>
       <div className="gm-cart-foot">
-        <div className="gm-total"><span>Total</span><b>{money(cart.total)}</b></div>
-        <small className="gm-total-note">You pay at the end. Any tax or service charge shows on your bill.</small>
-        <button className="gm-cta send" disabled={placing} onClick={place}>
-          {placing ? <><span className="spinner" /> Sending to the kitchen</> : 'Place order'}
+        {fee > 0 && <div className="gm-subline"><span>Food {money(cart.total)}</span><span>Delivery {money(fee)}</span></div>}
+        <div className="gm-total"><span>Total</span><b>{money(cart.total + fee)}</b></div>
+        <small className="gm-total-note">{pickup
+          ? (delivery ? 'Pay the rider on delivery: cash, JazzCash or Easypaisa.' : 'Pay when you collect your order.')
+          : mode === 'ticket' ? 'This is added to the same order.' : 'You pay at the end. Any tax or service charge shows on your bill.'}</small>
+        <button className="gm-cta send" disabled={placing} onClick={send}>
+          {placing ? <><span className="spinner" /> Sending to the restaurant</>
+            : pickup ? (delivery ? 'Place delivery order' : 'Place takeaway order') : mode === 'ticket' ? 'Add to my order' : 'Place order'}
         </button>
       </div>
     </Sheet>
   )
 }
 
-function PlacedOverlay({ order, tableNo, onDone }) {
+// ---- the customer following a takeaway or delivery ----
+const TRACK_TITLE = {
+  Received: () => 'Waiting for the restaurant to confirm',
+  Confirmed: () => 'Confirmed. The kitchen starts it next',
+  Cooking: () => 'Being cooked now',
+  Ready: (d) => d ? 'Packed. The rider picks it up next' : 'Ready. Come and collect it',
+  OnTheWay: (d, t) => (t.riderName ? `${t.riderName} is on the way` : 'On the way to you'),
+  Delivered: () => 'Delivered. Enjoy your meal',
+  Collected: () => 'Collected. Enjoy your meal',
+  Closed: () => 'This order is closed',
+}
+const clock = (d) => new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+const minsFrom = (d, now) => Math.round((new Date(d) - now) / 60000)
+
+function TrackCard({ slug, code, onHandedOver }) {
+  const [t, setT] = useState(null)
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    let dead = false, timer
+    const tick = async () => {
+      let x = null
+      if (document.visibilityState !== 'hidden') {
+        try { x = await api.trackTicket(slug, code); if (!dead) setT(x) } catch { /* the order page still shows the basics */ }
+      }
+      // quicker while the rider is on the road, so the dot keeps moving
+      if (!dead) timer = setTimeout(tick, x?.stage === 'OnTheWay' && x?.rider ? 4000 : 8000)
+    }
+    tick()
+    const clockTimer = setInterval(() => setNow(Date.now()), 15000)
+    return () => { dead = true; clearTimeout(timer); clearInterval(clockTimer) }
+  }, [slug, code])
+  useEffect(() => { onHandedOver?.(t && ['Delivered', 'Collected'].includes(t.stage) ? t.stage : '') }, [t?.stage])
+  if (!t) return null
+  const d = t.channel === 'Delivery'
+  const done = ['Delivered', 'Collected', 'Closed'].includes(t.stage)
+  const steps = d ? [['Received', 'Placed'], ['Cooking', 'Cooking'], ['OnTheWay', 'On the way'], ['Delivered', 'Delivered']]
+    : [['Received', 'Placed'], ['Cooking', 'Cooking'], ['Ready', 'Ready'], ['Collected', 'Collected']]
+  const rank = { Received: 0, Confirmed: 0, Cooking: 1, Ready: d ? 1 : 2, OnTheWay: 2, Delivered: 4, Collected: 4, Closed: 4 }[t.stage] ?? 0
+  const left = t.etaAt ? minsFrom(t.etaAt, now) : null
+  const late = t.promisedAt && t.deliveredAt ? minsFrom(t.deliveredAt, new Date(t.promisedAt)) : null
+  const points = [t.shop && { ...t.shop, kind: 'shop', label: 'Restaurant' }, t.home && { ...t.home, kind: 'home', label: 'You' },
+    t.rider && { ...t.rider, kind: 'rider', label: t.riderName || 'Rider' }].filter(Boolean)
+  return (
+    <section className={'gm-track s-' + t.stage} aria-live="polite">
+      <div className="gm-track-top">
+        <span className="gm-track-ico">{d ? (t.stage === 'OnTheWay' ? <BikeIcon size={20} /> : <TruckIcon size={20} />) : <BagIcon size={20} />}</span>
+        <div>
+          <b>{TRACK_TITLE[t.stage]?.(d, t) || t.stage}</b>
+          <small>{ticketLabel(code)}{t.distanceKm != null && d ? ` · ${t.distanceKm.toFixed(1)} km away` : ''}</small>
+        </div>
+      </div>
+      {!done && t.etaAt && (
+        <div className="gm-track-eta">
+          <span>{d ? 'Arrives by' : 'Ready at'}</span>
+          <b>{clock(t.etaAt)}</b>
+          <em>{left > 0 ? `in ${left} min` : d ? 'any minute now' : 'now'}</em>
+        </div>
+      )}
+      {!done && !t.etaAt && <p className="gm-track-wait"><ClockIcon size={14} /> The restaurant tells you the time when they confirm.</p>}
+      {done && t.deliveredAt && (
+        <p className="gm-track-done"><CheckIcon size={15} /> {d ? 'Delivered' : 'Collected'} at {clock(t.deliveredAt)}
+          {late != null && (late <= 0 ? <em className="ok">{late < 0 ? `${-late} min early` : 'on time'}</em> : <em>{late} min after the promised time</em>)}</p>
+      )}
+      <ol className="gm-track-steps">
+        {steps.map(([k, label], i) => <li key={k} className={i < rank ? 'done' : i === rank ? 'now' : ''}><i />{label}</li>)}
+      </ol>
+      {d && points.length > 0 && !done && <MapView className="gm-track-map" height={200} points={points} />}
+      {t.promisedAt && !done && <small className="gm-track-promise">Promised by {clock(t.promisedAt)}</small>}
+    </section>
+  )
+}
+
+function PlacedOverlay({ order, where, mode, onDone }) {
   useEffect(() => {
     const t = setTimeout(onDone, 3600)
     return () => clearTimeout(t)
@@ -766,9 +1000,22 @@ function PlacedOverlay({ order, tableNo, onDone }) {
       <div className="gm-ticket">
         <div className="gm-ticket-tick"><CheckIcon size={30} /></div>
         <h2>Order sent</h2>
-        <p>Order #{order.id} for Table {tableNo} has reached the restaurant.</p>
-        <small>You can follow it on the menu screen.</small>
+        {mode === 'ticket'
+          ? <p>Your {where} order #{order.id} has reached the restaurant. They confirm it next.</p>
+          : <p>Order #{order.id} for {where} has reached the restaurant.</p>}
+        <small>{mode === 'ticket' ? 'Keep this page open to follow it.' : 'You can follow it on the menu screen.'}</small>
       </div>
+    </div>
+  )
+}
+
+// The order QR's two ways, said up front so nobody fills a cart for a delivery that isn't offered.
+function PickupWays({ pk }) {
+  return (
+    <div className="gm-pickways">
+      {pk?.takeaway && <div><BagIcon size={18} /><b>Takeaway</b><small>Order now, collect it ready</small></div>}
+      {pk?.delivery && <div><TruckIcon size={18} /><b>Delivery</b>
+        <small>{Number(pk.deliveryFee) > 0 ? `${money(pk.deliveryFee)} · ` : 'Free · '}{pk.deliveryNote || 'To your door'}</small></div>}
     </div>
   )
 }
@@ -776,15 +1023,15 @@ function PlacedOverlay({ order, tableNo, onDone }) {
 // ---- Live orders ----
 const FLOW = ['Placed', 'Approved', 'Cooking', 'Ready', 'Served']
 
-function LiveOrders({ orders, onOpen }) {
+function LiveOrders({ orders, handedOver, onOpen }) {
   return (
     <section className="gm-live">
-      {orders.map((o) => <LiveOrder key={o.id} o={o} onOpen={onOpen} />)}
+      {orders.map((o) => <LiveOrder key={o.id} o={o} handedOver={handedOver} onOpen={onOpen} />)}
     </section>
   )
 }
 
-function LiveOrder({ o, onOpen }) {
+function LiveOrder({ o, handedOver, onOpen }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (o.status !== 'Cooking') return undefined
@@ -801,7 +1048,7 @@ function LiveOrder({ o, onOpen }) {
   return (
     <button className={`gm-liveorder s-${o.status}`} onClick={() => onOpen(o)}>
       <div className="gm-live-top">
-        <b>{STATUS_LABEL[o.status] || o.status}</b>
+        <b>{handedOver && o.status === 'Served' ? handedOver : statusLabel(o)}</b>
         {countdown ? <span className="gm-count">{countdown}</span> : <span className="gm-live-id">Order #{o.id}</span>}
       </div>
       <div className="gm-live-bar">{FLOW.slice(0, 4).map((s, i) => <i key={s} className={i <= stage ? 'on' : ''} />)}</div>

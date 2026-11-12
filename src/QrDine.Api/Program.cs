@@ -114,6 +114,9 @@ builder.Services.AddRateLimiter(o =>
     // Order placement (guest + waiter): generous but bounded against spam.
     o.AddPolicy("orders", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ClientKey(ctx), _ => Window(Limit("orders", 40), WindowSecs("orders", 60))));
+    // A guest's own takeaway/delivery ticket: each one opens a ticket on reception, so far tighter than table orders.
+    o.AddPolicy("guest-ticket", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ClientKey(ctx), _ => Window(Limit("guest-ticket", 10), WindowSecs("guest-ticket", 600))));
     // Public guest endpoints (table session issue, feedback): bounded per IP.
     o.AddPolicy("public", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ClientKey(ctx), _ => Window(Limit("public", 60), WindowSecs("public", 60))));

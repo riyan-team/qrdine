@@ -1,0 +1,15 @@
+/* Delivery maps (MapView.jsx) */
+.mv { width: 100%; border-radius: 16px; overflow: hidden; background: #e8e1d6; position: relative; z-index: 0; }
+.mv .leaflet-tile-container img.leaflet-tile { width: 256.6px !important; height: 256.6px !important; mix-blend-mode: normal !important; }
+.mv .leaflet-control-attribution { font-size: 9.5px; background: rgba(255, 255, 255, .7); padding: 0 5px; }
+.mv-pin { width: 36px; height: 36px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: grid; place-items: center; color: #fff;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .28); border: 2.5px solid #fff; }
+.mv-pin svg { transform: rotate(45deg); }
+.mv-shop { background: #1f0f15; }
+.mv-home { background: #a81d48; }
+.mv-dot { position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: #17794f;
+  border: 3px solid #fff; box-shadow: 0 6px 16px rgba(23, 121, 79, .45); }
+.mv-dot i { position: absolute; inset: -3px; border-radius: 50%; border: 3px solid rgba(23, 121, 79, .55); animation: mv-ping 1.8s ease-out infinite; }
+@keyframes mv-ping { from { transform: scale(1); opacity: .9 } to { transform: scale(2.1); opacity: 0 } }
+.mv-tip { font: 600 12px/1.2 var(--sans, system-ui); border-radius: 8px; padding: 4px 8px; }
+@media (prefers-reduced-motion: reduce) { .mv-dot i { animation: none; } }

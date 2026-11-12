@@ -228,13 +228,37 @@ public class RestaurantAdminService
     public async Task<ServiceSettingsDto> GetServiceSettings(CancellationToken ct = default)
     {
         var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
-        return new ServiceSettingsDto(r.WaiterAutoAssign);
+        return new ServiceSettingsDto(r.WaiterAutoAssign, r.GuestTakeaway, r.GuestDelivery, r.DeliveryFee, r.DeliveryNote ?? "",
+            Menu.MenuService.PickupInPlan(r), r.Latitude, r.Longitude, r.DeliveryRadiusKm);
     }
 
     public async Task SetServiceSettings(ServiceSettingsInput i, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
-        r.WaiterAutoAssign = i.WaiterAutoAssign;
+        if (i.WaiterAutoAssign is bool w) r.WaiterAutoAssign = w;
+        if (i.GuestTakeaway is bool t) r.GuestTakeaway = t;
+        if (i.GuestDelivery is bool d) r.GuestDelivery = d;
+        if (i.DeliveryFee is decimal fee)
+        {
+            if (fee < 0 || fee > 100000) throw new DomainException("The delivery charge must be between 0 and 100,000.");
+            r.DeliveryFee = fee;
+        }
+        if (i.Latitude is not null || i.Longitude is not null)
+        {
+            if (!Ordering.Geo.Valid(i.Latitude, i.Longitude)) throw new DomainException("That location doesn't look right.");
+            r.Latitude = i.Latitude; r.Longitude = i.Longitude;
+        }
+        if (i.DeliveryRadiusKm is decimal km)
+        {
+            if (km < 0 || km > 100) throw new DomainException("The delivery area must be between 0 and 100 km (0 means no limit).");
+            r.DeliveryRadiusKm = km;
+        }
+        if (i.DeliveryNote is not null)
+        {
+            var note = i.DeliveryNote.Trim();
+            if (note.Length > 120) throw new DomainException("Keep the delivery note under 120 characters.");
+            r.DeliveryNote = note;
+        }
         await _db.SaveChangesAsync(ct);
     }
 

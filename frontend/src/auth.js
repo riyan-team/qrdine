@@ -15,6 +15,11 @@ export function expiresAt(token) {
 // Still good for at least another minute.
 export const fresh = (token) => !!token && expiresAt(token) > Date.now() + 60_000
 
+/** A takeaway/delivery ticket (P251112-3, D251112-1) rather than a real table. */
+export const isTicketCode = (code) => /^[PD]\d{6}-\d+$/i.test(code || '')
+/** "Takeaway #3" / "Delivery #1" for a ticket code. */
+export const ticketLabel = (code) => `${/^p/i.test(code) ? 'Takeaway' : 'Delivery'} #${String(code).split('-')[1] || ''}`
+
 export const auth = {
   getStaff() { try { return JSON.parse(localStorage.getItem(STAFF_KEY) || 'null') } catch { return null } },
   setStaff(s) { localStorage.setItem(STAFF_KEY, JSON.stringify(s)) },
@@ -79,6 +84,35 @@ export const auth = {
   getTable(slug) {
     try { return sessionStorage.getItem(`qrdine.table.${slug}`) || '' } catch { return '' }
   },
+  // A takeaway/delivery ticket's pass. The server hands it out once, when the guest places the order,
+  // and never again (ticket numbers are easy to guess), so it is kept on this phone to follow the order.
+  keepTicket(slug, ticket, token) {
+    const key = `${slug}:${ticket.tableCode}`
+    this._guestTokens[key] = token
+    try {
+      localStorage.setItem(`qrdine.ticket.${key}`, JSON.stringify({
+        token, code: ticket.tableCode, name: ticket.tableName, channel: ticket.channel, at: Date.now(),
+      }))
+      sessionStorage.setItem(`qrdine.guestToken.${key}`, token)
+    } catch {}
+  },
+  /** This phone's takeaway/delivery orders at this restaurant that can still be followed, newest first. */
+  myTickets(slug) {
+    const out = []
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i)
+        if (!k || !k.startsWith(`qrdine.ticket.${slug}:`)) continue
+        const t = JSON.parse(localStorage.getItem(k) || 'null')
+        if (t && fresh(t.token)) out.push(t)
+        else localStorage.removeItem(k)
+      }
+    } catch {}
+    return out.sort((a, b) => b.at - a.at)
+  },
+  _ticketToken(key) {
+    try { const t = JSON.parse(localStorage.getItem(`qrdine.ticket.${key}`) || 'null'); return fresh(t?.token) ? t.token : '' } catch { return '' }
+  },
   // A guest's table pass (6 hours). A pass that has run out is replaced, so a phone left on the
   // menu all evening keeps working.
   async guestToken(slug, tableCode) {
@@ -102,6 +136,9 @@ export const auth = {
         return stored
       }
     } catch {}
+    const kept = this._ticketToken(key)
+    if (kept) { this._guestTokens[key] = kept; return kept }
+    if (isTicketCode(code)) throw new Error('This order can only be followed on the phone that placed it.')
     // The menu and the live feed ask at the same moment: one request serves both.
     if (!this._pending[key]) {
       this._pending[key] = (async () => {
