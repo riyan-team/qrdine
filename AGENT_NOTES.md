@@ -138,6 +138,9 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-13**: **The sales list and invoices CSV use Pakistan days.** `/admin/reports/sales` and `invoices.csv` read plain `from`/`to` dates as UTC days (`Window` in `MenuAdminEndpoints.cs`), while the main report and day closing use Pakistan days. So a bill made between 00:00 and 05:00 Pakistan time showed under the previous date in the sales list.
+  - `BusinessDay.RangeUtc(from, to)` turns a plain date into the whole Pakistan day: 19:00 UTC the day before, to just before 19:00 UTC. A value with a time is used as it is; no dates means the last 31 days.
+  - 2 new tests in `TimeTests`. The whole-day check, run after midnight Pakistan time, passed 545 of 545.
 - **2026-11-12**: **Takeaway and delivery from the guest's own phone, with a map, a rider screen and live tracking.** Deployed to Hostworld on 2026-11-13. It adds migrations `AddGuestPickupDelivery` and `AddDeliveryTracking`, both additive.
   - **Order QR.** One restaurant-wide "order" QR, separate from the table QRs (Owner → QR codes). A guest picks Takeaway or Delivery and gives a name, number and address. For delivery they drop a map pin or tap "Use my location".
     - The order reaches reception as a Parcel or Delivery ticket that needs approving.
@@ -155,8 +158,7 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
   - **Map:** `MapView.jsx` (Leaflet, loaded only when a map shows) on OpenStreetMap's public tiles, which need no key. OSM's tile policy suits light use only. If traffic grows, move to a tile provider with a key.
   - **Landing page and plans** list takeaway and delivery QR, map tracking and the rider screen. There's a new FAQ entry.
   - 13 new tests in `FloorTests`. Before deploying, the whole-day check ran 545 checks and 543 passed.
-    - The 2 failures are an older bug this change didn't touch. `/admin/reports/sales` and `invoices.csv` read `from`/`to` as UTC days (`Window` in `MenuAdminEndpoints.cs`), while the main report uses Pakistan days.
-    - So bills made between 00:00 and 05:00 Pakistan time land on the previous date in the sales list. The check only fails when it runs in those hours.
+    - The 2 failures were an older bug this change didn't touch; it was fixed on 2026-11-13 (the entry above).
   - **Promo videos** for these features live in the shopify repo, under `qrdine-videos/`. They are recorded on the local copy with the demo restaurant, which has only tables T1–T4.
 - **2026-11-09** — **Sign-in and access checks tightened** (no migration; every existing pass stops working once):
   - Found: anyone with an order number could read the order, and anyone could list a table's live orders. The live feed let anyone listen to a whole restaurant's orders. A reset password, removed staff member or role change didn't end an existing pass. Passwords could be guessed without limit by changing address. The print bridge was handed a long-lived pass.

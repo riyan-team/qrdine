@@ -37,4 +37,29 @@ public class TimeTests
         var eightPmUtc = new DateTime(2026, 11, 9, 20, 0, 0, DateTimeKind.Utc);
         Assert.Equal(new DateTime(2026, 11, 10, 1, 0, 0), BusinessDay.ToPkt(eightPmUtc));
     }
+
+    [Fact]
+    public void A_report_day_is_the_pakistani_day()
+    {
+        // "13 November" runs from 00:00 to 23:59:59 in Pakistan: 19:00 UTC on the 12th to just before 19:00 UTC on the 13th
+        var (from, to) = BusinessDay.RangeUtc(new DateTime(2026, 11, 13), new DateTime(2026, 11, 13));
+        Assert.Equal(new DateTime(2026, 11, 12, 19, 0, 0), from);
+        Assert.True(to < new DateTime(2026, 11, 13, 19, 0, 0) && to > new DateTime(2026, 11, 13, 18, 59, 59));
+        var oneAmBill = new DateTime(2026, 11, 12, 20, 0, 0);   // 1 am on the 13th in Pakistan
+        Assert.InRange(oneAmBill, from, to);
+        var elevenPmBill = new DateTime(2026, 11, 13, 18, 0, 0); // 11 pm on the 13th
+        Assert.InRange(elevenPmBill, from, to);
+    }
+
+    [Fact]
+    public void A_report_with_times_or_no_dates_keeps_its_window()
+    {
+        var now = new DateTime(2026, 11, 13, 10, 0, 0, DateTimeKind.Utc);
+        var (from, to) = BusinessDay.RangeUtc(null, null, now);
+        Assert.Equal(now.AddDays(-31), from);
+        Assert.Equal(now, to);
+        var exactFrom = new DateTime(2026, 11, 13, 8, 30, 0);
+        var exactTo = new DateTime(2026, 11, 13, 9, 15, 0);
+        Assert.Equal((exactFrom, exactTo), BusinessDay.RangeUtc(exactFrom, exactTo));
+    }
 }

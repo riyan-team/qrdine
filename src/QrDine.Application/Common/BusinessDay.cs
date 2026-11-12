@@ -21,4 +21,17 @@ public static class BusinessDay
 
     public static DateTime ToPkt(DateTime utc) => utc.AddHours(PktOffsetHours);
     public static DateTime StartUtc(DateTime day) => day.Date.AddHours(-PktOffsetHours);
+
+    /// <summary>
+    /// A report's from/to as the UTC window to search. A plain date ("2026-11-13", what the reports page sends)
+    /// means that whole day in Pakistan, so a bill at 1 am stays on the day it was made. A value with a time is
+    /// already a moment and is used as given. No from: the last 31 days; no to: now.
+    /// </summary>
+    public static (DateTime FromUtc, DateTime ToUtc) RangeUtc(DateTime? from, DateTime? to, DateTime? nowUtc = null)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        var fromUtc = from is DateTime f ? (f.TimeOfDay == TimeSpan.Zero ? StartUtc(f) : f) : now.AddDays(-31);
+        var toUtc = to is DateTime t ? (t.TimeOfDay == TimeSpan.Zero ? StartUtc(t.AddDays(1)).AddTicks(-10) : t) : now;
+        return (fromUtc, toUtc);
+    }
 }

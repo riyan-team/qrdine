@@ -101,15 +101,9 @@ public static class MenuAdminEndpoints
             .RequiresPlan(r => r.FeatureReports);
     }
 
-    // Normalise a date window: default to the last 31 days; extend an end-date with no
-    // time component to the end of that day so the whole day is included.
-    private static (DateTime from, DateTime to) Window(DateTime? from, DateTime? to)
-    {
-        var fromUtc = from ?? DateTime.UtcNow.AddDays(-31);
-        var toUtc = to ?? DateTime.UtcNow;
-        if (toUtc.TimeOfDay == TimeSpan.Zero) toUtc = toUtc.AddDays(1).AddSeconds(-1);
-        return (fromUtc, toUtc);
-    }
+    // The date window: plain dates are whole days in Pakistan (see BusinessDay.RangeUtc), so a bill made
+    // after midnight lands on the day it was made, the same day the main report and day closing use.
+    private static (DateTime from, DateTime to) Window(DateTime? from, DateTime? to) => BusinessDay.RangeUtc(from, to);
 }
 
 /// <summary>Builds the invoice-report CSV (with a totals row for the tax return).</summary>
