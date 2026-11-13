@@ -349,14 +349,26 @@
   .modal.bill-modal > .noprint { margin-top: 0 !important; }
   .modal.bill-modal > .bill-pay { grid-column: 2; }
 }
+.bill-actions { gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.bill-actions > .green { flex: 1 0 100%; order: 5; margin-left: 0; min-height: 48px; font-size: 16px; justify-content: center; line-height: 1.2; }
+/* On a phone the bar is pinned to the bottom of the sheet, so it has to be short or it hides the ways to pay:
+   one row, Back / Print / WhatsApp as icons (their names stay as labels), Settle taking the rest. */
 @media (max-width: 859px) {
-  .bill-actions { position: sticky; bottom: -20px; background: var(--surface); padding: 10px 0 2px; border-top: 1px solid var(--line); z-index: 1; }
+  .bill-actions { position: sticky; bottom: -20px; background: var(--surface); padding: 10px 0 12px; border-top: 1px solid var(--line); z-index: 1; flex-wrap: nowrap; }
+  .bill-actions .ba-text { display: none; }
+  .bill-actions button:not(.green) { width: 44px; height: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .bill-actions button:not(.green) svg { width: 19px; height: 19px; }
+  .bill-actions > a { flex: none; }
+  .bill-actions > .green { flex: 1 1 auto; min-width: 0; font-size: 15px; padding: 0 10px; }
+}
+.settle-way { white-space: nowrap; }
+/* the sheet's own padding is 16px here; the bar covers it exactly, so nothing peeks out under Settle */
+@media (max-width: 460px) {
+  .bill-actions { bottom: -16px; }
 }
 @media print {
   .modal.bill-modal { display: block; max-width: none; }
 }
-
-.bill-actions > .green { flex: 1 0 100%; order: 5; margin-left: 0 !important; min-height: 48px; font-size: 16px; justify-content: center; }
 
 /* Centred with a transform, so the pressed state has to keep it or the button slides off the tap. */
 .pw-eye:active:not(:disabled) { transform: translateY(-50%); }

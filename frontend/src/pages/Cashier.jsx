@@ -11,7 +11,7 @@ import { directionsUrl } from '../MapView.jsx'
 import Receipt from './Receipt.jsx'
 import { Requests as LoyaltyRequests, BillMember } from './Loyalty.jsx'
 import {
-  BagIcon, BellIcon, CashIcon, ChatIcon, CheckIcon, CloseIcon, KitchenIcon, PlusIcon, PrintIcon, QrIcon, ReceiptIcon,
+  ArrowLeftIcon, BagIcon, BellIcon, CashIcon, ChatIcon, CheckIcon, CloseIcon, KitchenIcon, PlusIcon, PrintIcon, QrIcon, ReceiptIcon,
   SearchIcon, SwapIcon, TableIcon, TruckIcon, UserIcon,
 } from '../icons.jsx'
 
@@ -696,14 +696,15 @@ function BillModal({ code, onClose }) {
               </div>
             )}
 
-            <BillMember code={code} total={bill?.total ?? 0} onChange={setMember} />
-
+            {/* How they pay comes first: every bill needs it, and on a phone it has to sit above the pinned Settle bar. */}
             <span className="bl-label">Paid by</span>
             <div className="bl-methods">
               {methods.map((m) => <button key={m} className={`bl-method${method === m ? ' on' : ''}`} onClick={() => onMethod(m)}>{m}</button>)}
             </div>
 
             {isKhata && <KhataPicker customer={customer} onPick={setCustomer} amount={remaining} initialPhone={bill?.customerPhone} initialName={bill?.customerName} />}
+
+            <div className="bl-row"><BillMember code={code} total={bill?.total ?? 0} onChange={setMember} /></div>
 
             {canDiscount && (
               <div className="bl-row">
@@ -747,12 +748,14 @@ function BillModal({ code, onClose }) {
             )}
 
             {err && <div className="form-error" style={{ marginTop: 8 }}>{err}</div>}
-            <div className="row bill-actions" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button onClick={onClose}>Back</button>
-              <button onClick={() => window.print()} disabled={!bill}><PrintIcon size={15} /> Print bill</button>
-              {bill && <a href={waLink(bill.customerPhone, shareText(bill))} target="_blank" rel="noreferrer"><button><ChatIcon size={15} /> WhatsApp</button></a>}
-              <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !bill?.hasOpenOrders || short || khataBlocked} onClick={settle}>
-                {busy ? 'Settling…' : <><CashIcon size={15} /> {isKhata ? 'Put on khata' : bill?.amountPaid > 0 ? 'Settle the rest' : 'Settle'}</>}
+            {/* On a phone this bar stays pinned at the bottom in one short row (the three small buttons show only their
+                icons), so the ways to pay above it stay in view; Settle names the way it will be recorded. */}
+            <div className="row bill-actions">
+              <button onClick={onClose} aria-label="Back" title="Back"><ArrowLeftIcon size={15} /><span className="ba-text"> Back</span></button>
+              <button onClick={() => window.print()} disabled={!bill} aria-label="Print bill" title="Print bill"><PrintIcon size={15} /><span className="ba-text"> Print bill</span></button>
+              {bill && <a href={waLink(bill.customerPhone, shareText(bill))} target="_blank" rel="noreferrer" aria-label="Send on WhatsApp" title="Send on WhatsApp"><button tabIndex={-1}><ChatIcon size={15} /><span className="ba-text"> WhatsApp</span></button></a>}
+              <button className="green" disabled={busy || !bill?.hasOpenOrders || short || khataBlocked} onClick={settle}>
+                {busy ? 'Settling…' : <><CashIcon size={15} /> {isKhata ? 'Put on khata' : <>{bill?.amountPaid > 0 ? 'Settle the rest' : 'Settle'} <span className="settle-way">· {method}</span></>}</>}
               </button>
             </div>
           </div>

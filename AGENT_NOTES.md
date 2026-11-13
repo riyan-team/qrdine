@@ -138,6 +138,12 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-13**: **On a phone, the bill shows the ways to pay before Settle.** The bill sheet's pinned bar (Back, Print bill, WhatsApp, then a full-width Settle) was two rows tall on a phone and covered "Paid by", so a cashier could settle without seeing that the bill would be recorded as Cash. On phones narrower than 460 px it also hung 4 px past the sheet and clipped Settle.
+  - On a phone the bar is now one row: Back, Print and WhatsApp show as icons (their names stay as labels), and Settle takes the rest of the row.
+  - Settle names the way it records: "Settle · JazzCash" (`.settle-way`).
+  - "Paid by" now comes before the loyalty box.
+  - The bar lines up with the sheet's 16 px padding on small phones.
+  - Checked with headless Chrome at 360×740, 390×844 and 1280×800: all five ways are tappable when the bill opens, and a JazzCash settle on a 360 px phone closed the bill. Frontend only (`Cashier.jsx`, `design/staff.css`).
 - **2026-11-13**: **The sales list and invoices CSV use Pakistan days.** `/admin/reports/sales` and `invoices.csv` read plain `from`/`to` dates as UTC days (`Window` in `MenuAdminEndpoints.cs`), while the main report and day closing use Pakistan days. So a bill made between 00:00 and 05:00 Pakistan time showed under the previous date in the sales list.
   - `BusinessDay.RangeUtc(from, to)` turns a plain date into the whole Pakistan day: 19:00 UTC the day before, to just before 19:00 UTC. A value with a time is used as it is; no dates means the last 31 days.
   - 2 new tests in `TimeTests`. The whole-day check, run after midnight Pakistan time, passed 545 of 545.
