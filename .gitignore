@@ -24,3 +24,7 @@ deploy/oracle/backups/
 *.key
 *.pem
 *.pfx
+
+# Python caches
+__pycache__/
+*.pyc
