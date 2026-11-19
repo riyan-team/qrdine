@@ -204,7 +204,6 @@ export const api = {
   ready: (id) => staffPost(`/orders/${id}/ready`),
   assign: (id, waiterName) => staffPost(`/orders/${id}/assign`, { waiterName }),
   serve: (id) => staffPost(`/orders/${id}/serve`),
-  pay: (id) => staffPost(`/orders/${id}/pay`),
   cancel: (id, reason = null) => staffPost(`/orders/${id}/cancel`, { reason }),
   voidItem: (orderId, itemId, qty, reason) => staffPost(`/orders/${orderId}/items/${itemId}/void`, { qty, reason }),
   moveTable: (code, toCode) => staffPost(`/tables/${code}/move`, { toCode }),
@@ -212,6 +211,7 @@ export const api = {
   // parcel and delivery: each ticket is its own private table, so nothing can land on the wrong bill
   placeTicket: (t) => staffPost(`/tickets`, t),
   tickets: () => staffGet(`/tickets`),
+  billTotals: () => staffGet(`/floor/bill-totals`),
   updateTicket: (code, t) => staffPut(`/tickets/${code}`, t),
 
   // delivery handling: the promised time, the rider's link, out for delivery, delivered / collected
@@ -278,7 +278,7 @@ export const api = {
     if (method) p.set('method', method)
     return staffGet(`/tables/${code}/bill?${p}`)
   },
-  settle: (code, method, discount, amountTendered = 0, customerId = null) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered, customerId }),
+  settle: (code, method, discount, amountTendered = 0, customerId = null, expectedTotal = null) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered, customerId, expectedTotal }),
   payPart: (code, amount, method, discount = null) => staffPost(`/tables/${code}/pay-part`, { amount, method, discount }),
   invoice: (id) => staffGet(`/invoices/${id}`),
 
@@ -426,7 +426,11 @@ export const platform = {
   resetOwnerPassword: (id) => fetch(`/api/platform/restaurants/${id}/reset-owner-password`, { method: 'POST', headers: ph() }).then(pj),
 }
 
-export const money = (n) => 'Rs ' + (Number(n) || 0).toLocaleString('en-PK')
+// Whole rupees print as they are (Rs 2,904); anything with paisa always shows two places (Rs 2,625.60, not 2,625.6).
+export const money = (n) => {
+  const v = Math.round((Number(n) || 0) * 100) / 100
+  return 'Rs ' + v.toLocaleString('en-PK', Number.isInteger(v) ? undefined : { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 export const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 export const STATUS_LABEL = {

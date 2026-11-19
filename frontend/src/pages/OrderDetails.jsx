@@ -268,9 +268,11 @@ export default function OrderDetails() {
           <span>{money(order.total)}</span>
         </div>
         <div className="row between" style={{ fontSize: 17, fontWeight: 800, marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--line)' }}>
-          <span>Total</span>
+          <span>Items total</span>
           <span style={{ color: 'var(--accent)' }}>{money(order.total)}</span>
         </div>
+        {/* One order is the food. Tax, any service charge, discount and delivery are on the bill. */}
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Tax and any charges are added on the bill.</div>
       </div>
 
       {/* Customer Note if any */}

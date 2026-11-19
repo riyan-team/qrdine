@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using QrDine.Api.Auth;
 using QrDine.Api.Validation;
@@ -68,7 +69,10 @@ public static class OrderEndpoints
                 var canCancel = user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCancel);
                 if (!canCancel)
                     return Results.Problem(detail: "You don't have permission to cancel orders.", statusCode: 403);
-                return Results.Ok(await svc.Cancel(id, body?.Reason));
+                // Staff always say why, and the report keeps who did it: a cancelled order is food that wasn't paid for.
+                if (string.IsNullOrWhiteSpace(body?.Reason))
+                    return Results.Problem(detail: "Say why this order is being cancelled.", statusCode: 400);
+                return Results.Ok(await svc.Cancel(id, body.Reason, by: user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value));
             }
             if (type == AppClaims.TypeGuest)
             {

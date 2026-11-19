@@ -1544,6 +1544,12 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<string>("CancelReason")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CancelledBy")
+                        .HasColumnType("text");
+
                     b.Property<int>("Channel")
                         .HasColumnType("integer");
 

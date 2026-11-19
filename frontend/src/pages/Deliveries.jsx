@@ -32,7 +32,10 @@ export default function Deliveries() {
   const [tickets, setTickets] = useState(null)
   const [shop, setShop] = useState(null)
   const [now, setNow] = useState(Date.now())
-  const load = () => api.tickets().then(setTickets).catch(() => {})
+  // What each ticket comes to with tax, service, discount and delivery, worked out by the server the same way
+  // as the bill, so the rider is never told to collect the food alone.
+  const [bills, setBills] = useState({})
+  const load = () => { api.tickets().then(setTickets).catch(() => {}); api.billTotals().then(setBills).catch(() => {}) }
 
   useEffect(() => loadUntilOk(() => api.shopPoint(), setShop), [])
   useEffect(() => {
@@ -43,16 +46,17 @@ export default function Deliveries() {
   // a new order, an approval or the kitchen's "ready" changes the board straight away
   const sig = useMemo(() => orders.map((o) => `${o.id}:${o.status}`).join(), [orders])
   useEffect(() => { if (tickets) load() }, [sig])
+  useEffect(() => { api.billTotals().then(setBills).catch(() => {}) }, [])
 
   const rows = useMemo(() => (tickets || []).map((t) => {
     const list = orders === NOT_LOADED ? [] : orders.filter((o) => o.tableCode === t.tableCode)
     const food = list.reduce((s, o) => s + o.total, 0)
     const left = t.promisedAt ? Math.round((new Date(t.promisedAt) - now) / 60000) : null
-    return { t, list, total: food + (t.deliveryCharge || 0), stage: stageOf(t, list), left }
+    return { t, list, total: bills[t.tableCode]?.remaining ?? food + (t.deliveryCharge || 0), stage: stageOf(t, list), left }
   }).sort((a, b) => {
     const rank = (x) => (x.stage.key === 'done' ? 3 : x.left != null && x.left < 0 ? 0 : 1)
     return rank(a) - rank(b) || (a.t.promisedAt || a.t.openedAt).localeCompare(b.t.promisedAt || b.t.openedAt)
-  }), [tickets, orders, now])
+  }), [tickets, orders, now, bills])
 
   const deliveries = rows.filter((x) => x.t.channel === 'Delivery')
   const takeaways = rows.filter((x) => x.t.channel === 'Takeaway')

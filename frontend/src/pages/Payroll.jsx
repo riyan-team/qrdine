@@ -16,7 +16,7 @@ const shiftMonth = (key, n) => {
 const ENTRY_TYPES = [
   { key: 'Advance', label: 'Advance', hint: 'Taken before pay day. Comes off this month.' },
   { key: 'Salary', label: 'Salary', hint: 'Paying the month.' },
-  { key: 'Bonus', label: 'Bonus', hint: 'Extra on top, Eid or good work.' },
+  { key: 'Bonus', label: 'Bonus', hint: 'Extra on top, Eid or good work. Paid now, so it is not added to what is still due.' },
   { key: 'Deduction', label: 'Deduction', hint: 'Comes off pay. No cash changes hands.' },
 ]
 
@@ -38,9 +38,9 @@ export default function Payroll() {
 
       <div className="bo-toolbar">
         <div className="row" style={{ gap: 4 }}>
-          <button className="btn-sm" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+          <button className="btn-sm" style={{ minWidth: 40, minHeight: 40, fontSize: 18 }} aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
           <b style={{ minWidth: 142, textAlign: 'center', fontFamily: 'var(--display)', fontSize: 17 }}>{fmtMonth(month)}</b>
-          <button className="btn-sm" aria-label="Next month" disabled={month >= monthPk()} onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+          <button className="btn-sm" style={{ minWidth: 40, minHeight: 40, fontSize: 18 }} aria-label="Next month" disabled={month >= monthPk()} onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
         </div>
         <Tabs value={tab} onChange={setTab} options={[{ value: 'pay', label: 'Pay' }, { value: 'attendance', label: 'Attendance' }]} />
       </div>
@@ -135,6 +135,8 @@ function PersonSheet({ person, month, onClose, onChanged, onEdit }) {
       rows: [
         { label: 'Monthly salary', amount: person.monthlySalary }, { label: 'Bonus', amount: person.bonuses },
         { label: 'Deductions', amount: -person.deductions }, { label: 'Advances taken', amount: -person.advances }, { label: 'Paid', amount: -person.paid },
+        // A bonus is handed over when it is recorded, so it shows as earned and as paid.
+        ...(person.bonuses ? [{ label: 'Bonus paid', amount: -person.bonuses }] : []),
       ],
       total: { amount: money(person.due) },
       note: `Present ${person.present}, absent ${person.absent}, leave ${person.leave}, half days ${person.halfDays}`,

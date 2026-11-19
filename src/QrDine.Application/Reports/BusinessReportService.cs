@@ -13,7 +13,7 @@ public record ReportSummary(decimal Sales, int Bills, decimal AverageBill, decim
 public record ReportDay(string Date, int Bills, decimal Sales, decimal Tax, decimal Discounts, decimal Expenses, decimal Purchases);
 public record ReportRow(string Name, int Count, decimal Amount);
 public record ReportHour(int Hour, string Label, int Bills, decimal Sales);
-public record ReportCancelled(string When, string Table, string Items, decimal Value, string Reason, string Source);
+public record ReportCancelled(string When, string Table, string Items, decimal Value, string Reason, string Source, string By = "");
 public record ReportDiscount(string Number, string When, string Table, string Cashier, decimal Before, decimal Discount, decimal Total);
 public record ReportClosing(decimal CashSales, decimal OtherSales, decimal CashExpenses, decimal CashSupplierPayments,
     decimal CashInHand, IReadOnlyList<ReportRow> Methods, decimal KhataSales = 0, decimal KhataReceipts = 0, decimal CashKhataReceipts = 0);
@@ -65,10 +65,12 @@ public class BusinessReportService
         var orders = await _db.Orders.AsNoTracking().Include(o => o.Items)
             .Where(o => o.CreatedAt >= fromUtc && o.CreatedAt < toUtc && (branchId == null || o.BranchId == branchId))
             .ToListAsync(ct);
+        // A branch's report holds only what belongs to that branch. Supplier bills, khata payments and expenses
+        // with no branch are kept for the whole restaurant, so they count under "All branches" only.
         var expenses = await _db.Expenses.AsNoTracking()
-            .Where(e => e.Date >= start && e.Date <= end && (branchId == null || e.BranchId == null || e.BranchId == branchId))
+            .Where(e => e.Date >= start && e.Date <= end && (branchId == null || e.BranchId == branchId))
             .ToListAsync(ct);
-        var allEntries = await _db.SupplierEntries.AsNoTracking().ToListAsync(ct);
+        var allEntries = branchId == null ? await _db.SupplierEntries.AsNoTracking().ToListAsync(ct) : new();
         var entries = allEntries.Where(e => e.Date >= start && e.Date <= end).ToList();
 
         DateTime DayOf(Invoice i) => BusinessDay.ToPkt(i.IssuedAt).Date;
@@ -124,8 +126,6 @@ public class BusinessReportService
         var hours = invoices.GroupBy(i => BusinessDay.ToPkt(i.IssuedAt).Hour).OrderBy(g => g.Key)
             .Select(g => new ReportHour(g.Key, HourLabel(g.Key), g.Count(), g.Sum(i => i.Total))).ToList();
 
-        var payments = invoices.GroupBy(i => i.PaymentMethod)
-            .Select(g => new ReportRow(g.Key, g.Count(), g.Sum(i => i.Total))).OrderByDescending(r => r.Amount).ToList();
         var nameOf = await StaffNames.Lookup(_db, ct);
         var cashiers = invoices.GroupBy(i => string.IsNullOrWhiteSpace(i.CreatedByUsername) ? "Unknown" : nameOf(i.CreatedByUsername))
             .Select(g => new ReportRow(g.Key, g.Count(), g.Sum(i => i.Total))).OrderByDescending(r => r.Amount).ToList();
@@ -143,38 +143,34 @@ public class BusinessReportService
         var cancelledRows = cancelled.OrderByDescending(o => o.CreatedAt).Select(o => new ReportCancelled(
             BusinessDay.ToPkt(o.CreatedAt).ToString("yyyy-MM-dd HH:mm"), o.TableName,
             string.Join(", ", o.Items.Select(i => $"{i.Qty}× {i.Name}")), ValueOf(o),
-            string.IsNullOrWhiteSpace(o.CancelReason) ? "No reason given" : o.CancelReason!, o.Source.ToString())).ToList();
+            string.IsNullOrWhiteSpace(o.CancelReason) ? "No reason given" : o.CancelReason!, o.Source.ToString(),
+            string.IsNullOrWhiteSpace(o.CancelledBy) ? "" : nameOf(o.CancelledBy))).ToList();
         var discounts = invoices.Where(i => i.DiscountAmount > 0).OrderByDescending(i => i.IssuedAt).Select(i => new ReportDiscount(
             i.FormattedNumber, BusinessDay.ToPkt(i.IssuedAt).ToString("yyyy-MM-dd HH:mm"), i.TableName, nameOf(i.CreatedByUsername),
-            i.Total + i.DiscountAmount, i.DiscountAmount, i.Total)).ToList();
+            BeforeDiscount(i), i.DiscountAmount, i.Total)).ToList();
 
         // ---- closing: split bills count by the money actually taken in each method ----
         // A bill may have had part-payments before the rest was settled, so each part counts by its own method.
         var sessionIds = invoices.Select(i => i.TableSessionId).ToHashSet();
         var parts = sessionIds.Count == 0 ? new List<Payment>()
             : await _db.Payments.AsNoTracking().Where(p => sessionIds.Contains(p.TableSessionId)).ToListAsync(ct);
-        var taken = new List<(string Method, decimal Total)>();
-        foreach (var i in invoices)
-        {
-            var mine = parts.Where(p => p.TableSessionId == i.TableSessionId).ToList();
-            taken.AddRange(mine.Select(p => (p.Method, p.Amount)));
-            var rest = i.Total - mine.Sum(p => p.Amount);
-            if (rest > 0.01m) taken.Add((i.PaymentMethod.StartsWith("Split") ? "Other" : i.PaymentMethod, rest));
-        }
+        var taken = MoneyTaken.ByMethod(invoices, parts);
+        // Count is bills: a bill paid half in cash and half by card counts once under each.
         var methods = taken.GroupBy(t => t.Method)
-            .Select(g => new ReportRow(g.Key, g.Count(), g.Sum(t => t.Total))).OrderByDescending(r => r.Amount).ToList();
-        var cashSales = taken.Where(t => IsCash(t.Method)).Sum(t => t.Total);
+            .Select(g => new ReportRow(g.Key, g.Select(t => t.InvoiceId).Distinct().Count(), g.Sum(t => t.Amount))).OrderByDescending(r => r.Amount).ToList();
+        var payments = methods;
+        var cashSales = taken.Where(t => IsCash(t.Method)).Sum(t => t.Amount);
         var cashExpenses = expenses.Where(e => IsCash(e.PaymentMethod)).Sum(e => e.Amount);
         var cashSupplier = entries.Where(e => e.Type == SupplierEntryType.Payment && IsCash(e.PaymentMethod)).Sum(e => e.Amount);
 
         // ---- customer khata: what went on credit, and what came back ----
         var allKhata = await _db.CustomerEntries.AsNoTracking().ToListAsync(ct);
-        var khataInRange = allKhata.Where(e => e.Date >= start && e.Date <= end).ToList();
-        var khataSales = taken.Where(t => IsKhata(t.Method)).Sum(t => t.Total);
+        var khataInRange = branchId == null ? allKhata.Where(e => e.Date >= start && e.Date <= end).ToList() : new();
+        var khataSales = taken.Where(t => IsKhata(t.Method)).Sum(t => t.Amount);
         var khataReceipts = khataInRange.Where(e => e.Type == Domain.Customers.CustomerEntryType.Payment).Sum(e => e.Amount);
         var cashKhata = khataInRange.Where(e => e.Type == Domain.Customers.CustomerEntryType.Payment && IsCash(e.PaymentMethod)).Sum(e => e.Amount);
 
-        var closing = new ReportClosing(cashSales, taken.Sum(t => t.Total) - cashSales - khataSales, cashExpenses, cashSupplier,
+        var closing = new ReportClosing(cashSales, taken.Sum(t => t.Amount) - cashSales - khataSales, cashExpenses, cashSupplier,
             cashSales + cashKhata - cashExpenses - cashSupplier, methods, khataSales, khataReceipts, cashKhata);
 
         var customers = await _db.Customers.AsNoTracking().Where(c => c.IsActive).ToListAsync(ct);
@@ -259,7 +255,12 @@ public class BusinessReportService
         return counts.Select(x => x.Id).ToList();
     }
 
-    private static bool IsCash(string? method) => string.Equals(method, "Cash", StringComparison.OrdinalIgnoreCase);
+    private static bool IsCash(string? method) => MoneyTaken.IsCash(method);
+
+    /// <summary>What the bill would have been with no discount: what was paid, plus the discount, plus the tax
+    /// that came off with it (tax is charged after the discount).</summary>
+    private static decimal BeforeDiscount(Invoice i) => Math.Round(i.Total + i.DiscountAmount
+        + i.Lines.Sum(l => l.DiscountAmount * (l.TaxRate + l.FurtherTaxRate) / 100m), 2, MidpointRounding.AwayFromZero);
     private static bool IsKhata(string? method) => string.Equals(method, "Khata", StringComparison.OrdinalIgnoreCase);
 
     private static string ChannelLabel(OrderChannel channel) => channel switch

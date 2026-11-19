@@ -166,17 +166,30 @@ public class OrderService
         var pick = waiters.OrderBy(w => load.GetValueOrDefault(w, 0)).ThenBy(w => w).First();
         order.AssignWaiter(pick);
     }
-    public Task<OrderDto> Cook(int id, int eta, CancellationToken ct = default) => Mutate(id, o => o.StartCooking(eta), ct);
+    public async Task<OrderDto> Cook(int id, int eta, CancellationToken ct = default)
+    {
+        var order = await LoadOrder(id, ct);
+        var skippedApproval = order.Status == OrderStatus.Placed;
+        order.StartCooking(eta);
+        await _db.SaveChangesAsync(ct);
+        var dto = await Publish(order, ct);
+        // Cooking straight from Placed skips Approve, which is where stock is taken. Take it here instead,
+        // so a later cancel doesn't give back stock that never left.
+        if (skippedApproval && await StockEnabled(ct))
+            await _inventory.ApplyOrderConsumption(Lines(order), restore: false, ct);
+        return dto;
+    }
     public Task<OrderDto> Ready(int id, CancellationToken ct = default) => Mutate(id, o => o.MarkReady(), ct);
     public Task<OrderDto> Serve(int id, CancellationToken ct = default) => Mutate(id, o => o.Serve(), ct);
     public Task<OrderDto> Assign(int id, string waiter, CancellationToken ct = default) => Mutate(id, o => o.AssignWaiter(waiter), ct);
 
     // Cancelling an order that already reached the kitchen returns its ingredients to stock.
-    public async Task<OrderDto> Cancel(int id, string? reason, CancellationToken ct = default)
+    public async Task<OrderDto> Cancel(int id, string? reason, CancellationToken ct = default, string? by = null)
     {
         var order = await LoadOrder(id, ct);
         var wasConsumed = order.Status is OrderStatus.Approved or OrderStatus.Cooking or OrderStatus.Ready;
-        order.Cancel(reason ?? "unspecified");
+        await RefuseIfLastOrderHasPaidParts(order, ct);
+        order.Cancel(string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim(), by);
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
         if (wasConsumed && await StockEnabled(ct))
@@ -186,6 +199,20 @@ public class OrderService
         if (await _db.Sessions.AnyAsync(s => s.Id == order.TableSessionId && s.Channel != OrderChannel.Dine, ct))
             await CloseSessionIfSettled(order.TableSessionId, ct);
         return dto;
+    }
+
+    /// <summary>
+    /// Part of this table's bill is already paid, and this is the last order on it. Cancelling it would leave that
+    /// money sitting on an empty table, where the next guests' bill would count it as theirs.
+    /// </summary>
+    private async Task RefuseIfLastOrderHasPaidParts(Order order, CancellationToken ct)
+    {
+        var othersOpen = await _db.Orders.AnyAsync(o => o.TableSessionId == order.TableSessionId && o.Id != order.Id
+            && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled, ct);
+        if (othersOpen) return;
+        var paid = (await _db.Payments.Where(p => p.TableSessionId == order.TableSessionId).Select(p => p.Amount).ToListAsync(ct)).Sum();
+        if (paid > 0)
+            throw new DomainException($"Rs {paid:N0} of this table's bill is already paid, so its last order can't be cancelled. Settle the bill instead (a discount can bring it down).");
     }
 
     /// <summary>
@@ -265,15 +292,6 @@ public class OrderService
             moved.Add(dto);
         }
         return moved;
-    }
-
-    public async Task<OrderDto> Pay(int id, CancellationToken ct = default)
-    {
-        var order = await LoadOrder(id, ct);
-        order.Pay();
-        await _db.SaveChangesAsync(ct);
-        await CloseSessionIfSettled(order.TableSessionId, ct);
-        return await Publish(order, ct);
     }
 
     // Only reads: looking at an order changes nothing, so it isn't sent to every screen again.
@@ -361,12 +379,16 @@ public class OrderService
 
         var query = _db.Orders.AsNoTracking().Include(o => o.Items).ThenInclude(i => i.Modifiers).AsQueryable();
         if (Enum.TryParse<OrderStatus>(status, true, out var st)) query = query.Where(o => o.Status == st);
-        if (fromUtc is DateTime f) query = query.Where(o => o.CreatedAt >= f);
+        // A date with no time is a whole Pakistan day, the same days the reports and day closing use.
+        if (fromUtc is DateTime f)
+        {
+            if (f.TimeOfDay == TimeSpan.Zero) f = BusinessDay.StartUtc(f);
+            query = query.Where(o => o.CreatedAt >= f);
+        }
         if (toUtc is DateTime t)
         {
-            // A date with no time component means "up to the end of that day".
-            if (t.TimeOfDay == TimeSpan.Zero) t = t.AddDays(1).AddSeconds(-1);
-            query = query.Where(o => o.CreatedAt <= t);
+            if (t.TimeOfDay == TimeSpan.Zero) { var end = BusinessDay.StartUtc(t.AddDays(1)); query = query.Where(o => o.CreatedAt < end); }
+            else query = query.Where(o => o.CreatedAt <= t);
         }
         if (!string.IsNullOrWhiteSpace(q))
         {

@@ -42,14 +42,15 @@ public class PayrollService
             var bonuses = Sum(EmployeeEntryType.Bonus);
             var deductions = Sum(EmployeeEntryType.Deduction);
             var paid = Sum(EmployeeEntryType.Salary);
+            // A bonus is paid out when it is recorded (it writes an expense), so it is never still due.
             return new PayrollRow(p.Id, p.Name, p.Phone, p.Designation, p.MonthlySalary,
                 p.JoinedOn?.ToString("yyyy-MM-dd"), p.Notes, advances, bonuses, deductions, paid,
-                p.MonthlySalary + bonuses - deductions - advances - paid,
+                p.MonthlySalary - deductions - advances - paid,
                 att.Count(a => a.Status == "Present"), att.Count(a => a.Status == "Absent"),
                 att.Count(a => a.Status == "Leave"), att.Count(a => a.Status == "HalfDay"));
         }).ToList();
 
-        return new PayrollMonth(key, rows, rows.Sum(r => r.MonthlySalary), rows.Sum(r => r.Paid + r.Advances),
+        return new PayrollMonth(key, rows, rows.Sum(r => r.MonthlySalary), rows.Sum(r => r.Paid + r.Advances + r.Bonuses),
             rows.Sum(r => Math.Max(0, r.Due)));
     }
 

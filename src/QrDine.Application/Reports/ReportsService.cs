@@ -70,12 +70,18 @@ public class ReportsService
             return new DailyPointDto(d.ToString("dd MMM"), inv.Sum(x => x.Total), inv.Count);
         }).ToList();
 
-        var payments = invoices
-            .GroupBy(i => i.PaymentMethod)
-            .Select(g => new PayBreakdownDto(g.Key, g.Count(), g.Sum(x => x.Total)))
+        // How people paid, counted the same way as day closing: each part of a split bill by its own method.
+        var sessionIds = invoices.Select(i => i.TableSessionId).ToHashSet();
+        var parts = sessionIds.Count == 0 ? new List<Payment>()
+            : await _db.Payments.AsNoTracking().Where(p => sessionIds.Contains(p.TableSessionId)).ToListAsync(ct);
+        var payments = MoneyTaken.ByMethod(invoices, parts)
+            .GroupBy(t => t.Method)
+            .Select(g => new PayBreakdownDto(g.Key, g.Select(t => t.InvoiceId).Distinct().Count(), g.Sum(t => t.Amount)))
             .OrderByDescending(p => p.Amount).ToList();
 
+        // The delivery charge is on the bill, but it isn't a dish.
         var topItems = invoices.SelectMany(i => i.Lines)
+            .Where(l => l.ItemCode != InvoiceLine.DeliveryCode)
             .GroupBy(l => l.Name)
             .Select(g => new TopItemDto(g.Key, g.Sum(l => l.Qty), g.Sum(l => l.LineTotal)))
             .OrderByDescending(t => t.Revenue).Take(6).ToList();

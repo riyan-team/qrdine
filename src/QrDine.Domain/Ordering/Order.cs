@@ -29,6 +29,8 @@ public class Order : AggregateRoot, ITenantOwned
     public string? WaiterName { get; private set; }
     public string? CustomerNote { get; private set; }
     public string? CancelReason { get; private set; }
+    public string? CancelledBy { get; private set; }      // the staff username, or null when the guest cancelled
+    public DateTime? CancelledAt { get; private set; }
 
     private readonly List<OrderItem> _items = new();
     public IReadOnlyList<OrderItem> Items => _items.AsReadOnly();
@@ -144,11 +146,13 @@ public class Order : AggregateRoot, ITenantOwned
         Raise(new OrderPaid(Id, DateTime.UtcNow));
     }
 
-    public void Cancel(string reason)
+    public void Cancel(string reason, string? by = null)
     {
         if (Status is OrderStatus.Served or OrderStatus.Paid or OrderStatus.Cancelled)
             throw new DomainException("A served or paid order cannot be cancelled.");
         CancelReason = reason;
+        CancelledBy = string.IsNullOrWhiteSpace(by) ? null : by;
+        CancelledAt = DateTime.UtcNow;
         Status = OrderStatus.Cancelled;
         Raise(new OrderCancelled(Id, reason, DateTime.UtcNow));
     }

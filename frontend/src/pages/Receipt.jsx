@@ -11,8 +11,10 @@ export default function Receipt({ bill, invoice }) {
   const isInvoice = !!invoice
   // Tax label: the snapshot on a settled invoice, or the current name on a preview.
   const taxLabel = d.taxLabel || d.taxName || 'Tax'
-  // Show cash received + change for cash payments (or whenever change was given).
-  const showCash = (d.amountTendered > 0) && (d.changeGiven > 0 || /cash/i.test(d.paymentMethod || ''))
+  // Show what was received + change for cash payments, or whenever change was given. A bill paid in
+  // parts (Split …) received more than cash alone, so it says "Received", not "Cash received".
+  const split = /^split/i.test(d.paymentMethod || '')
+  const showCash = (d.amountTendered > 0) && (d.changeGiven > 0 || (d.paymentMethod || '').toLowerCase() === 'cash')
 
   return (
     <div className="receipt">
@@ -66,10 +68,12 @@ export default function Receipt({ bill, invoice }) {
           <div className="r-line"><span>Service {d.serviceChargePercent}%</span><span>{money(d.serviceChargeAmount)}</span></div>}
         {d.taxAmount > 0 &&
           <div className="r-line"><span>{taxLabel}{d.taxPercent > 0 ? ` ${d.taxPercent}%` : ''}</span><span>{money(d.taxAmount)}</span></div>}
+        {d.furtherTaxAmount > 0 &&
+          <div className="r-line"><span>Further tax</span><span>{money(d.furtherTaxAmount)}</span></div>}
         <div className="r-line r-grand"><span>Total</span><span>{money(d.total)}</span></div>
         {isInvoice && <div className="r-line r-pay"><span>Paid via</span><span>{d.paymentMethod}</span></div>}
         {isInvoice && showCash && <>
-          <div className="r-line r-pay"><span>Cash received</span><span>{money(d.amountTendered)}</span></div>
+          <div className="r-line r-pay"><span>{split ? 'Received' : 'Cash received'}</span><span>{money(d.amountTendered)}</span></div>
           <div className="r-line r-pay"><span>Change</span><span>{money(d.changeGiven)}</span></div>
         </>}
       </div>

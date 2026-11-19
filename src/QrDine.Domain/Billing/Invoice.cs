@@ -110,26 +110,33 @@ public class Invoice : Entity, ITenantOwned
     /// TotalAmount and returns the invoice totals. Calculation order (per spec):
     /// Items → Subtotal → Discount → Tax/GST → Grand Total. Tax is charged on the
     /// discounted (net) line value, so a discount reduces both the base and the tax.
-    /// The service charge is added at invoice level on the net subtotal and is untaxed.
+    /// The discount comes off the food only: the delivery charge is untaxed and is never discounted,
+    /// so it can't soak up part of a discount that should have lowered the tax.
+    /// The service charge is added at invoice level on the subtotal before discount, and is untaxed.
     /// </summary>
     public static BillMath Price(IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount)
     {
         foreach (var l in lines) l.SaleValue = Round(l.UnitPrice * l.Qty);
 
         var subtotal = Round(lines.Sum(l => l.SaleValue));
+        var food = lines.Where(l => !l.IsDelivery).ToList();
+        var foodSubtotal = Round(food.Sum(l => l.SaleValue));
         if (discount < 0) discount = 0;
-        if (discount > subtotal) discount = subtotal;
+        if (discount > foodSubtotal) discount = foodSubtotal;
 
+        // Distribute the bill discount across the food lines proportionally by sale value. The biggest
+        // food line absorbs the rounding remainder, so the parts sum exactly and no line goes below zero.
+        var biggest = foodSubtotal > 0 ? food.MaxBy(l => l.SaleValue) : null;
         decimal allocated = 0;
-        for (int i = 0; i < lines.Count; i++)
+        foreach (var l in lines)
         {
-            var l = lines[i];
-            // Distribute the bill discount across lines proportionally by sale value;
-            // the last line absorbs the rounding remainder so the parts sum exactly.
-            if (subtotal <= 0) l.DiscountAmount = 0;
-            else if (i == lines.Count - 1) l.DiscountAmount = Round(discount - allocated);
-            else { l.DiscountAmount = Round(discount * (l.SaleValue / subtotal)); allocated += l.DiscountAmount; }
+            l.DiscountAmount = l.IsDelivery || biggest is null || ReferenceEquals(l, biggest) ? 0 : Round(discount * (l.SaleValue / foodSubtotal));
+            allocated += l.DiscountAmount;
+        }
+        if (biggest is not null) biggest.DiscountAmount = Round(discount - allocated);
 
+        foreach (var l in lines)
+        {
             // Tax is charged on the net (post-discount) value of the line.
             var net = l.SaleValue - l.DiscountAmount;
             l.TaxAmount = Round(net * l.TaxRate / 100m);
@@ -144,16 +151,30 @@ public class Invoice : Entity, ITenantOwned
         return new BillMath(subtotal, tax, furtherTax, service, Round(discount), total);
     }
 
+    /// <summary>
+    /// The rate to print next to the tax: the tax over the net value of the lines that were taxed, so the
+    /// receipt shows the real GST rate (e.g. 16%) and not one watered down by a delivery charge or a tax-free
+    /// item. Lines must be priced first. Mixed rates give their weighted average.
+    /// </summary>
+    public static decimal DisplayTaxRate(IReadOnlyList<InvoiceLine> lines)
+    {
+        var taxedBase = lines.Where(l => l.TaxRate > 0).Sum(l => l.SaleValue - l.DiscountAmount);
+        return taxedBase > 0 ? Round(lines.Sum(l => l.TaxAmount) / taxedBase * 100m) : 0;
+    }
+
     /// <summary>Build a settled invoice from priced lines (see <see cref="Price"/>).</summary>
+    /// <param name="alreadyPaid">Parts of the bill paid before this one. The money handed over now is
+    /// for what is left, so the change is worked out against that, not against the whole bill.</param>
     public static Invoice Create(int restaurantId, int sessionId, string tableCode, string tableName,
         IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount,
         string method, int number, string usin,
-        decimal amountTendered = 0, string taxLabel = "")
+        decimal amountTendered = 0, string taxLabel = "", decimal alreadyPaid = 0)
     {
         var m = Price(lines, serviceChargePercent, discount);
+        var due = Math.Max(0, Round(m.Total - Math.Max(0, alreadyPaid)));
         // Change is only meaningful for cash: never negative, and 0 when the exact
         // amount (or no explicit tender) was recorded.
-        var change = amountTendered > m.Total ? Round(amountTendered - m.Total) : 0;
+        var change = amountTendered > due ? Round(amountTendered - due) : 0;
         return new Invoice
         {
             RestaurantId = restaurantId,
@@ -166,14 +187,13 @@ public class Invoice : Entity, ITenantOwned
             Subtotal = m.Subtotal,
             ServiceChargePercent = serviceChargePercent,
             ServiceChargeAmount = m.ServiceChargeAmount,
-            // Display rate is tax over the net (post-discount) base it was charged on,
-            // so the receipt shows the real GST rate (e.g. 10%), not a discount-blended one.
-            TaxPercent = (m.Subtotal - m.DiscountAmount) > 0 ? Round(m.TaxAmount / (m.Subtotal - m.DiscountAmount) * 100m) : 0,
+            TaxPercent = DisplayTaxRate(lines),
             TaxAmount = m.TaxAmount,
             FurtherTaxAmount = m.FurtherTaxAmount,
             DiscountAmount = m.DiscountAmount,
             Total = m.Total,
-            AmountTendered = amountTendered > 0 ? Round(amountTendered) : Round(m.Total),
+            // Everything received for this bill, earlier parts included, so received minus change is always the total.
+            AmountTendered = Round(Math.Max(0, alreadyPaid) + (amountTendered > 0 ? amountTendered : due)),
             ChangeGiven = change,
             TaxLabel = taxLabel,
             PaymentMethod = string.IsNullOrWhiteSpace(method) ? "Cash" : method,
@@ -231,4 +251,6 @@ public class InvoiceLine : Entity
     public decimal TotalAmount { get; set; }
 
     public decimal LineTotal => UnitPrice * Qty;    // tax-exclusive line subtotal (display)
+
+    public bool IsDelivery => ItemCode == DeliveryCode;
 }

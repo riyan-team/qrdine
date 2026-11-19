@@ -34,6 +34,10 @@ public static class FloorEndpoints
             .RequireAuthorization(Policies.StaffAny);
         root.MapPut("/tickets/{code}", async (string code, TicketUpdate body, TicketService svc) => Results.Ok(await svc.Update(code, body)))
             .RequireAuthorization(Policies.CanCreateOrders);
+        // What each open table and ticket comes to with tax, service, discount and delivery: the floor and the
+        // rider's "collect" amount show this rather than the food alone.
+        root.MapGet("/floor/bill-totals", async (BillingService billing) => Results.Ok(await billing.OpenBillTotals()))
+            .RequireAuthorization(Policies.StaffAny);
         // A guest's own takeaway/delivery from the restaurant's order QR (no table). Public, so it is rate-limited
         // tightly; the order still waits for reception to approve it, and the pass it returns is for this ticket only.
         root.MapPost("/tickets/guest", async (GuestTicketRequest body, TicketService svc, ITokenService tokens, ICurrentTenant tenant) =>

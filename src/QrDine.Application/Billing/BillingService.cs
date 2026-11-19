@@ -77,10 +77,9 @@ public class BillingService
             .Select(g =>
             {
                 menu.TryGetValue(g.Key.MenuItemId, out var mi);
-                // Tax OFF → no tax at all. Tax ON → the item's own rate if it has one,
-                // otherwise the restaurant's default GST rate applies to the item.
-                var itemRate = mi?.TaxRate ?? 0;
-                var taxRate = !r.TaxEnabled ? 0 : (itemRate > 0 ? itemRate : defaultRate);
+                // Tax OFF → no tax at all. Tax ON → the item's own rate if it has one (0 means the item is
+                // tax-free), otherwise (blank) the restaurant's default GST rate applies to the item.
+                var taxRate = !r.TaxEnabled ? 0 : (mi?.TaxRate is decimal own ? own : defaultRate);
                 return new InvoiceLine
                 {
                     ItemCode = g.Key.MenuItemId.ToString(),
@@ -140,20 +139,69 @@ public class BillingService
         var rateMethod = paid > 0 ? null : method;
 
         var lines = await BuildLines(orders, r, session, rateMethod, ct);
-        var subtotal = lines.Sum(l => l.UnitPrice * l.Qty);
         // The cashier can override the discount on screen; otherwise use the settings default.
-        var discount = discountOverride is decimal d ? Math.Clamp(d, 0, subtotal) : SettingsDiscount(r, FoodSubtotal(lines));
+        // A discount comes off the food only, never the delivery charge.
+        var discount = discountOverride is decimal d ? Math.Clamp(d, 0, FoodSubtotal(lines)) : SettingsDiscount(r, FoodSubtotal(lines));
         var service = ServicePercent(r, session);
         var m = Invoice.Price(lines, service, discount);
+        var shownRate = m.TaxAmount > 0 ? Invoice.DisplayTaxRate(lines) : DefaultTaxRate(r, rateMethod);
+
+        // Parts are always booked at the standard rate, so a split is worked out on that total.
+        var splitTotal = m.Total;
+        if (rateMethod is not null && DefaultTaxRate(r, rateMethod) != DefaultTaxRate(r, null))
+        {
+            var standard = await BuildLines(orders, r, session, null, ct);
+            splitTotal = Invoice.Price(standard, service, discount).Total;
+        }
 
         return new BillDto(r.Name, r.Currency, tableCode, table?.Name ?? tableCode,
             lines.Select(l => new BillLineDto(l.Name, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
-            m.Subtotal, service, m.ServiceChargeAmount, DefaultTaxRate(r, rateMethod), m.TaxAmount, m.Total, orders.Count > 0,
+            m.Subtotal, service, m.ServiceChargeAmount, shownRate, m.TaxAmount, m.Total, orders.Count > 0,
             paid, Math.Max(0, m.Total - paid),
             r.TaxEnabled, r.TaxName, r.DiscountEnabled, m.DiscountAmount, r.ReceiptEnabled,
             r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter,
             (session?.Channel ?? OrderChannel.Dine).ToString(), session?.CustomerName ?? "", session?.CustomerPhone ?? "",
-            session?.DeliveryAddress ?? "", session?.RiderName ?? "");
+            session?.DeliveryAddress ?? "", session?.RiderName ?? "",
+            m.FurtherTaxAmount, Math.Max(0, splitTotal - paid));
+    }
+
+    /// <summary>
+    /// Refuses a bill that is now worth less than what was already paid on it (the discount was raised after
+    /// a part came in). Taking it would count money in the drawer that the bill never charged.
+    /// </summary>
+    private static void RefuseOverpaid(decimal paid, decimal total)
+    {
+        if (paid > total + 0.01m)
+            throw new DomainException($"Rs {paid:N2} is already paid, which is more than this bill now comes to (Rs {total:N2}). Lower the discount.");
+    }
+
+    /// <summary>
+    /// What every open table, parcel and delivery comes to right now, priced exactly as its bill opens (the
+    /// standard rate and the owner's standing discount, with tax, service and the delivery charge), and what is
+    /// still left after any parts paid. The floor tiles and the rider's "collect" amount use this, so they never
+    /// show the food alone.
+    /// </summary>
+    public async Task<Dictionary<string, OpenBillTotal>> OpenBillTotals(CancellationToken ct = default)
+    {
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        var sessions = await _db.Sessions.AsNoTracking().Where(s => s.IsOpen).ToListAsync(ct);
+        var ids = sessions.Select(s => s.Id).ToList();
+        var orders = ids.Count == 0 ? new List<Order>() : await _db.Orders.AsNoTracking().Include(o => o.Items).ThenInclude(i => i.Modifiers)
+            .Where(o => ids.Contains(o.TableSessionId) && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .ToListAsync(ct);
+        var paid = ids.Count == 0 ? new List<Payment>() : await _db.Payments.AsNoTracking().Where(p => ids.Contains(p.TableSessionId)).ToListAsync(ct);
+
+        var totals = new Dictionary<string, OpenBillTotal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in sessions)
+        {
+            var mine = orders.Where(o => o.TableSessionId == s.Id).ToList();
+            if (mine.Count == 0) continue;
+            var lines = await BuildLines(mine, r, s, null, ct);
+            var total = Invoice.Price(lines, ServicePercent(r, s), SettingsDiscount(r, FoodSubtotal(lines))).Total;
+            var p = paid.Where(x => x.TableSessionId == s.Id).Sum(x => x.Amount);
+            totals[s.TableCode] = new OpenBillTotal(total, Math.Max(0, total - p));
+        }
+        return totals;
     }
 
     /// <summary>The discount to pre-apply from the restaurant's settings (0 when off).</summary>
@@ -179,9 +227,14 @@ public class BillingService
         if (string.Equals(req.Method, KhataMethod, StringComparison.OrdinalIgnoreCase))
             khata = await KhataCustomer(req.CustomerId, Invoice.Price(lines, ServicePercent(r, session), discount).Total - paid, ct);
 
+        var total = Invoice.Price(lines, ServicePercent(r, session), discount).Total;
+        RefuseOverpaid(paid, total);
+        if (req.ExpectedTotal is decimal seen && Math.Abs(seen - (total - paid)) > 0.01m)
+            throw new DomainException($"This bill changed while it was open. It is now Rs {total - paid:N2}. Check it and settle again.");
+
         var method = khata is null ? req.Method : KhataMethod;
         if (khata is null && paid > 0)
-            method = await RecordLastPart(session, paid, Invoice.Price(lines, ServicePercent(r, session), discount).Total, req.Method, ct);
+            method = await RecordLastPart(session, paid, total, req.Method, ct);
 
         // The applied discount is what the cashier confirmed on screen (pre-filled from
         // settings, but editable) — negative/oversized values are clamped in Price().
@@ -238,16 +291,23 @@ public class BillingService
         var total = Invoice.Price(lines, ServicePercent(r, session), discount).Total;
 
         var paidSoFar = (await _db.Payments.Where(p => p.TableSessionId == session.Id).Select(p => p.Amount).ToListAsync(ct)).Sum();
-        _db.Payments.Add(new Payment { BranchId = session.BranchId, TableSessionId = session.Id, Amount = req.Amount, Method = req.Method });
+        RefuseOverpaid(paidSoFar, total);
+        var left = Math.Round(total - paidSoFar, 2, MidpointRounding.AwayFromZero);
+        // A part can't be more than what is left: the extra would count as money in the drawer that no bill
+        // charged. Cash with change goes through Settle, which works the change out.
+        if (req.Amount > left + 0.01m)
+            throw new DomainException($"Only Rs {left:N2} is left to pay on this bill. To take more cash and give change, use Settle.");
+        var amount = Math.Min(req.Amount, left);
+        _db.Payments.Add(new Payment { BranchId = session.BranchId, TableSessionId = session.Id, Amount = amount, Method = req.Method });
         await _db.SaveChangesAsync(ct);
 
-        var paid = paidSoFar + req.Amount;
+        var paid = paidSoFar + amount;
         if (paid + 0.01m >= total)
         {
             // Fully covered — settle. Method reflects all the split methods used.
             var methods = await _db.Payments.Where(p => p.TableSessionId == session.Id).Select(p => p.Method).ToListAsync(ct);
             var method = methods.Distinct().Count() > 1 ? "Split (" + string.Join("+", methods.Distinct()) + ")" : methods.FirstOrDefault() ?? req.Method;
-            var invoice = await Finalize(r, session, orders, tableCode, lines, discount, method, paid, operatorUsername, ct);
+            var invoice = await Finalize(r, session, orders, tableCode, lines, discount, method, 0, operatorUsername, ct, alreadyPaid: paid);
             return new PayPartResult(true, paid, 0, invoice);
         }
         return new PayPartResult(false, paid, total - paid, null);
@@ -269,7 +329,7 @@ public class BillingService
         decimal amountTendered, string? operatorUsername, CancellationToken ct, Customer? khata = null, decimal alreadyPaid = 0)
     {
         var invoice = Invoice.Create(TenantId, session.Id, tableCode, session.TableName,
-            lines, ServicePercent(r, session), discount, method, 0, "", amountTendered, TaxLabelFor(r));
+            lines, ServicePercent(r, session), discount, method, 0, "", amountTendered, TaxLabelFor(r), alreadyPaid);
         invoice.BranchId = session.BranchId;
         invoice.CreatedByUsername = operatorUsername ?? "";
         invoice.Channel = session.Channel;

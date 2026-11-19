@@ -15,13 +15,21 @@ public record BillDto(
     bool TaxEnabled, string TaxName, bool DiscountEnabled, decimal DiscountAmount,
     bool ReceiptEnabled,
     string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
-    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "");
+    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "",
+    // FurtherTaxAmount is in Total and is printed as its own line. SplitRemaining is what is left at the standard
+    // rate: parts are always booked at it, so the split screen divides this, not a card-rate Remaining.
+    decimal FurtherTaxAmount = 0, decimal SplitRemaining = 0);
 
 // Discount is the applied Rs amount the cashier confirmed (pre-filled from settings);
 // AmountTendered is the cash received (used to compute & store the change).
-public record SettleRequest(string Method, decimal Discount, decimal AmountTendered = 0, int? CustomerId = null);
+// ExpectedTotal is the amount still due that the cashier saw; if the bill changed since (a new order came in),
+// settling is refused so nobody takes money against an old total.
+public record SettleRequest(string Method, decimal Discount, decimal AmountTendered = 0, int? CustomerId = null, decimal? ExpectedTotal = null);
 public record PayPartRequest(decimal Amount, string Method, decimal? Discount = null);
 public record PayPartResult(bool Settled, decimal Paid, decimal Remaining, InvoiceDto? Invoice);
+
+/// <summary>An open bill's total now, and what is still to pay on it after any parts.</summary>
+public record OpenBillTotal(decimal Total, decimal Remaining);
 
 // ---- Reception dashboard ----
 /// <summary>An open (unsettled) table with its running total, shown as a pending bill.</summary>
@@ -56,7 +64,8 @@ public record InvoiceDto(
     string FiscalProvider, string FiscalStatus, string? FiscalNumber, string? FiscalQrPayload,
     string? FiscalError, bool ReceiptEnabled = true,
     string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
-    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "")
+    string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "",
+    decimal FurtherTaxAmount = 0)
 {
     public static InvoiceDto From(Invoice inv, string restaurantName, string currency,
         string logoUrl = "", string receiptHeader = "", string receiptFooter = "",
@@ -69,5 +78,5 @@ public record InvoiceDto(
         inv.AmountTendered, inv.ChangeGiven, inv.TaxLabel,
         inv.FiscalProvider, inv.FiscalStatus.ToString(), inv.FiscalNumber, inv.FiscalQrPayload,
         inv.FiscalError, receiptEnabled, logoUrl, receiptHeader, receiptFooter,
-        inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName);
+        inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName, inv.FurtherTaxAmount);
 }

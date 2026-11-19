@@ -32,7 +32,7 @@ public static class StaffEndpoints
             .RequireAuthorization(Policies.CanServe);
         g.MapPost("/orders/{id:int}/serve", async (int id, OrderService svc) => Results.Ok(await svc.Serve(id)))
             .RequireAuthorization(Policies.CanServe);
-        g.MapPost("/orders/{id:int}/pay", async (int id, OrderService svc) => Results.Ok(await svc.Pay(id)))
-            .RequireAuthorization(Policies.CanPay);
+        // There is no "mark one order paid" route: money is only taken through a table's bill (settle or
+        // pay-part), so every sale has an invoice and reaches the reports.
     }
 }

@@ -22,8 +22,10 @@ function useDebounced(value, ms = 350) {
   return v
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
-const agoIso = (days) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+// Pakistan days, like every other screen: just after midnight here is still yesterday in UTC.
+const PKT_MS = 5 * 3600 * 1000
+const todayIso = () => new Date(Date.now() + PKT_MS).toISOString().slice(0, 10)
+const agoIso = (days) => new Date(Date.now() + PKT_MS - days * 86400000).toISOString().slice(0, 10)
 
 // Shared order-history table for Kitchen / Waiter / Reception dashboards.
 // Filters by status, date range and a search term (table or waiter), with paging.

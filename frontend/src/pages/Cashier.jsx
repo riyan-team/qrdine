@@ -74,8 +74,15 @@ export default function Cashier() {
 
   // Parcel and delivery details live on the ticket, so re-read them whenever the list of running bills changes.
   const openCodes = useMemo(() => [...new Set(orders.map((o) => o.tableCode))].sort().join(), [orders])
-  const loadTickets = () => api.tickets().then(setTickets).catch(() => {})
+  const loadTickets = () => { api.tickets().then(setTickets).catch(() => {}); loadTotals() }
   useEffect(() => loadUntilOk(() => api.tickets(), setTickets), [openCodes])
+
+  // What each running bill comes to with tax, service, discount and delivery, worked out by the server the same
+  // way the bill is, so a tile never shows the food alone. Re-read whenever an order is added, changes or goes.
+  const [billTotals, setBillTotals] = useState({})
+  const loadTotals = () => api.billTotals().then(setBillTotals).catch(() => {})
+  const orderSig = useMemo(() => orders.map((o) => `${o.id}:${o.status}:${o.total}`).join(), [orders])
+  useEffect(() => { if (orders !== NOT_LOADED) loadTotals() }, [orderSig])
   useEffect(() => loadUntilOk(() => api.receptionDashboard('', 1, 1), setSum), [orders.length, billFor])
 
   const incoming = orders.filter((o) => o.status === 'Placed')
@@ -98,6 +105,7 @@ export default function Cashier() {
   const parcels = running.filter((g) => g.channel === 'Takeaway')
   const deliveries = running.filter((g) => g.channel === 'Delivery')
   const ticketFor = (code) => tickets.find((t) => t.tableCode === code)
+  const billOf = (g) => billTotals[g.code]?.total ?? g.total + (ticketFor(g.code)?.deliveryCharge || 0)
   const sheetGroup = sheetFor ? byTable.get(sheetFor) : null
 
   // If the last order on an open sheet was settled or cancelled elsewhere, the sheet closes itself.
@@ -164,7 +172,7 @@ export default function Cashier() {
               <button key={t.code} style={{ animationDelay: `${Math.min(i, 16) * 22}ms` }} className={`fl-tile is-${g.state.key}`} onClick={() => setSheetFor(t.code)}>
                 <b>{t.name}</b>
                 <small>{g.state.label} · {ago(g.since)}</small>
-                <span className="fl-amt">{money(g.total)}</span>
+                <span className="fl-amt">{money(billOf(g))}</span>
               </button>
             ) : (
               <button key={t.code} style={{ animationDelay: `${Math.min(i, 16) * 22}ms` }} className="fl-tile is-free" disabled={!canTake}
@@ -177,14 +185,15 @@ export default function Cashier() {
           {tablesLoaded && tables.length === 0 && <div className="bo-small">No tables yet. Add them in Settings.</div>}
         </div>
 
-        <TicketRow title="Parcels" empty="No parcels waiting." list={parcels} loaded={orders !== NOT_LOADED} Icon={BagIcon} ticketFor={ticketFor} onOpen={setSheetFor}
+        <TicketRow title="Parcels" empty="No parcels waiting." list={parcels} loaded={orders !== NOT_LOADED} Icon={BagIcon} ticketFor={ticketFor} billOf={billOf} onOpen={setSheetFor}
           onNew={canTake ? () => setTaking({ channel: 'Takeaway' }) : null} />
-        <TicketRow title="Deliveries" empty="No deliveries running." list={deliveries} loaded={orders !== NOT_LOADED} Icon={TruckIcon} ticketFor={ticketFor} onOpen={setSheetFor}
+        <TicketRow title="Deliveries" empty="No deliveries running." list={deliveries} loaded={orders !== NOT_LOADED} Icon={TruckIcon} ticketFor={ticketFor} billOf={billOf} onOpen={setSheetFor}
           onNew={canTake ? () => setTaking({ channel: 'Delivery' }) : null} />
       </>}
 
       {sheetGroup && (
         <TableSheet group={sheetGroup} ticket={ticketFor(sheetGroup.code)} tables={tables} byTable={byTable}
+          bill={billTotals[sheetGroup.code]}
           onClose={() => setSheetFor(null)}
           onBill={() => { setSheetFor(null); setBillFor(sheetGroup.code) }}
           onAdd={() => { setSheetFor(null); setTaking({ channel: sheetGroup.channel, table: { code: sheetGroup.code, name: sheetGroup.name }, adding: true }) }}
@@ -198,7 +207,7 @@ export default function Cashier() {
   )
 }
 
-function TicketRow({ title, empty, list, loaded, Icon, ticketFor, onOpen, onNew }) {
+function TicketRow({ title, empty, list, loaded, Icon, ticketFor, billOf, onOpen, onNew }) {
   return (
     <>
       <div className="fl-section" style={{ justifyContent: 'space-between' }}>
@@ -214,7 +223,7 @@ function TicketRow({ title, empty, list, loaded, Icon, ticketFor, onOpen, onNew 
               <b><Icon size={15} /> {g.name}</b>
               <span className="fl-ticket-who">{t?.customerName || t?.customerPhone || 'Walk-in'}</span>
               <small>{statusLabel(g.orders[g.orders.length - 1])} · {ago(g.since)}</small>
-              <span className="fl-amt">{money(g.total + (t?.deliveryCharge || 0))}</span>
+              <span className="fl-amt">{money(billOf(g))}</span>
             </button>
           )
         })}
@@ -224,7 +233,7 @@ function TicketRow({ title, empty, list, loaded, Icon, ticketFor, onOpen, onNew 
 }
 
 // Everything about one table or ticket in one place: what's on it, where each order has got to, and what to do next.
-function TableSheet({ group, ticket, tables, byTable, onClose, onBill, onAdd, onSlip, onTicketChanged }) {
+function TableSheet({ group, ticket, bill, tables, byTable, onClose, onBill, onAdd, onSlip, onTicketChanged }) {
   const isTicket = group.channel !== 'Dine'
   const [voiding, setVoiding] = useState(null)   // { order, item }
   const [moving, setMoving] = useState(false)
@@ -252,7 +261,7 @@ function TableSheet({ group, ticket, tables, byTable, onClose, onBill, onAdd, on
     } catch (e) { toast.error(friendlyError(e)) }
   }
 
-  const total = group.total + (ticket?.deliveryCharge || 0)
+  const total = bill?.remaining ?? group.total + (ticket?.deliveryCharge || 0)
   return (
     <>
     <Modal wide title={group.name} sub={minutesSince(group.since) < 1 ? 'Just started' : `Running for ${ago(group.since)}`} onClose={onClose} footer={<>
@@ -528,12 +537,13 @@ function NewOrder({ init, tables, byTable, onClose }) {
               </span>
               <span className="no-step" style={{ flex: 'none' }}>
                 <button onClick={() => cart.changeQty(x.sig, -1)} aria-label="One less">−</button><b>{x.qty}</b>
-                <button onClick={() => cart.changeQty(x.sig, 1)} aria-label="One more">+</button>
+                <button onClick={() => cart.changeQty(x.sig, 1)} aria-label="One more" disabled={x.qty >= 50} title={x.qty >= 50 ? 'At most 50 at a time' : undefined}>+</button>
               </span>
             </div>
           ))}
-          {cart.count > 0 && <input style={{ width: '100%', marginTop: 8 }} placeholder="Note for the kitchen" value={note} onChange={(e) => setNote(e.target.value)} />}
-          <div className="no-sum"><span>Total</span><b>{money(cart.total + (channel === 'Delivery' ? Number(who.charge) || 0 : 0))}</b></div>
+          {cart.count > 0 && <input style={{ width: '100%', marginTop: 8 }} maxLength={200} aria-label="Note for the kitchen (optional)" placeholder="Note for the kitchen (optional)" value={note} onChange={(e) => setNote(e.target.value)} />}
+          <div className="no-sum"><span>Subtotal</span><b>{money(cart.total + (channel === 'Delivery' ? Number(who.charge) || 0 : 0))}</b></div>
+          {cart.count > 0 && <div className="bo-small" style={{ marginTop: -4, marginBottom: 8 }}>Tax, service and any discount are added on the bill.</div>}
           {err && <div className="form-error">{err}</div>}
           {hint && <div className="bo-small" style={{ marginBottom: 8 }}>{hint}</div>}
           <button className="primary" style={{ width: '100%' }} disabled={blocked} onClick={place}>{busy ? 'Sending…' : 'Send to kitchen'}</button>
@@ -565,7 +575,7 @@ function Slip({ o, kind, brk }) {
         </div>
       ))}
       {o.customerNote && <div style={{ fontSize: 12, marginTop: 6 }}>Note: {o.customerNote}</div>}
-      {!isKitchen && <div className="r-tot r-line r-grand"><span>Total</span><span>{money(o.total)}</span></div>}
+      {!isKitchen && <div className="r-tot r-line r-grand"><span>Items total</span><span>{money(o.total)}</span></div>}
       <div className="r-foot">{o.waiterName ? `Waiter: ${o.waiterName} · ` : ''}{statusLabel(o)}{isKitchen && o.etaMinutes ? ` · ETA ${o.etaMinutes} min` : ''}</div>
       {!isKitchen && <div className="r-brand">Powered by Dine In · 0309 8480389</div>}
     </div>
@@ -630,14 +640,17 @@ function BillModal({ code, onClose }) {
   }).catch((e) => setErr(friendlyError(e)))
   useEffect(() => { load(null) }, [code])
 
-  const currentDiscount = () => (discount === '' ? null : Number(discount) || 0)
+  // The box is filled with the owner's standing discount when the bill opens, so from then on it always says
+  // what applies: blank means no discount, exactly as the preview shows, for a split part as much as for Settle.
+  const currentDiscount = () => (bill ? Math.max(0, Number(discount) || 0) : null)
 
   const onDiscount = (v) => {
     setDiscount(v)
     clearTimeout(timer.current)
-    timer.current = setTimeout(() => load(v === '' ? 0 : Number(v) || 0), 300)
+    timer.current = setTimeout(() => load(Math.max(0, Number(v) || 0)), 300)
   }
-  const onMethod = (m) => { setMethod(m); setErr(''); load(currentDiscount(), m) }
+  // Cash typed for one way of paying never carries over to another: a card bill must not print "Cash received".
+  const onMethod = (m) => { setMethod(m); setErr(''); setTendered(''); load(currentDiscount(), m) }
 
   const foodTotal = (bill?.lines || []).filter((l) => l.name !== 'Delivery charge').reduce((s, l) => s + l.unitPrice * l.qty, 0)
   const applyPercent = (pct) => onDiscount(String(Math.round((foodTotal * pct) / 100)))
@@ -647,10 +660,12 @@ function BillModal({ code, onClose }) {
   const settle = async () => {
     setBusy(true); setErr('')
     try {
-      const inv = await api.settle(code, method, Number(discount) || 0, Number(tendered) || 0, customer?.id ?? null)
+      // The amount still due that is on screen goes along: if an order landed since, the server refuses and the
+      // bill reloads, so nobody takes money against an old total.
+      const inv = await api.settle(code, method, currentDiscount() ?? 0, Number(tendered) || 0, customer?.id ?? null, bill?.remaining ?? null)
       setInvoice(inv)
       printIfWanted(inv)
-    } catch (e) { setErr(friendlyError(e)) }
+    } catch (e) { setErr(friendlyError(e)); load(currentDiscount()) }
     setBusy(false)
   }
 
@@ -668,7 +683,17 @@ function BillModal({ code, onClose }) {
   }
 
   const remaining = bill?.remaining ?? 0
-  const share = ways > 0 ? Math.ceil((remaining / ways) * 100) / 100 : 0
+  // Parts are booked at the standard tax rate, so a split divides what is left at that rate.
+  const splitLeft = bill?.splitRemaining ?? remaining
+  const share = ways > 0 ? Math.ceil((splitLeft / ways) * 100) / 100 : 0
+  const customAmount = Number(amount) || 0
+  const customTooBig = customAmount > splitLeft + 0.01
+  // A discount can only come off the food (never the delivery charge), and never below zero.
+  const discountNum = Number(discount) || 0
+  const discountNote = discount !== '' && discountNum < 0 ? 'A discount can\'t be below zero.'
+    : discountNum > foodTotal + 0.01 ? `A discount can't be more than the food, ${money(foodTotal)}. The bill takes ${money(foodTotal)} off.` : ''
+  // Raising the discount after a part was paid can bring the bill below what is already in the drawer.
+  const overpaid = bill && bill.amountPaid > bill.total + 0.01
   const isCash = method === 'Cash'
   const isKhata = method === 'Khata'
   const tenderedNum = Number(tendered) || 0
@@ -710,10 +735,11 @@ function BillModal({ code, onClose }) {
               <div className="bl-row">
                 <span className="bl-label">Discount</span>
                 <div className="bl-disc">
-                  <input type="number" min="0" inputMode="numeric" placeholder="Rs" value={discount} onChange={(e) => onDiscount(e.target.value)} />
+                  <input type="number" min="0" step="any" inputMode="decimal" placeholder="Rs" aria-label="Discount in rupees" value={discount} onChange={(e) => onDiscount(e.target.value)} />
                   {DISCOUNT_STEPS.map((p) => <button key={p} className="bo-chip" onClick={() => applyPercent(p)}>{p}%</button>)}
                   {Number(discount) > 0 && <button className="ghost btn-sm" onClick={() => onDiscount('0')}>Clear</button>}
                 </div>
+                {discountNote && <div className="form-error" style={{ marginTop: 6 }}>{discountNote}</div>}
               </div>
             )}
 
@@ -736,17 +762,20 @@ function BillModal({ code, onClose }) {
                 <summary className="muted">Split the bill</summary>
                 <div className="row" style={{ gap: 8, margin: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span className="muted" style={{ fontSize: 13 }}>People left to pay</span>
-                  <input type="number" min="1" value={ways} onChange={(e) => setWays(Number(e.target.value))} style={{ width: 60 }} />
+                  <input type="number" min="1" max="50" step="1" inputMode="numeric" aria-label="People left to pay" value={ways}
+                    onChange={(e) => setWays(Math.min(50, Math.max(1, Math.floor(Number(e.target.value)) || 1)))} style={{ width: 60 }} />
                   <span className="muted" style={{ fontSize: 13 }}>= {money(share)} each</span>
-                  <button disabled={busy || remaining <= 0} onClick={async () => { if (await pay(share)) setWays((w) => Math.max(1, w - 1)) }}>Take one share</button>
+                  <button disabled={busy || splitLeft <= 0 || overpaid} onClick={async () => { if (await pay(Math.min(share, splitLeft))) setWays((w) => Math.max(1, w - 1)) }}>Take one share</button>
                 </div>
                 <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  <input type="number" placeholder="Custom amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1, minWidth: 120 }} />
-                  <button disabled={busy || !amount || Number(amount) <= 0} onClick={() => pay(amount)}>Take this amount</button>
+                  <input type="number" min="0" step="any" inputMode="decimal" aria-label="Custom amount" placeholder={`Up to ${money(splitLeft)}`} value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1, minWidth: 120 }} />
+                  <button disabled={busy || customAmount <= 0 || customTooBig || overpaid} onClick={() => pay(amount)}>Take this amount</button>
                 </div>
+                {customTooBig && <div className="form-error" style={{ marginTop: 6 }}>Only {money(splitLeft)} is left. To take more cash and give change, use Settle.</div>}
               </details>
             )}
 
+            {overpaid && <div className="form-error" style={{ marginTop: 8 }}>{money(bill.amountPaid)} is already paid, more than this bill now comes to. Lower the discount.</div>}
             {err && <div className="form-error" style={{ marginTop: 8 }}>{err}</div>}
             {/* On a phone this bar stays pinned at the bottom in one short row (the three small buttons show only their
                 icons), so the ways to pay above it stay in view; Settle names the way it will be recorded. */}
@@ -754,7 +783,7 @@ function BillModal({ code, onClose }) {
               <button onClick={onClose} aria-label="Back" title="Back"><ArrowLeftIcon size={15} /><span className="ba-text"> Back</span></button>
               <button onClick={() => window.print()} disabled={!bill} aria-label="Print bill" title="Print bill"><PrintIcon size={15} /><span className="ba-text"> Print bill</span></button>
               {bill && <a href={waLink(bill.customerPhone, shareText(bill))} target="_blank" rel="noreferrer" aria-label="Send on WhatsApp" title="Send on WhatsApp"><button tabIndex={-1}><ChatIcon size={15} /><span className="ba-text"> WhatsApp</span></button></a>}
-              <button className="green" disabled={busy || !bill?.hasOpenOrders || short || khataBlocked} onClick={settle}>
+              <button className="green" disabled={busy || !bill?.hasOpenOrders || short || khataBlocked || overpaid} onClick={settle}>
                 {busy ? 'Settling…' : <><CashIcon size={15} /> {isKhata ? 'Put on khata' : <>{bill?.amountPaid > 0 ? 'Settle the rest' : 'Settle'} <span className="settle-way">· {method}</span></>}</>}
               </button>
             </div>
@@ -791,12 +820,16 @@ function KhataPicker({ customer, onPick, amount, initialPhone, initialName }) {
     timer.current = setTimeout(() => api.findCustomers(text).then(setRows).catch(() => setRows([])), 220)
   }
   useEffect(() => { if (initialPhone) look(initialPhone) }, [])
+  const [saving, setSaving] = useState(false)
   const add = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const phone = /^[+\d\s-]{7,}$/.test(q.trim()) ? q.trim() : ''
       const res = await api.addCustomer({ name: name.trim(), phone, address: '', notes: '', openingBalance: 0, creditLimit: 0 })
       onPick({ id: res.id, name: name.trim(), phone, balance: 0, creditLimit: 0 })
     } catch (e) { toast.error(friendlyError(e)) }
+    setSaving(false)
   }
   if (customer) {
     const after = customer.balance + amount
@@ -818,8 +851,8 @@ function KhataPicker({ customer, onPick, amount, initialPhone, initialName }) {
       )}
       {adding ? (
         <div className="row" style={{ gap: 6, marginTop: 8 }}>
-          <input style={{ flex: 1 }} autoFocus placeholder="Customer's name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="primary" disabled={!name.trim()} onClick={add}>Add</button>
+          <input style={{ flex: 1 }} autoFocus required maxLength={120} aria-label="Customer's name" placeholder="Customer's name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="primary" disabled={!name.trim() || saving} onClick={add}>{saving ? 'Adding…' : 'Add'}</button>
         </div>
       ) : (
         <button className="ghost btn-sm" style={{ marginTop: 6 }} onClick={() => setAdding(true)}><UserIcon size={14} /> New customer</button>
@@ -882,7 +915,7 @@ function ReceptionHistory() {
       </div>
       <div className="pager">
         <button disabled={page <= 1} onClick={() => go(page - 1)}>Previous</button>
-        <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.historyTotal ?? 0} bills</span>
+        <span className="muted">Page {data?.page ?? 1} of {Math.max(1, data?.totalPages ?? 1)} · {data?.historyTotal ?? 0} {data?.historyTotal === 1 ? 'bill' : 'bills'}</span>
         <button disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)} onClick={() => go(page + 1)}>Next</button>
       </div>
 

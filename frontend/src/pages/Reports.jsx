@@ -250,7 +250,7 @@ function blocksFor(section, d) {
       ...(d.branches.length > 1 ? [{ title: 'By branch', file: 'by_branch', columns: rowColumns('Branch', 'Bills'), rows: d.branches, total: rowTotal(d.branches) }] : []),
     ]
     case 'losses': return [
-      { title: 'Cancelled orders', file: 'cancelled', columns: [col('when', 'When'), col('table', 'Table'), col('items', 'Items'), col('source', 'Source'), col('reason', 'Reason'), moneyCol('value', 'Value')], rows: d.cancelled, total: { value: money(sumOf(d.cancelled, 'value')) }, empty: 'Nothing cancelled in this period.' },
+      { title: 'Cancelled orders', file: 'cancelled', columns: [col('when', 'When'), col('table', 'Table'), col('items', 'Items'), col('source', 'Source'), col('reason', 'Reason'), col('by', 'By'), moneyCol('value', 'Value')], rows: d.cancelled, total: { value: money(sumOf(d.cancelled, 'value')) }, empty: 'Nothing cancelled in this period.' },
       { title: 'Items removed from orders', file: 'voids', columns: [col('when', 'When'), col('table', 'Table'), col('item', 'Item'), numCol('qty', 'Qty'), col('reason', 'Reason'), col('by', 'By'), moneyCol('value', 'Value')], rows: d.voids, total: { value: money(sumOf(d.voids, 'value')) }, empty: 'Nothing removed in this period.' },
       { title: 'Discounts given', file: 'discounts', columns: [col('number', 'Bill'), col('when', 'When'), col('table', 'Table'), col('cashier', 'Cashier'), moneyCol('before', 'Before'), moneyCol('discount', 'Discount'), moneyCol('total', 'Paid')], rows: d.discounts, total: { before: money(sumOf(d.discounts, 'before')), discount: money(sumOf(d.discounts, 'discount')), total: money(sumOf(d.discounts, 'total')) }, empty: 'No discounts in this period.' },
     ]
@@ -313,6 +313,7 @@ export default function Reports() {
           </select>
         )}
       </div>
+      {branchId && <div className="bo-small noprint" style={{ margin: '-4px 0 10px' }}>Supplier bills, khata payments and expenses that aren't tied to a branch count under All branches only.</div>}
 
       <nav className="rp-nav noprint" aria-label="Reports">
         {SECTIONS.map((s) => <button key={s.key} className={section === s.key ? 'on' : ''} aria-current={section === s.key ? 'page' : undefined} onClick={() => go(s.key)}>{s.label}</button>)}

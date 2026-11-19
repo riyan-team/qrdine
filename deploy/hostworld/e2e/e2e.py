@@ -460,7 +460,8 @@ def payroll():
     rows = rows if isinstance(rows, list) else rows.get('rows', [])
     row = next(x for x in rows if x['id'] == em)
     same('advance counted', row['advances'], 5000)
-    same('due: 30000 + 1000 - 5000', row['due'], 26000)
+    # A bonus is paid out when it is recorded (it is an expense), so it is not still due as well.
+    same('due: 30000 - 5000 (the bonus is already paid)', row['due'], 25000)
     same('attendance kept one mark', [row['present'], row['absent']], [0, 1])
     step('attendance sheet', 'GET', r(f'/admin/payroll/attendance?month={month}'), token=T())
     same('statement', len(step('statement', 'GET', r(f'/admin/payroll/{em}/entries?month={month}'), token=T())), 2)
@@ -587,14 +588,18 @@ def races():
     expected = before if final == 'Cancelled' else before - 1
     same(f'stock matches final status ({final})', stock_qty(sid), expected)
 
-    # Two parts paid in the same instant can't pay more than the bill.
+    # Parts paid in the same instant can't pay more than the bill: the first is taken, and the others are
+    # bigger than what is then left, so they are refused (cash with change goes through Settle).
     o3 = staff_order('T4', line(A))
     walk(o3['id'])
     res = run_all([(lambda: raw_req('POST', r('/tables/T4/pay-part'), {'amount': 400, 'method': 'Cash', 'discount': None}, T())) for _ in range(3)])
     same('part payments: no server errors', [s for s, _ in res if s >= 500], [])
-    settled = [p for s, p in res if s == 200 and p['settled']]
-    same('parts add up to one bill, then stop', [len([1 for s, _ in res if s == 200]), len(settled), len([1 for s, _ in res if s == 400])], [2, 1, 1])
-    same('that bill is for the full amount', settled[0]['invoice']['total'], 500)
+    same('one part taken, the two bigger than what is left refused', [len([1 for s, _ in res if s == 200]), len([1 for s, _ in res if s == 400])], [1, 2])
+    left = step('T4 bill', 'GET', r('/tables/T4/bill'), token=T())['remaining']
+    same('what is left', left, 100)
+    last = step('the rest', 'POST', r('/tables/T4/pay-part'), {'amount': left, 'method': 'Cash', 'discount': None}, T())
+    same('the parts settle one bill', last['settled'], True)
+    same('that bill is for the full amount', last['invoice']['total'], 500)
     same('table clear after the parts', step('T4 bill', 'GET', r('/tables/T4/bill'), token=T())['hasOpenOrders'], False)
     # Move two tables onto one at the same moment.
     o4 = staff_order('T5', line(B))
