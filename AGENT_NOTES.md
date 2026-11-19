@@ -172,20 +172,27 @@ body or a valid key, and no change lines are written. The switch is read once at
 - **Bill numbers:** once a restaurant runs its counter from a PC, only that PC gives out bill numbers (`BillNumbersFrom`). This isn't switched on yet.
 - If the switch is ever turned off after a device paired, changes made while it was off aren't in the log. Such a device must download a fresh snapshot.
 
-**Deploy checklist** (the migrations only add columns, tables and indexes, plus one data fix-up: item tax 0 becomes blank, see the 2026-11-19 QA entry):
+**Deploy checklist** (the migrations only add columns, tables and indexes, plus small data fix-ups: item tax 0 becomes blank, see the 2026-11-19 QA entry; tax office settings, see the 2026-11-20 03:18 entry). The scripts used for the 2026-11-20 deploys (`run.sh` with its tax stage, `rehearse.sh` + `prodcopy.sh`, `deploy-live.sh`) follow these steps:
 1. **Quiet hour:** pick a time with no restaurant open. After the 03:30 Pakistan full backup works well. Tell the owner first.
 2. **Backup first:** run `qrdine-backup status` and check the last full is good. Then take a dump just before the deploy: `sudo -u postgres /usr/pgsql-18/bin/pg_dump -p 5433 -Fc qrdine > /var/backups/qrdine/pre-sync-$(date +%F-%H%M).dump`.
-3. **Keep the running build:** `cp -a /opt/qrdine/app /opt/qrdine/app.prev-b264329`.
+3. **Keep the running build:** `cp -a /opt/qrdine/app /opt/qrdine/app.prev-$(cat /opt/qrdine/app/DEPLOYED_COMMIT | cut -c1-7)` (now `app.prev-18c989e`).
 4. **Deploy** with the README command. **Leave `Sync__Enabled` out**, so sync stays off.
 5. **Check:**
    - `/health` returns 200.
-   - The newest `__EFMigrationsHistory` row is `20261119183302_BillOptionsAndCancelRules` (after `20261119132040_OrderCancelledByAndItemTaxZero` and `20261119120452_AddSyncFoundation`).
+   - The newest `__EFMigrationsHistory` row is `20261119210227_TaxOfficeGuestPassesGiveBack` (16 in all).
    - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5100/api/sync/hello` returns 404.
    - `journalctl -u qrdine -n 50` is clean.
    - One test bill on the demo or own restaurant settles.
-6. **Rollback, app only (normal case):** `systemctl stop qrdine && rm -rf /opt/qrdine/app && cp -a /opt/qrdine/app.prev-b264329 /opt/qrdine/app && systemctl start qrdine`. The old build runs on the new schema (tested: see the change log), and its new rows still get a `SyncId` from the database default. Leave the new columns and tables in place. If sync was ever on, every paired PC must take a fresh snapshot after a rollback, because the old build writes no change lines and doesn't update `LastChangedAt`.
-7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119183302_BillOptionsAndCancelRules 20261112161635_AddDeliveryTracking -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
+6. **Rollback, app only (normal case):** `systemctl stop qrdine && rm -rf /opt/qrdine/app && cp -a /opt/qrdine/app.prev-18c989e /opt/qrdine/app && systemctl start qrdine` (and `cp -p /etc/qrdine/qrdine.env.before-f9770ce /etc/qrdine/qrdine.env` to put `Fiscal__Simulate=true` back). The old build runs on the new schema (tested: see the change log), and its new rows still get a `SyncId` from the database default. Leave the new columns and tables in place. If sync was ever on, every paired PC must take a fresh snapshot after a rollback, because the old build writes no change lines and doesn't update `LastChangedAt`.
+7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119210227_TaxOfficeGuestPassesGiveBack 20261119183302_BillOptionsAndCancelRules -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
 8. **Switching sync on** waits for the PC app (phase 2): set `Sync__Enabled=true`, restart, and pair from the owner's screen.
+
+## Tax office filing (FBR / PRA)
+How it works for owners: `docs/ONLINE-OFFLINE-HYBRID.md` section 7. For agents:
+- **Code:** `FiscalSyncService` (settle, resend one / picked / all, the 2-minute database claim `Invoice.FiscalClaimUntil`, the setup check, the test bill, missing PCT codes filled from the menu on resend), `FiscalAutoRetryService` (every `Fiscal:AutoRetryMinutes`), `FiscalServices.cs` (`CloudFiscalTransport`: FBR and PRA formats, addresses, error wording), `FiscalEndpoints.cs`, `Settings.jsx` (Tax office tab, Billing → Tax on items) and `FbrInvoices.jsx` (Tax office invoices).
+- **Server:** `Fiscal__Simulate=false` since 2026-11-20 03:18 (before that `true`, which holds every branch in Practice). Nothing is filed unless the operator puts filing in the plan, the owner switches it on, and a branch is set to Test or Live with its POSID and token.
+- **Never file a test bill with the real FBR or PRA production servers.** To test, point all four `Fiscal__…Url` settings at the stand-in (`deploy/hostworld/e2e/mock_tax_office.py`); `tax_check.py` refuses to run otherwise. Real Test (sandbox) or Live credentials come only from the owner.
+- FBR checks the registered IP: the owner must give FBR the Hostworld server's address for online filing.
 
 ## Known quirks
 - SQLite/Npgsql return `DateTime` as `Unspecified`; JSON must emit UTC `Z` or clients
@@ -194,6 +201,12 @@ body or a valid key, and no change lines are written. The switch is read once at
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-20 03:18 PKT**: **Deployed `f9770ce` (branch `hybrid-sync-foundation`) to Hostworld, and merged the branch into `main`.** Tax office filing with FBR and PRA, Practice / Test / Live per branch, send at settle or later, resend one / picked / all, the automatic resend, one tax rate for all items (see "Tax office filing" above and the guide's section 7). Also the guest pass fix: a guest who scans in the same second the table's bill settles now gets a pass that works (it waits for the next second; before, every order from that pass got 401).
+  - Before, on the server's throwaway copy with the exact package: old build 551/0; new build migrated 559/2, rollback 549/2, sync on 559/2 (the two known slug false failures each time); smoke 34/0; the new tax stage (`tax_check.py` against the stand-in FBR/PRA on 127.0.0.1:8599, never the real offices) 255/0; no app errors; production untouched. Locally: 317 unit tests. The rehearsal on a copy of production's data: 16 migrations, the one branch became FBR Practice Online (it was "On this computer", the old default, which can't work online), filing off, guest menu 200, sync 404, no errors.
+  - Deploy: dump `/var/backups/qrdine/pre-f9770ce-2026-11-20-0318.dump`, old build kept as `/opt/qrdine/app.prev-18c989e`, settings kept as `/etc/qrdine/qrdine.env.before-f9770ce`, then `Fiscal__Simulate=false` and the README tar steps.
+  - After: health 200; 16 migrations, newest `TaxOfficeGuestPassesGiveBack`; sync 404; guest menu 200; the public site serves `index-CKmtFYt7.js`; no errors in the journal.
+  - **The owner must reprint the table QR codes.** The production restaurant's 4 tables had no QR key, so their old printed codes can't open a table any more ("This QR code doesn't work any more"). A table gets its key when staff open the tables list; print the codes from there.
+  - Off-site backups are still failing (the Oracle bucket is gone, see the 00:52 entry).
 - **2026-11-20 00:52 PKT**: **Deployed `18c989e` (branch `hybrid-sync-foundation`) to Hostworld.** It carries the sync foundation (off), the full QA pass and the owner settings below. `main` is still `b264329`, so until the branch is merged, the branch is what runs.
   - Before: the whole-day check on the server, on the exact package that went live, passed **552/552** (no slug failures there). The new build also ran on a copy of production's data in the throwaway cluster: 15 migrations, guest menu 200, sync 404, no errors.
   - Deploy: dump `/var/backups/qrdine/pre-18c989e-2026-11-20-0052.dump`, old build kept as `/opt/qrdine/app.prev-b264329`, then the README tar steps from the uploaded package. Each package now carries a `DEPLOYED_COMMIT` file.
