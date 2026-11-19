@@ -148,7 +148,18 @@ def invoice(i):
 
 
 # ------------------------------------------------------------------ setup
+def only_the_stand_in():
+    # Refuse to file anything unless the app under test sends all four offices' bills to the stand-in on this machine.
+    env = dict(l.strip().split('=', 1) for l in open(ENV_FILE, encoding='utf-8') if '=' in l and not l.startswith('#'))
+    keys = ['Fiscal__CloudSandboxUrl', 'Fiscal__CloudProductionUrl', 'Fiscal__PraSandboxUrl', 'Fiscal__PraProductionUrl']
+    wrong = [k for k in keys if not env.get(k, '').startswith(MOCK + '/')]
+    if wrong or env.get('Fiscal__Simulate', '').lower() != 'false':
+        print(f'STOPPED: {", ".join(wrong) or "Fiscal__Simulate"} not set for the stand-in at {MOCK} in {ENV_FILE}. Nothing was filed.', flush=True)
+        sys.exit(2)
+
+
 def setup():
+    only_the_stand_in()
     srv = mock_tax_office.start(PORT, TOKEN)
     state['srv'] = srv
     mobile = '03' + ''.join(random.choices('0123456789', k=9))
