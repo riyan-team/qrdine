@@ -5,6 +5,7 @@ import { auth } from './auth'
 import { api, getPlans, roleLabel } from './api'
 import { CONTACT } from './contact'
 import DineInLogo from './DineInLogo.jsx'
+import { getEdition, licenceNeedsKey, licenceWarns } from './pcEdition'
 import {
   BookIcon, BoxIcon, CashIcon, ChartIcon, GearIcon, KitchenIcon, ListIcon, LogoutIcon, MenuIcon, NoteIcon,
   QrIcon, ReceiptIcon, StarIcon, TrendIcon, UsersIcon, WalletIcon, BankIcon, CloseIcon, TruckIcon,
@@ -48,6 +49,7 @@ const Payroll = screen(() => import('./pages/Payroll.jsx'))
 const DayClose = screen(() => import('./pages/DayClose.jsx'))
 const Deliveries = screen(() => import('./pages/Deliveries.jsx'))
 const Ride = screen(() => import('./pages/Ride.jsx'))
+const Activate = screen(() => import('./pages/Activate.jsx'))
 
 // The server has the last word on a saved sign-in: a removed account, a new password or a deleted
 // restaurant all end it. Ask once per sign-in per page load, before any staff screen shows, so an
@@ -221,6 +223,45 @@ function PlanBanner() {
   return <div className={`sx-banner noprint${msg.urgent ? ' is-urgent' : ''}`} role="alert">{msg.text}</div>
 }
 
+// PC edition: the licence's reminder, grace days or end, with the way to renew. Online it never shows.
+function LicenceBanner() {
+  const [lic, setLic] = useState(null)
+  useEffect(() => {
+    const load = (fresh) => getEdition(fresh).then(setLic)
+    load(false)
+    const on = () => load(true)
+    window.addEventListener('dinein:licence', on)
+    return () => window.removeEventListener('dinein:licence', on)
+  }, [])
+  if (!licenceWarns(lic)) return null
+  if (lic.state === 'EndingSoon' && !auth.can('settings.manage')) return null
+  return (
+    <div className={`sx-banner noprint${lic.state === 'EndingSoon' ? '' : ' is-urgent'}`} role="alert">
+      {lic.message} <Link to="/activate">Licence</Link>
+    </div>
+  )
+}
+
+// PC edition: no licence yet (or not for this PC) opens the licence screen, and the PC's own start page is
+// sign-in (or the first sign-up), not the online sales page.
+function PcGate({ children }) {
+  const loc = useLocation()
+  const [lic, setLic] = useState(undefined)
+  useEffect(() => {
+    getEdition().then(setLic)
+    const on = () => getEdition(true).then(setLic)
+    window.addEventListener('dinein:licence', on)
+    return () => window.removeEventListener('dinein:licence', on)
+  }, [])
+  if (lic === undefined) return null
+  if (lic && loc.pathname !== '/activate') {
+    if (licenceNeedsKey(lic)) return <Navigate to="/activate" replace />
+    // No restaurant on this PC yet: sign-up, even if this browser still holds a sign-in from an older database.
+    if (loc.pathname === '/') return <Navigate to={!lic.hasRestaurant ? '/signup' : auth.staffToken ? auth.home() : '/login'} replace />
+  }
+  return children
+}
+
 // Says so when the server can't be reached, and keeps trying until it can.
 function ConnectionBar() {
   const [down, setDown] = useState(false)
@@ -268,6 +309,7 @@ function StaffShell({ children }) {
           )}
         </div>
         <PlanBanner />
+        <LicenceBanner />
         <ConnectionBar />
         <div className="sx-page" key={loc.pathname}><Suspense fallback={null}>{children}</Suspense></div>
       </div>
@@ -281,8 +323,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Suspense fallback={null}>
+      <PcGate>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/activate" element={<Activate />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/platform/login" element={<PlatformLogin />} />
@@ -315,6 +359,7 @@ export default function App() {
         <Route path="/admin/*" element={<Navigate to={auth.staffToken ? auth.home() : '/login'} replace />} />
         <Route path="*" element={<Navigate to={auth.staffToken ? auth.home() : '/'} replace />} />
       </Routes>
+      </PcGate>
       </Suspense>
       <DialogHost />
       <ToastHost />

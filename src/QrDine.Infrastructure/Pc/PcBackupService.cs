@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace QrDine.Infrastructure.Pc;
 
 /// <summary>Where the PC edition keeps its database and its copies.</summary>
-public sealed record PcBackupOptions(string DatabaseFile, string BackupFolder, string? ExtraFolder, int Keep = 14);
+public sealed record PcBackupOptions(string DatabaseFile, string BackupFolder, string? ExtraFolder, int Keep = 14, TimeSpan? FirstAfter = null);
 
 /// <summary>
 /// The PC edition's own backups: a full copy of the database a few minutes after start and then every night,
@@ -16,7 +16,7 @@ public sealed class PcBackupService(PcBackupOptions opt, ILogger<PcBackupService
 {
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
-        try { await Task.Delay(TimeSpan.FromMinutes(3), stop); } catch (OperationCanceledException) { return; }
+        try { await Task.Delay(opt.FirstAfter ?? TimeSpan.FromMinutes(3), stop); } catch (OperationCanceledException) { return; }
         while (!stop.IsCancellationRequested)
         {
             try { BackupNow(); }

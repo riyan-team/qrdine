@@ -12,7 +12,7 @@ No passwords or keys belong in this file. Where a setting needs one, it says `<m
 | Version | Ready? | In one line |
 |---|---|---|
 | **Fully online** | **Yes. It runs today** on the Hostworld server (`qrdine.mystay.live`). | One server in the cloud. Every phone, tablet and PC opens the website. |
-| **Fully offline** | **Yes, it can be set up today**, with the limits in section 4. | The same app on one PC inside the restaurant. Everyone connects to that PC over the restaurant Wi-Fi. No internet needed for daily work. |
+| **Fully offline** | **Yes. `DineIn.exe`**, one file with its own database and licence (section 4). | The same app on one PC inside the restaurant. Everyone connects to that PC over the restaurant Wi-Fi. No internet needed for daily work. |
 | **Hybrid** (PC in the restaurant **and** the cloud, kept in step) | **No. Only the first part is built**, and it is switched off. | The PC keeps working when the internet goes. When it comes back, the PC and the cloud swap their changes. |
 
 **What to use now:**
@@ -27,7 +27,7 @@ No passwords or keys belong in this file. Where a setting needs one, it says `<m
 | Part | What it is |
 |---|---|
 | **The app** | One program (`QrDine.Api`). It serves the screens (owner, reception, kitchen, waiter, guest menu) and does all the work: orders, bills, tax, stock, khata, reports. It must run as **one copy only** per database, because it lets one change through at a time per restaurant (`RestaurantGate`). |
-| **The database** | **PostgreSQL** for real use. SQLite only for trying it on a laptop, because SQLite can't be upgraded in place (it is rebuilt from scratch). |
+| **The database** | **PostgreSQL** on the server. **SQLite** inside the PC edition, brought up to date on every start (new tables and columns added, nothing dropped, a copy first). |
 | **The screens** | Any browser: phone, tablet or PC. Nothing to install on staff devices. |
 | **Printing** | Receipts and kitchen slips print from the browser to the printer on that device (80 mm). It works the same online and offline. |
 | **Tax office (FBR / PRA)** | Optional, per branch: FBR or PRA, and Practice, Test or Live (section 7). FBR "Online" files each bill over the internet; FBR "On this computer" talks to FBR's own IMS program on the counter PC (`http://localhost:8524`, PC edition only). PRA is online only. If filing fails, the bill still settles and prints, and waits in **Tax office invoices** to be sent again. |
@@ -71,67 +71,86 @@ The exact commands are in **`deploy/hostworld/README.md`**. In short:
 
 ---
 
-## 4. Fully offline (one PC in the restaurant)
+## 4. Fully offline: the PC edition (`DineIn.exe`)
 
 ### How it works
 
 ```
  Guests' phones ─┐
- Waiter phones ──┤   restaurant Wi-Fi   ┌───────────────────────────────┐
- Kitchen tablet ─┼────── (no internet ─►│ Counter PC                     │
- Reception PC ───┘        needed)       │  app (one copy) + PostgreSQL   │
-                                        │  receipt printer on USB/LAN    │
-                                        └───────────────────────────────┘
+ Waiter phones ──┤   restaurant Wi-Fi   ┌───────────────────────────────────┐
+ Kitchen tablet ─┼────── (no internet ─►│ Counter PC                         │
+ Reception PC ───┘        needed)       │  DineIn.exe (app + pages + SQLite) │
+                                        │  DineIn-data\ (database, backups)  │
+                                        │  receipt printer on USB/LAN        │
+                                        └───────────────────────────────────┘
 ```
 
-- The same app runs on a PC inside the restaurant. Every device joins the restaurant Wi-Fi and opens the PC's address, for example `http://192.168.1.10:5100`.
+- **One file, nothing to install.** `DineIn.exe` (about 55 MB, Windows 10/11 64-bit) holds .NET, the web pages and the database engine (SQLite). Double-click it: a window shows the addresses and the browser opens.
+- Every device joins the restaurant Wi-Fi and opens the PC's address, for example `http://192.168.1.10:5100`.
 - Orders, kitchen, waiter, bills, receipts, stock, khata, payroll and reports all work **with no internet**.
-- **Needs the internet for:** FBR "Cloud" filing (use FBR's "Local" IMS on the PC instead, or file later), reading a menu from a photo (AI), WhatsApp and Google review links, and the owner checking from home.
+- **Needs the internet for:** FBR "Online" and PRA filing (bills wait and go when the internet is back; or use FBR "On this computer" with FBR's IMS program), reading a menu from a photo (AI), WhatsApp and Google review links, and the owner checking from home.
 - **Guests must be on the restaurant Wi-Fi** to order from the QR code. Their mobile data can't reach a PC inside the restaurant. Print the Wi-Fi name and password on the table card.
-- **The PC is the only copy.** If its disk dies, the data dies with it, unless it is backed up (step 9). Keep it on a UPS.
+- **The PC is the only copy.** If its disk dies, the data dies with it, unless the second backup folder is set (below). Keep it on a UPS.
 
-### What you need
+### What is on the PC
 
-- A Windows 10/11 PC: 8 GB RAM, SSD, always on, on a UPS.
-- A Wi-Fi router. Give the PC a **fixed address** in the router (a "DHCP reservation"), so the QR codes keep working.
-- On the PC: the **ASP.NET Core 9 runtime** and **PostgreSQL 16 or newer** (both free).
-- The receipt printer set as the PC's default printer.
+Everything lives in `DineIn-data` next to the exe (another folder with `--data <folder>` or `DINEIN_DATA`):
 
-### Setup, step by step
+| File | What it is |
+|---|---|
+| `dinein.db` | The database (SQLite, WAL mode). On every start it is brought up to date by itself: new tables, columns and indexes are added (a copy goes into `backups` first). Nothing is ever dropped. |
+| `backups\dinein-<date>-<time>.db` | A full copy 3 minutes after each start and every 24 hours. The last 14 are kept. |
+| `licence.key` | The licence key, once entered. |
+| `secret.key` | The sign-in secret, made on first start. Copy it with the rest when moving PCs, or every staff member signs in again. |
+| `clock.txt` | The newest time this PC has seen, to catch the clock being turned back. |
+| `dinein-settings.json` | The owner's settings: `Port` (5100), `BackupFolder` (a second backup folder, for example a USB drive) and `OpenBrowser`. |
 
-1. **Install PostgreSQL** on the PC. Make a database `qrdine` and a user `qrdine` with a strong password. Let it listen on this PC only (`listen_addresses = 'localhost'`).
-2. **Build the app** on the developer PC, the same way as for online (`npm run build` in `frontend`, then `dotnet publish`, then copy `frontend/dist` into `wwwroot`). Copy the finished folder to the restaurant PC, for example `C:\DineIn\app`.
-3. **Make a start file** `C:\DineIn\start.cmd`. Keep it readable by the PC's admin only, since it holds the passwords:
-   ```bat
-   @echo off
-   set ASPNETCORE_ENVIRONMENT=Production
-   set ASPNETCORE_URLS=http://0.0.0.0:5100
-   set Database__Provider=Postgres
-   set ConnectionStrings__Default=Host=127.0.0.1;Port=5432;Database=qrdine;Username=qrdine;Password=<make a strong one>
-   set Jwt__Secret=<64 random characters>
-   set PlatformAdmin__Username=<operator name>
-   set PlatformAdmin__Password=<make a strong one>
-   set Fiscal__Simulate=true
-   cd /d C:\DineIn\app
-   dotnet QrDine.Api.dll
-   ```
-   - Leave `Sync__Enabled` out.
-   - For real FBR filing with no internet, use FBR "On this computer": install FBR's IMS program on this PC, add `set Fiscal__Simulate=false` and `set Fiscal__AllowLocal=true`, and choose "On this computer" in the branch's tax office setup. PRA has no offline program, so PRA bills wait (they still print) and are sent when the internet is back. Otherwise leave filing switched off.
-4. **Start it with Windows:** Task Scheduler → Create Task → "Run whether user is logged on or not" → trigger "At startup" → action `C:\DineIn\start.cmd`. Start it once now.
-5. **Open the firewall** for TCP port 5100 on the **Private** network only (Windows Defender Firewall → Inbound rule).
-6. **First start** builds the database by itself. Check `http://localhost:5100/health` answers.
-7. **Make the restaurant:**
-   - Sign in at `http://<PC address>:5100/platform/login` with the operator name and password from step 3.
-   - Sign up the restaurant at `/signup`.
-   - In the platform console, set its paid-until date far ahead, so the restaurant never locks while offline.
-8. **QR codes:** open the app from the **PC's address** (not `localhost`) before printing QR codes, so the codes point at the PC.
-9. **Backups (do not skip):** a second Task Scheduler job each night copies the database to a USB drive or a second disk:
-   ```bat
-   powershell -NoProfile -Command "& 'C:\Program Files\PostgreSQL\18\bin\pg_dump.exe' -h 127.0.0.1 -U qrdine -Fc qrdine -f ('E:\DineIn-backup\qrdine-' + (Get-Date -Format yyyy-MM-dd) + '.dump')"
-   ```
-   (Change `18` to the PostgreSQL version you installed, and `E:` to the backup drive.)
-   Put the database password in `%APPDATA%\postgresql\pgpass.conf`, so the job doesn't ask for it. Check once a week that a backup restores.
-10. **Updating later:** take a backup first. Stop the task, keep the old `app` folder as `app.prev`, copy in the new build, then start the task. The database upgrades itself on start. To roll back, put `app.prev` back.
+Only one copy runs per PC: starting it again just opens the browser on the running one.
+
+How the PC edition differs from the server: SQLite instead of PostgreSQL, **one restaurant per PC**, no paid-until lock (the licence takes its place), sync switched off, real filing on (`Fiscal:Simulate=false`) with FBR "On this computer" allowed (`Fiscal:AllowLocal=true`). Each branch still starts in Practice, so nothing is filed until the owner sets it.
+
+### The licence
+
+- On first start the browser opens **Activate**. It shows this PC's code (`XXXX-XXXX-XXXX-XXXX`, made from Windows' own id for the PC) with Copy and WhatsApp buttons.
+- The seller makes a key for that code and the restaurant pastes it in. Until then every address answers 402 and the screens stay on Activate.
+- A key is **signed** with the seller's private key (ECDSA P-256). The exe has only the public key, so a key can't be made, changed or moved to another PC.
+- It holds the restaurant name, the PC code, the issue date, the end date (or lifetime) and the features (ordering, kitchen, waiter, billing, inventory, reports, fbr). The features are applied to the restaurant on every start.
+- **Ending:** a reminder from 14 days before the end date; 7 more days of grace after it; after that the PC can still sign in and show every record, but new orders and bills need a renewed key.
+- **Clock turned back** by more than a day (against `clock.txt` and the newest bill): the licence stops working until the clock is right.
+
+**For the seller** (the tool is `tools/QrDine.Licence`):
+
+```bash
+dotnet run --project tools/QrDine.Licence -- keygen --out C:/Users/<you>/.dinein-licence      # once, ever
+dotnet run --project tools/QrDine.Licence -- issue --key <private-key.pem> --restaurant "Name" --machine ABCD-EFGH-JKLM-NPQR --days 365
+dotnet run --project tools/QrDine.Licence -- show <licence key>
+```
+
+- `issue` also takes `--until 2027-11-30` or `--lifetime`, and `--features ordering,kitchen,...` (default all).
+- The public key is `SellerPublicKey` in `src/QrDine.Api/Pc/PcLicence.cs`.
+- **The private key never goes into git and is never shared.** Keep two copies off this PC. If it is lost, no more keys can be made: a new pair means a new exe and new keys for every restaurant.
+
+### Build and check
+
+```bash
+bash deploy/pc/build-pc.sh            # dist-pc/: DineIn.exe, BUILD_COMMIT, READ-ME.txt
+bash deploy/pc/run-pc-check.sh dist-pc/DineIn.exe <empty work folder> <dinein-licence.dll> <private-key.pem>
+```
+
+The check starts the exe on port 5310 with its own data folder, makes keys with the tool (never printed), and goes through: the pages, no licence, a made-up key, an ended licence, sign-up (and a second sign-up refused), menu, a guest order to the bill with tax, a busy moment, reports and the first backup (the wrong PC, grace, clock-back and the database upgrade are in `PcEditionTests`). Then it restarts the exe and checks everything is still there, and that a second copy only points at the first.
+
+### Setting up a restaurant
+
+`READ-ME.txt` (in `deploy/pc/`, copied next to the exe) is the restaurant's own guide. In short:
+
+1. Put `DineIn.exe` in its own folder, for example `C:\DineIn`, and start it. Allow **Private networks** when Windows asks (or add an inbound rule for TCP 5100 on the Private network).
+2. Send the PC code; paste the key.
+3. Sign up the restaurant, then add the menu, tables and staff.
+4. Give the PC a **fixed address** in the router ("DHCP reservation"). Open the app from that address (not `localhost`) before printing the QR codes.
+5. Start with Windows: a shortcut to `DineIn.exe` in `shell:startup`.
+6. Set `BackupFolder` in `dinein-settings.json` to a USB drive or a second disk.
+7. **Updating:** close it, replace `DineIn.exe`, start it. The database brings itself up to date (with a copy first). To roll back, put the old exe back and, if needed, the copy from `backups`.
+8. **Moving PCs:** copy the whole `DineIn-data` folder. The new PC has a new code, so it needs a new key.
 
 ---
 
@@ -172,7 +191,7 @@ Turned on by `Sync__Enabled=true`. While it is off (the default, and how the ser
 
 | Phase | Work | Why it is needed |
 |---|---|---|
-| **2: the PC side** | A PC edition: the offline setup in section 4, plus a sync worker that pairs, takes the snapshot, then pulls and pushes every few seconds and retries when the internet comes back. Also staff sign-in on the PC while offline (password hashes never leave the server, so the PC needs its own sign-in), and an installer. | Without it there is nothing in the restaurant to sync. |
+| **2: the PC side** | The PC edition is built (section 4). Still missing: a sync worker that pairs, takes the snapshot, then pulls and pushes every few seconds and retries when the internet comes back. Also staff sign-in on the PC while offline (password hashes never leave the server, so the PC needs its own sign-in), and an installer. | Without it there is nothing in the restaurant to sync. |
 | **3: applying uploads** | The server applies what PCs send, with the clash rules above. Bill numbers come from the PC. Each PC's own changes come back to it once, not twice. | Today uploads are only stored. |
 | **4: proving it** | Real tests with the internet pulled out mid-service: two cashiers, a menu edit at home, a day close, FBR filing late. | Money must never double or go missing. |
 

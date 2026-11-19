@@ -1,0 +1,51 @@
+Dine In - PC edition
+====================
+
+Everything runs on this one PC: orders, kitchen, waiters, bills, receipts, stock, khata, reports.
+No internet is needed. Nothing else has to be installed.
+
+START
+1. Put DineIn.exe in a folder of its own, for example C:\DineIn.
+   Its data folder, DineIn-data, is made next to it. Keep that folder: it holds all your records.
+2. Double-click DineIn.exe. A black window opens with the addresses. Keep it open (closing it stops Dine In).
+   If Windows asks about networks, allow "Private networks", so phones on the restaurant WiFi can reach it.
+3. The browser opens on the licence screen. Send this PC's code to your Dine In seller
+   (WhatsApp 0309 8480389) and paste the licence key you get back.
+4. Sign up your restaurant (one per PC). Then add the menu, the tables and the staff.
+
+PHONES, TABLETS, QR CODES
+- Phones, tablets and the kitchen screen open the address shown as "On the restaurant WiFi",
+  for example http://192.168.1.10:5100. Guests must be on the restaurant WiFi to order from the QR codes.
+- Give this PC a fixed address in the WiFi router ("DHCP reservation"), so the address never changes.
+- Print the table QR codes from that address, not from "localhost".
+
+START WITH WINDOWS
+- Press Win+R, type shell:startup and press Enter. Put a shortcut to DineIn.exe in the folder that opens.
+
+BACKUPS
+- A copy of the database is made a few minutes after each start and every night, in DineIn-data\backups
+  (the last 14 are kept).
+- For a second copy on a USB drive or a second disk: open DineIn-data\dinein-settings.json in Notepad,
+  set "BackupFolder" (for example "E:\\DineIn-backup"), save, and restart Dine In.
+- To go back to a copy: close Dine In, rename DineIn-data\dinein.db, copy the backup in its place
+  with the name dinein.db, and start Dine In again.
+
+UPDATING
+- Close the window, replace DineIn.exe with the new one, and start it again. The database is brought
+  up to date by itself (a copy is put in DineIn-data\backups first).
+
+MOVING TO A NEW PC
+- Copy the whole DineIn-data folder next to DineIn.exe on the new PC. The new PC has a different code,
+  so it needs a new licence key from your seller.
+
+TAX OFFICE (FBR / PRA)
+- Settings > Tax office. Each branch starts in Practice (nothing is sent).
+- FBR without internet: install FBR's IMS program on this PC, then choose "On this computer".
+- FBR or PRA online: needs the internet; bills that couldn't be sent wait and go when it is back.
+
+LICENCE
+- Settings > Your account shows until when the licence works, with the button to enter a renewed key
+  (or open http://localhost:5100/activate).
+- Near the end you are reminded. After the end date Dine In keeps working for 7 more days; after that
+  you can still sign in and see every record, but new orders and bills need a renewed licence.
+- Keep the PC's date and time correct.

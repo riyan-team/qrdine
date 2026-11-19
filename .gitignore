@@ -28,3 +28,4 @@ deploy/oracle/backups/
 # Python caches
 __pycache__/
 *.pyc
+dist-pc/

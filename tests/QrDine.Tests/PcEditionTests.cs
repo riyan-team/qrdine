@@ -91,6 +91,9 @@ public class PcEditionTests : IDisposable
         var k = Key(new DateOnly(2026, 11, 30));
         var soon = _verifier.Evaluate(k, Pc, Now);
         Assert.Equal((LicenceState.EndingSoon, 11), (soon.State, soon.DaysLeft));
+        // 3:40 am in Pakistan, still the 19th in UTC: the same 11 days (20 to 30 Nov), not 12.
+        Assert.Equal(11, _verifier.Evaluate(k, Pc, new DateTime(2026, 11, 19, 22, 40, 0, DateTimeKind.Utc)).DaysLeft);
+        Assert.Equal(1, _verifier.Evaluate(k, Pc, new DateTime(2026, 11, 30, 12, 0, 0, DateTimeKind.Utc)).DaysLeft);   // the last day
 
         // Works through its last day (until 5 am the next morning in Pakistan), then a week of grace.
         Assert.Equal(LicenceState.EndingSoon, _verifier.Evaluate(k, Pc, new DateTime(2026, 11, 30, 23, 59, 0, DateTimeKind.Utc)).State);
@@ -178,7 +181,7 @@ public class PcEditionTests : IDisposable
         ctx.Request.Path = path;
         ctx.Response.Body = new MemoryStream();
         var passed = false;
-        await new LicenceGateMiddleware(_ => { passed = true; return Task.CompletedTask; }, l).InvokeAsync(ctx, db);
+        await new LicenceGateMiddleware(_ => { passed = true; return Task.CompletedTask; }, l, NullLogger<LicenceGateMiddleware>.Instance).InvokeAsync(ctx, db);
         return passed ? 0 : ctx.Response.StatusCode;
     }
 

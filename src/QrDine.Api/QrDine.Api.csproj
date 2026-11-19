@@ -35,15 +35,19 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <CompressionEnabled>false</CompressionEnabled>
     <InvariantGlobalization>false</InvariantGlobalization>
     <Product>Dine In</Product>
     <Company>Dine In</Company>
     <Description>Dine In restaurant system, PC edition</Description>
   </PropertyGroup>
   <ItemGroup Condition="'$(PcEdition)' == 'true'">
-    <!-- The built web pages (frontend/dist) go inside the exe as wwwroot. -->
-    <Content Include="..\..\frontend\dist\**\*" LinkBase="wwwroot" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="Never" />
-    <Content Remove="appsettings.Development.json" />
+    <!-- The built web pages (frontend/dist) go inside the exe as "web" (not wwwroot, which never bundles). -->
+    <!-- ASP.NET keeps settings and web pages out of a single file unless told otherwise. -->
+    <Content Include="..\..\frontend\dist\**\*" LinkBase="web" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="Never" ExcludeFromSingleFile="false" />
+    <Content Update="appsettings.json;appsettings.Production.json;web.config" ExcludeFromSingleFile="false" />
+    <Content Remove="appsettings.Development.json;wwwroot\uploads\**" />
     <None Include="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 

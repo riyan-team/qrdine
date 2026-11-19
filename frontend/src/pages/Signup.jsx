@@ -7,10 +7,13 @@ import DineInLogo from '../DineInLogo.jsx'
 import { Phone3D, PhoneScreen } from '../Diorama.jsx'
 import { ArrowLeftIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../icons.jsx'
 import { useParallax, tilt } from '../motion'
+import { getEdition } from '../pcEdition'
 
 // Sign-up, one question at a time, with the owner's own menu taking shape beside it.
 // There's no address to choose and no card to enter: the address comes from the name, and the
 // first 14 days are free. Their mobile number is what they sign in with from then on.
+// On the restaurant PC (DineIn.exe) there is no plan to pick: the licence decides what it has, so the
+// password is the last step and the whole system is chosen quietly.
 
 const STEPS = ['name', 'you', 'password', 'plan', 'making']
 
@@ -49,6 +52,9 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [madeUpTo, setMadeUpTo] = useState(0)
   const [f, setF] = useState({ restaurantName: '', ownerDisplayName: '', mobile: '', password: '' })
+  const [pc, setPc] = useState(false)
+
+  useEffect(() => { getEdition().then((e) => setPc(!!e)) }, [])
 
   useEffect(() => {
     getPlans().then((list) => {
@@ -81,7 +87,7 @@ export default function Signup() {
     e?.preventDefault()
     const problem = check()
     if (problem) { setError(problem); return }
-    if (STEPS[step] === 'plan') { create(); return }
+    if (STEPS[step] === 'plan' || (pc && STEPS[step] === 'password')) { create(); return }
     go(step + 1)
   }
 
@@ -107,13 +113,15 @@ export default function Signup() {
       clearInterval(ticking)
       const message = friendlyError(err)
       setDir('back')
-      setStep(/mobile/i.test(message) ? STEPS.indexOf('you') : STEPS.indexOf('plan'))
+      setStep(/mobile/i.test(message) ? STEPS.indexOf('you') : STEPS.indexOf(pc ? 'password' : 'plan'))
       setError(message)
     }
   }
 
   const name = STEPS[step]
-  const progress = Math.min(step, 3)
+  const dots = pc ? 3 : 4
+  const progress = Math.min(step, dots - 1)
+  const last = name === 'plan' || (pc && name === 'password')
 
   return (
     <div className="su" ref={scene}>
@@ -126,8 +134,8 @@ export default function Signup() {
       <main className={'su-grid' + (name === 'plan' ? ' wide' : '')}>
         <section className="su-main">
           {name !== 'making' && (
-            <div className="su-progress" aria-label={`Step ${progress + 1} of 4`}>
-              {[0, 1, 2, 3].map((i) => <i key={i} className={i < progress ? 'done' : i === progress ? 'on' : ''} />)}
+            <div className="su-progress" aria-label={`Step ${progress + 1} of ${dots}`}>
+              {Array.from({ length: dots }, (_, i) => <i key={i} className={i < progress ? 'done' : i === progress ? 'on' : ''} />)}
             </div>
           )}
 
@@ -218,7 +226,7 @@ export default function Signup() {
                 <div className="su-actions">
                   {step > 0 && <button type="button" className="su-back" onClick={() => go(step - 1)}><ArrowLeftIcon size={16} /> Back</button>}
                   <button type="submit" className="au-submit su-next">
-                    {name === 'plan' ? 'Create my restaurant' : 'Continue'}
+                    {last ? 'Create my restaurant' : 'Continue'}
                   </button>
                 </div>
               )}

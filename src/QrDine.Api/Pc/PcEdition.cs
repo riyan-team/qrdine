@@ -51,8 +51,9 @@ public static class PcEdition
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             Args = args.Where(a => !a.Equals("--pc", StringComparison.OrdinalIgnoreCase)).ToArray(),
-            // The exe unpacks the app's own files (the web pages) next to itself on first start.
+            // The exe unpacks its own files (settings, the web pages in "web") to a folder of its own on first start.
             ContentRootPath = AppContext.BaseDirectory,
+            WebRootPath = Directory.Exists(Path.Combine(AppContext.BaseDirectory, "web")) ? Path.Combine(AppContext.BaseDirectory, "web") : null,
             EnvironmentName = Environments.Production,
         });
 

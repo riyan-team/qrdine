@@ -8,6 +8,7 @@ import { PasswordInput } from '../forms.jsx'
 import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon, LocateIcon } from '../icons.jsx'
 import MapView, { myLocation } from '../MapView.jsx'
 import { usernameProblem } from '../phone.js'
+import { getEdition } from '../pcEdition'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -76,8 +77,22 @@ export default function Settings() {
         {tab === 'staff' && <><Staff />{isOwner && <Permissions />}</>}
         {tab === 'service' && <><ServiceSettings /><PickupSettings /></>}
         {tab === 'fbr' && <FbrSettings />}
-        {tab === 'account' && <AccountSettings />}
+        {tab === 'account' && <><PcLicenceCard /><AccountSettings /></>}
       </div>
+    </div>
+  )
+}
+
+// PC edition only: this PC's licence, until when it works, and the way to enter a renewed key.
+function PcLicenceCard() {
+  const [lic, setLic] = useState(null)
+  useEffect(() => { getEdition(true).then(setLic) }, [])
+  if (!lic) return null
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="h" style={{ fontSize: 17 }}>This PC's licence</div>
+      <p style={{ margin: '6px 0 10px' }}>{lic.message}</p>
+      <Link to="/activate"><button className="btn-sm"><KeyIcon size={15} /> Licence and renewal</button></Link>
     </div>
   )
 }

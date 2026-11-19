@@ -123,7 +123,7 @@ public static class PcLicenceApplier
 /// never locks a restaurant out of its own data), but nothing new can be made. With no licence at all, only the
 /// licence screen works. The PC edition holds one restaurant.
 /// </summary>
-public sealed class LicenceGateMiddleware(RequestDelegate next, PcLicence licence)
+public sealed class LicenceGateMiddleware(RequestDelegate next, PcLicence licence, ILogger<LicenceGateMiddleware> log)
 {
     public async Task InvokeAsync(HttpContext ctx, AppDbContext db)
     {
@@ -131,15 +131,22 @@ public sealed class LicenceGateMiddleware(RequestDelegate next, PcLicence licenc
         var api = path.StartsWithSegments("/api") || path.StartsWithSegments("/hub");
         if (!api || path.StartsWithSegments("/api/licence")) { await next(ctx); return; }
 
-        if (HttpMethods.IsPost(ctx.Request.Method) && path.StartsWithSegments("/api/onboard")
-            && await db.Restaurants.IgnoreQueryFilters().AnyAsync(ctx.RequestAborted))
+        var signUp = HttpMethods.IsPost(ctx.Request.Method) && path.StartsWithSegments("/api/onboard");
+        if (signUp && await db.Restaurants.IgnoreQueryFilters().AnyAsync(ctx.RequestAborted))
         {
             await Refuse(ctx, 403, "One restaurant per PC", "This PC already has its restaurant. Sign in instead.");
             return;
         }
 
         var s = licence.Status;
-        if (s.CanWork) { await next(ctx); return; }
+        if (s.CanWork)
+        {
+            await next(ctx);
+            // The restaurant was made after the licence was entered: it gets the licence's features, not the plan's.
+            if (signUp && ctx.Response.StatusCode == StatusCodes.Status200OK)
+                await PcLicenceApplier.Apply(db, licence, log, ctx.RequestAborted);
+            return;
+        }
         var m = ctx.Request.Method;
         var reading = HttpMethods.IsGet(m) || HttpMethods.IsHead(m) || HttpMethods.IsOptions(m) || path.StartsWithSegments("/hub")
                       || path.Value!.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase);
@@ -159,12 +166,13 @@ public sealed record LicenceRequest(string? Key);
 
 public static class LicenceEndpoints
 {
-    public static object View(PcLicence l)
+    public static object View(PcLicence l, bool hasRestaurant)
     {
         var s = l.Status;
         return new
         {
             edition = "pc",
+            hasRestaurant,
             state = s.State.ToString(),
             s.CanWork,
             s.CanRead,
@@ -179,13 +187,14 @@ public static class LicenceEndpoints
 
     public static void MapLicence(this WebApplication app)
     {
-        app.MapGet("/api/licence", (PcLicence l) => Results.Ok(View(l)));
+        app.MapGet("/api/licence", async (PcLicence l, AppDbContext db) =>
+            Results.Ok(View(l, await db.Restaurants.IgnoreQueryFilters().AnyAsync())));
         app.MapPost("/api/licence", async (LicenceRequest body, PcLicence l, AppDbContext db, ILoggerFactory logs) =>
         {
             var s = l.Activate(body.Key ?? "");
             if (!s.CanWork) return Results.Problem(detail: s.Message, statusCode: 400, title: "Licence not accepted");
             await PcLicenceApplier.Apply(db, l, logs.CreateLogger("Licence"));
-            return Results.Ok(View(l));
+            return Results.Ok(View(l, await db.Restaurants.IgnoreQueryFilters().AnyAsync()));
         }).RequireRateLimiting("login");
     }
 }

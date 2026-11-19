@@ -26,7 +26,8 @@ using var pcInstance = pcPaths is null ? null : QrDine.Api.Pc.PcEdition.TakeSing
 if (pcPaths is not null && pcInstance is null)
 {
     // Already running on this PC: show it instead of starting a second copy on the same database.
-    QrDine.Api.Pc.PcEdition.OpenBrowser($"http://localhost:{pcPaths.Port}");
+    Console.WriteLine($"Dine In is already running on this PC: http://localhost:{pcPaths.Port}");
+    if (builder.Configuration.GetValue("Pc:OpenBrowser", true)) QrDine.Api.Pc.PcEdition.OpenBrowser($"http://localhost:{pcPaths.Port}");
     return;
 }
 
@@ -77,7 +78,8 @@ if (pcPaths is not null)
     builder.Services.AddSingleton(new QrDine.Application.Pc.LicenceVerifier(QrDine.Api.Pc.PcLicence.SellerPublicKey));
     builder.Services.AddSingleton(sp => new QrDine.Api.Pc.PcLicence(pcPaths,
         sp.GetRequiredService<QrDine.Application.Pc.LicenceVerifier>(), QrDine.Infrastructure.Pc.MachineCode.ForThisComputer()));
-    builder.Services.AddSingleton(new QrDine.Infrastructure.Pc.PcBackupOptions(pcPaths.DatabaseFile, pcPaths.BackupDir, builder.Configuration["Pc:BackupFolder"]));
+    builder.Services.AddSingleton(new QrDine.Infrastructure.Pc.PcBackupOptions(pcPaths.DatabaseFile, pcPaths.BackupDir, builder.Configuration["Pc:BackupFolder"],
+        FirstAfter: TimeSpan.FromMinutes(builder.Configuration.GetValue("Pc:FirstBackupMinutes", 3.0))));
     builder.Services.AddSingleton<QrDine.Infrastructure.Pc.PcBackupService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<QrDine.Infrastructure.Pc.PcBackupService>());
 }

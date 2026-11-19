@@ -21,6 +21,8 @@ const S = () => auth.staffSlug()
 async function j(res) {
   if (!res.ok) {
     if (res.status === 401) { auth.clearStaff(); if (location.pathname !== '/login') location.href = '/login' }
+    // PC edition: the licence ended or is missing (see LicenceBanner / PcGate in App.jsx).
+    if (res.status === 402) window.dispatchEvent(new CustomEvent('dinein:licence'))
     const err = await parseError(res)   // friendly ApiError — never the raw body
     // Paused restaurant: tell the staff screens why nothing is working (see PlanBanner in App.jsx).
     if (err.locked) window.dispatchEvent(new CustomEvent('qrdine:locked', { detail: err.message }))

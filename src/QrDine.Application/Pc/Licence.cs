@@ -112,15 +112,20 @@ public sealed class LicenceVerifier
             return new(LicenceState.Expired, info, 0,
                 $"The licence ended on {until:d MMM yyyy}. You can still sign in and see your records, but new orders and bills need a renewed licence.");
         if (nowUtc >= endsUtc)
-            return new(LicenceState.Grace, info, Days(lockUtc, nowUtc),
-                $"The licence ended on {until:d MMM yyyy}. Dine In keeps working for {Days(lockUtc, nowUtc)} more day(s). Renew it now.");
-        var left = Days(endsUtc, nowUtc);
+        {
+            var graceLeft = DaysThrough(until.AddDays(GraceDays), nowUtc);
+            return new(LicenceState.Grace, info, graceLeft,
+                $"The licence ended on {until:d MMM yyyy}. Dine In keeps working for {graceLeft} more day(s), counting today. Renew it now.");
+        }
+        var left = DaysThrough(until, nowUtc);
         if (left <= WarnDays)
-            return new(LicenceState.EndingSoon, info, left, $"The licence ends on {until:d MMM yyyy} ({left} day(s) left). Ask your seller to renew it.");
+            return new(LicenceState.EndingSoon, info, left, $"The licence ends on {until:d MMM yyyy} ({left} day(s) left, counting today). Ask your seller to renew it.");
         return new(LicenceState.Active, info, left, $"Licensed to {info.Restaurant} until {until:d MMM yyyy}.");
     }
 
-    private static int Days(DateTime when, DateTime now) => (int)Math.Ceiling((when - now).TotalDays);
+    /// <summary>Whole days in Pakistan from today through <paramref name="lastDay"/>, today included (never under 1 while it still works).</summary>
+    private static int DaysThrough(DateOnly lastDay, DateTime nowUtc) =>
+        Math.Max(1, lastDay.DayNumber - DateOnly.FromDateTime(nowUtc.AddHours(5)).DayNumber + 1);
     private static string Clean(string? key) => new((key ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray());
 }
 
