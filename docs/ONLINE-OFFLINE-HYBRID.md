@@ -65,7 +65,7 @@ The exact commands are in **`deploy/hostworld/README.md`**. In short:
    - `PlatformAdmin__Username`, `PlatformAdmin__Password` (the platform operator's sign-in)
    - `Fiscal__Simulate` (`true` = every branch is held in Practice, nothing reaches FBR or PRA; `false` = each branch files where its owner set it: Practice, Test or Live). Whether a restaurant files at all is the operator's plan switch plus the owner's own switch.
    - `Fiscal__AutoRetryMinutes` (default 3): how often waiting bills are tried again automatically. 0 turns the automatic resend off for the whole server.
-   - `Sync__Enabled` **left out** (sync stays off until hybrid is finished)
+   - `Sync__Enabled=true` (restaurant PCs, section 5; on at `qrdine.mystay.live` since 2026-11-20). Left out or `false`, every sync address answers 404.
 3. **Updating:** build on the PC, upload, restart. The database upgrades itself on start (migrations). Keep the old build folder for rollback, and take a database dump first.
 4. **A new restaurant:** the owner signs up at `/signup`. The platform operator sets the plan and paid date at `/platform/login`. The owner prints table QR codes from **QR codes** (they point at the address the page was opened from).
 
@@ -178,7 +178,7 @@ The check starts the exe on port 5310 with its own data folder, makes keys with 
 
 ### Setting it up
 
-1. **Server:** `Sync__Enabled=true` in `/etc/qrdine/qrdine.env`, then restart (one process). While it is off, every sync address answers 404.
+1. **Server:** `Sync__Enabled=true` in `/etc/qrdine/qrdine.env`, then restart (one process). While it is off, every sync address answers 404. (Already on at `qrdine.mystay.live`.)
 2. **Online, as the owner:** Settings > **Restaurant PC** > **Pair a PC**. Copy the key; it is shown once. One PC per restaurant.
 3. **On the PC:** start the new `DineIn.exe` and activate the licence (section 4). On the sign-up page choose **My restaurant is already online**, keep the address `https://qrdine.mystay.live`, and paste the key. The PC downloads the whole restaurant (nothing else opens until it is done), then takes over the counter.
 4. Staff sign in on the PC with their usual mobile numbers and passwords.
