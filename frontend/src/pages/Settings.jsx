@@ -130,6 +130,8 @@ function BillingSettings() {
   if (!s) return null
   const set = (k, v) => setS((x) => ({ ...x, [k]: v }))
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 1500) }
+  const isOwner = auth.role() === 'Owner'
+  const hasCardRate = s.taxPercentCard !== '' && s.taxPercentCard != null
 
   // The same limits the server holds. A wrong number is stopped here with a reason, never changed quietly.
   const problem = () => {
@@ -158,6 +160,13 @@ function BillingSettings() {
         discountEnabled: !!s.discountEnabled, discountIsPercent: !!s.discountIsPercent,
         discountValue: Number(s.discountValue) || 0,
         receiptEnabled: !!s.receiptEnabled, stockTrackingEnabled: !!s.stockTrackingEnabled,
+        serviceChargeTaxable: !!s.serviceChargeTaxable, serviceAfterDiscount: !!s.serviceAfterDiscount,
+        roundTotals: !!s.roundTotals, cardRateForAllItems: !!s.cardRateForAllItems,
+        // Only the owner can change the cancelling rules; anyone else sends them back as they are.
+        ...(isOwner ? {
+          allowCancelAfterCooking: !!s.allowCancelAfterCooking, restockCookedCancel: !!s.restockCookedCancel,
+          cashierCancelAnyStage: !!s.cashierCancelAnyStage,
+        } : {}),
       })
       flash('Saved.')
     } catch (e) { setErr(friendlyError(e)) }
@@ -192,6 +201,49 @@ function BillingSettings() {
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Added to dine-in bills only. 0 means no service charge.</div>
         </div>
 
+        {/* How the bill is worked out. All off is how bills always worked. */}
+        <div className="set-block">
+          <div className="set-head">Bill options</div>
+          <Toggle label="Charge tax on the service charge" checked={s.serviceChargeTaxable} disabled={!s.taxEnabled}
+            onChange={(v) => set('serviceChargeTaxable', v)}
+            hint={!s.taxEnabled ? 'Turn on Tax / GST first.' : s.serviceChargeTaxable
+              ? `The service charge is taxed at the bill's ${s.taxName || 'GST'} rate (the card rate when paid by card).`
+              : 'The service charge is added without tax.'} />
+          <Toggle label="Work out the service charge after the discount" checked={s.serviceAfterDiscount}
+            onChange={(v) => set('serviceAfterDiscount', v)}
+            hint={s.serviceAfterDiscount ? 'Service is charged on the food price after the discount.' : 'Service is charged on the full food price, before any discount.'} />
+          <Toggle label="Round each bill to the nearest rupee" checked={s.roundTotals}
+            onChange={(v) => set('roundTotals', v)}
+            hint={s.roundTotals ? 'The bill shows a "Rounding" line (at most 50 paisa). FBR still gets the exact amounts.' : 'Bills keep their paisa.'} />
+          <Toggle label="Card rate replaces an item's own tax rate too" checked={s.cardRateForAllItems} disabled={!s.taxEnabled || !hasCardRate}
+            onChange={(v) => set('cardRateForAllItems', v)}
+            hint={!s.taxEnabled || !hasCardRate ? 'Set a card rate first.' : s.cardRateForAllItems
+              ? 'Paid by card or wallet: every taxed item uses the card rate. Tax-free items stay tax-free.'
+              : 'Paid by card or wallet: items with their own rate keep it; the rest use the card rate.'} />
+        </div>
+
+        {/* Cancelling. Only the owner can change these: they say what everyone else may do. */}
+        <div className="set-block">
+          <div className="set-head">Cancelling orders{!isOwner && <span className="muted" style={{ fontWeight: 500 }}> · only the owner can change these</span>}</div>
+          <Toggle label="Allow cancelling once cooking has started" checked={s.allowCancelAfterCooking} disabled={!isOwner}
+            onChange={(v) => set('allowCancelAfterCooking', v)}
+            hint={s.allowCancelAfterCooking
+              ? 'Staff with the cancel right can cancel food that is cooking or ready. Guests can cancel until it is ready.'
+              : 'Until the kitchen starts cooking, cancelling works as normal. Once cooking starts, only the owner can cancel the order or take a dish off it.'} />
+          <Toggle label="Cashier can cancel at any stage" checked={s.cashierCancelAnyStage} disabled={!isOwner}
+            onChange={(v) => set('cashierCancelAnyStage', v)}
+            hint={s.cashierCancelAnyStage
+              ? 'The counter (cashier, manager and owner) can cancel any unpaid order or take off any dish: placed, cooking, ready or served. Cashiers don’t need the “Cancel orders” right for this.'
+              : 'Cashiers cancel only if their role has the “Cancel orders” right, and the rule above applies to them.'} />
+          {s.stockTrackingEnabled && (
+            <Toggle label="Put ingredients back in stock when cooking food is cancelled" checked={s.restockCookedCancel} disabled={!isOwner}
+              onChange={(v) => set('restockCookedCancel', v)}
+              hint={s.restockCookedCancel
+                ? 'Cancelled food goes back into stock, cooked or not.'
+                : 'Food cancelled after cooking started counts as used up. Food the kitchen had not started always goes back.'} />
+          )}
+        </div>
+
         {/* Discount */}
         <div className="set-block">
           <Toggle label="Apply a discount" checked={s.discountEnabled} onChange={(v) => set('discountEnabled', v)} />
@@ -224,17 +276,19 @@ function BillingSettings() {
   )
 }
 
-// A small on/off switch (accessible label + checkbox).
-function Toggle({ label, checked, onChange }) {
-  return (
-    <label className="switch-row">
-      <span className={'switch' + (checked ? ' on' : '')} onClick={(e) => { e.preventDefault(); onChange(!checked) }}>
+// A small on/off switch (accessible label + checkbox), with an optional line saying what it does now.
+function Toggle({ label, checked, onChange, disabled = false, hint }) {
+  const sw = (
+    <label className={'switch-row' + (disabled ? ' is-off' : '')} aria-disabled={disabled || undefined}>
+      <span className={'switch' + (checked ? ' on' : '')} onClick={(e) => { e.preventDefault(); if (!disabled) onChange(!checked) }}>
         <span className="knob" />
       </span>
       <span>{label}</span>
-      <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} style={{ display: 'none' }} />
+      <input type="checkbox" checked={!!checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} style={{ display: 'none' }} />
     </label>
   )
+  if (hint == null) return sw
+  return <div className="switch-item">{sw}<div className="switch-hint">{hint}</div></div>
 }
 
 // Receipt branding: a centred logo plus the printed header (address/phone) and

@@ -183,22 +183,64 @@ public class OrderService
     public Task<OrderDto> Serve(int id, CancellationToken ct = default) => Mutate(id, o => o.Serve(), ct);
     public Task<OrderDto> Assign(int id, string waiter, CancellationToken ct = default) => Mutate(id, o => o.AssignWaiter(waiter), ct);
 
-    // Cancelling an order that already reached the kitchen returns its ingredients to stock.
-    public async Task<OrderDto> Cancel(int id, string? reason, CancellationToken ct = default, string? by = null)
+    /// <summary>
+    /// Cancelling an order that already reached the kitchen returns its ingredients to stock. The owner's settings
+    /// change that:
+    /// - "no cancelling once cooking starts": food that is cooking or ready can only be cancelled by the owner;
+    /// - "cashier can cancel at any stage": the counter (cashier, manager, owner) can cancel any unpaid order,
+    ///   served included, whatever the rule above says;
+    /// - "keep stock": food cancelled after cooking started stays used up (it was made, or half made, and is
+    ///   thrown away). Food that was only approved always goes back, since nobody touched it.
+    /// Before the kitchen starts cooking, cancelling works the way it always did.
+    /// </summary>
+    public async Task<OrderDto> Cancel(int id, string? reason, CancellationToken ct = default, string? by = null,
+        Canceller who = default)
     {
         var order = await LoadOrder(id, ct);
-        var wasConsumed = order.Status is OrderStatus.Approved or OrderStatus.Cooking or OrderStatus.Ready;
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        var anyStage = AnyStage(r, who);
+        var started = order.Status is OrderStatus.Cooking or OrderStatus.Ready;
+        if (started && r.NoCancelOnceCooking && !who.IsOwner && !anyStage)
+            throw new DomainException(who.IsGuest
+                ? "Your food is already being made, so this order can't be cancelled now. Please ask the staff."
+                : "Cooking has started on this order, so only the owner can cancel it now.");
+        var restock = StockComesBack(order.Status, r);
         await RefuseIfLastOrderHasPaidParts(order, ct);
-        order.Cancel(string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim(), by);
+        order.Cancel(string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim(), by, evenServed: anyStage);
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
-        if (wasConsumed && await StockEnabled(ct))
+        if (restock)
             await _inventory.ApplyOrderConsumption(Lines(order), restore: true, ct);
         // A takeaway or delivery with nothing left on it is over (its private table is never reused);
         // a dine-in table stays open, since the guests are still sitting there.
         if (await _db.Sessions.AnyAsync(s => s.Id == order.TableSessionId && s.Channel != OrderChannel.Dine, ct))
             await CloseSessionIfSettled(order.TableSessionId, ct);
         return dto;
+    }
+
+    /// <summary>Whether cancelling (or taking a dish off) an order in this state gives its ingredients back.</summary>
+    private static bool StockComesBack(OrderStatus status, Domain.Restaurants.Restaurant r) => r.StockTrackingEnabled && status switch
+    {
+        OrderStatus.Approved => true,
+        OrderStatus.Cooking or OrderStatus.Ready => !r.KeepStockOnCookedCancel,
+        _ => false,   // not taken yet (Placed), or served and eaten
+    };
+
+    /// <summary>The owner's cashier option: the counter may cancel any unpaid order, or take off any dish, at any stage.</summary>
+    private static bool AnyStage(Domain.Restaurants.Restaurant r, Canceller who) =>
+        r.CashierCancelAnyStage && !who.IsGuest && (who.IsOwner || who.AtCounter);
+
+    /// <summary>The cancelling rules a staff screen needs to show only the buttons that will work.</summary>
+    public async Task<CancelRulesDto> CancelRules(CancellationToken ct = default) =>
+        await _db.Restaurants.AsNoTracking().Where(x => x.Id == TenantId)
+            .Select(x => new CancelRulesDto(x.NoCancelOnceCooking, x.CashierCancelAnyStage)).FirstAsync(ct);
+
+    /// <summary>Whether a guest may cancel an order right now, so their screen only offers what will work.</summary>
+    public async Task<bool> GuestMayCancel(OrderDto order, CancellationToken ct = default)
+    {
+        if (order.Status is "Placed" or "Approved") return true;
+        if (order.Status != "Cooking") return false;
+        return !(await _db.Restaurants.AsNoTracking().Where(x => x.Id == TenantId).Select(x => x.NoCancelOnceCooking).FirstAsync(ct));
     }
 
     /// <summary>
@@ -217,15 +259,21 @@ public class OrderService
 
     /// <summary>
     /// Takes a dish off a running order and keeps a record of it. If it had already gone to the
-    /// kitchen and wasn't served, its ingredients go back to stock, the same rule as a cancellation.
+    /// kitchen and wasn't served, its ingredients go back to stock, the same rule as a cancellation
+    /// (including the owner's two cancelling settings; served food counts as cooked).
     /// </summary>
-    public async Task<OrderDto> VoidItem(int orderId, int itemId, VoidItemRequest req, string by, CancellationToken ct = default)
+    public async Task<OrderDto> VoidItem(int orderId, int itemId, VoidItemRequest req, string by, CancellationToken ct = default,
+        Canceller who = default)
     {
         var reason = (req.Reason ?? "").Trim();
         if (reason.Length == 0) throw new DomainException("Say why this is being removed.");
 
         var order = await LoadOrder(orderId, ct);
-        var wasConsumed = order.Status is OrderStatus.Approved or OrderStatus.Cooking or OrderStatus.Ready;
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        if ((order.Status is OrderStatus.Cooking or OrderStatus.Ready or OrderStatus.Served) && r.NoCancelOnceCooking
+            && !who.IsOwner && !AnyStage(r, who))
+            throw new DomainException("Cooking has started on this order, so only the owner can take a dish off it now.");
+        var restock = StockComesBack(order.Status, r);
         var item = order.VoidItem(itemId, req.Qty);
         var label = item.VariantName is null ? item.Name : $"{item.Name} ({item.VariantName})";
         _db.OrderVoids.Add(new OrderVoid
@@ -235,7 +283,7 @@ public class OrderService
         });
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
-        if (wasConsumed && await StockEnabled(ct))
+        if (restock)
             await _inventory.ApplyOrderConsumption(new List<(int, int)> { (item.MenuItemId, req.Qty) }, restore: true, ct);
         return dto;
     }

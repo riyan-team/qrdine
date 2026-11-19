@@ -27,7 +27,10 @@ public class Invoice : Entity, ITenantOwned
     public decimal FurtherTaxAmount { get; set; }
     public decimal ServiceChargePercent { get; set; }
     public decimal ServiceChargeAmount { get; set; }
+    public decimal ServiceTaxPercent { get; set; }  // the rate it was charged at (0 = service untaxed)
+    public decimal ServiceTaxAmount { get; set; }   // tax on the service charge, when the owner charges it
     public decimal DiscountAmount { get; set; }
+    public decimal RoundingAmount { get; set; }     // to the nearest whole rupee, when the owner rounds bills (can be negative)
     public decimal Total { get; set; }
 
     // Cash handling — snapshotted so a historical bill always shows what was tendered
@@ -102,7 +105,22 @@ public class Invoice : Entity, ITenantOwned
     /// <summary>The computed money totals for a set of lines. The single source of
     /// truth for both the live bill preview and the settled invoice.</summary>
     public readonly record struct BillMath(decimal Subtotal, decimal TaxAmount,
-        decimal FurtherTaxAmount, decimal ServiceChargeAmount, decimal DiscountAmount, decimal Total);
+        decimal FurtherTaxAmount, decimal ServiceChargeAmount, decimal DiscountAmount, decimal Total,
+        decimal ServiceTaxAmount = 0, decimal RoundingAmount = 0);
+
+    /// <summary>
+    /// How the bill-level charges work, as the owner set them. The defaults are how bills always worked:
+    /// service on the subtotal before discount, no tax on it, and totals kept to the paisa.
+    /// </summary>
+    /// <param name="ServicePercent">Service charge % (0 for parcels and deliveries).</param>
+    /// <param name="ServiceAfterDiscount">Work the service charge out on the food after the discount.</param>
+    /// <param name="ServiceTaxRate">Tax % charged on the service charge (0 = none).</param>
+    /// <param name="RoundToRupee">Round the grand total to the nearest whole rupee.</param>
+    public readonly record struct Charges(decimal ServicePercent, bool ServiceAfterDiscount = false,
+        decimal ServiceTaxRate = 0, bool RoundToRupee = false);
+
+    public static BillMath Price(IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount) =>
+        Price(lines, new Charges(serviceChargePercent), discount);
 
     /// <summary>
     /// Price a set of lines that already carry their resolved TaxRate / FurtherTaxRate.
@@ -112,9 +130,11 @@ public class Invoice : Entity, ITenantOwned
     /// discounted (net) line value, so a discount reduces both the base and the tax.
     /// The discount comes off the food only: the delivery charge is untaxed and is never discounted,
     /// so it can't soak up part of a discount that should have lowered the tax.
-    /// The service charge is added at invoice level on the subtotal before discount, and is untaxed.
+    /// The service charge is added at invoice level: by default on the subtotal before discount and untaxed;
+    /// the owner can have it worked out after the discount and/or taxed (see <see cref="Charges"/>).
+    /// Rounding to a whole rupee, when on, is the very last step and is kept as its own amount.
     /// </summary>
-    public static BillMath Price(IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount)
+    public static BillMath Price(IReadOnlyList<InvoiceLine> lines, Charges charges, decimal discount)
     {
         foreach (var l in lines) l.SaleValue = Round(l.UnitPrice * l.Qty);
 
@@ -146,9 +166,12 @@ public class Invoice : Entity, ITenantOwned
 
         var tax = Round(lines.Sum(l => l.TaxAmount));
         var furtherTax = Round(lines.Sum(l => l.FurtherTaxAmount));
-        var service = Round(subtotal * serviceChargePercent / 100m);
-        var total = Round(subtotal + service + tax + furtherTax - discount);
-        return new BillMath(subtotal, tax, furtherTax, service, Round(discount), total);
+        var serviceBase = charges.ServiceAfterDiscount ? Math.Max(0, subtotal - discount) : subtotal;
+        var service = Round(serviceBase * charges.ServicePercent / 100m);
+        var serviceTax = charges.ServiceTaxRate > 0 ? Round(service * charges.ServiceTaxRate / 100m) : 0;
+        var exact = Round(subtotal + service + serviceTax + tax + furtherTax - discount);
+        var total = charges.RoundToRupee ? Math.Round(exact, 0, MidpointRounding.AwayFromZero) : exact;
+        return new BillMath(subtotal, tax, furtherTax, service, Round(discount), total, serviceTax, Round(total - exact));
     }
 
     /// <summary>
@@ -168,9 +191,17 @@ public class Invoice : Entity, ITenantOwned
     public static Invoice Create(int restaurantId, int sessionId, string tableCode, string tableName,
         IReadOnlyList<InvoiceLine> lines, decimal serviceChargePercent, decimal discount,
         string method, int number, string usin,
+        decimal amountTendered = 0, string taxLabel = "", decimal alreadyPaid = 0) =>
+        Create(restaurantId, sessionId, tableCode, tableName, lines, new Charges(serviceChargePercent), discount,
+            method, number, usin, amountTendered, taxLabel, alreadyPaid);
+
+    public static Invoice Create(int restaurantId, int sessionId, string tableCode, string tableName,
+        IReadOnlyList<InvoiceLine> lines, Charges charges, decimal discount,
+        string method, int number, string usin,
         decimal amountTendered = 0, string taxLabel = "", decimal alreadyPaid = 0)
     {
-        var m = Price(lines, serviceChargePercent, discount);
+        var serviceChargePercent = charges.ServicePercent;
+        var m = Price(lines, charges, discount);
         var due = Math.Max(0, Round(m.Total - Math.Max(0, alreadyPaid)));
         // Change is only meaningful for cash: never negative, and 0 when the exact
         // amount (or no explicit tender) was recorded.
@@ -187,6 +218,9 @@ public class Invoice : Entity, ITenantOwned
             Subtotal = m.Subtotal,
             ServiceChargePercent = serviceChargePercent,
             ServiceChargeAmount = m.ServiceChargeAmount,
+            ServiceTaxPercent = m.ServiceTaxAmount > 0 ? charges.ServiceTaxRate : 0,
+            ServiceTaxAmount = m.ServiceTaxAmount,
+            RoundingAmount = m.RoundingAmount,
             TaxPercent = DisplayTaxRate(lines),
             TaxAmount = m.TaxAmount,
             FurtherTaxAmount = m.FurtherTaxAmount,

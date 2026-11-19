@@ -19,6 +19,7 @@ export default function OrderDetails() {
   const [reordering, setReordering] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
+  const [cancelAllowed, setCancelAllowed] = useState(null)   // the server's answer for this order, null until asked
   const bellPlayed = useRef(false)
   const [now, setNow] = useState(Date.now())
 
@@ -35,6 +36,7 @@ export default function OrderDetails() {
   // Live updates via SignalR
   useHub(slug, activeTableCode, (o) => {
     if (o.id === Number(id)) {
+      if (o.status !== orderRef.current?.status) refreshCancelAllowed()
       setOrder(o)
       if (o.status === 'Ready' && !bellPlayed.current) {
         bellPlayed.current = true
@@ -44,10 +46,18 @@ export default function OrderDetails() {
     }
   }, null)
 
+  async function refreshCancelAllowed() {
+    try {
+      const data = await api.getOrder(slug, Number(id))
+      setCancelAllowed(typeof data?.guestCanCancel === 'boolean' ? data.guestCanCancel : null)
+    } catch { /* keep the last answer; the server still refuses anything not allowed */ }
+  }
+
   async function loadOrder() {
     try {
       const data = await api.getOrder(slug, Number(id))
       setOrder(data)
+      setCancelAllowed(typeof data?.guestCanCancel === 'boolean' ? data.guestCanCancel : null)
       if (data?.tableCode) {
         auth.rememberTable(slug, data.tableCode)
       }
@@ -116,6 +126,7 @@ export default function OrderDetails() {
 
   const isCancelled = order.status === 'Cancelled'
   const canCancel = ['Placed', 'Approved', 'Cooking'].includes(order.status)
+    && !(order.status === 'Cooking' && cancelAllowed === false)
   const canReorder = ['Served', 'Paid', 'Cancelled'].includes(order.status)
 
   // Countdown timer calculations

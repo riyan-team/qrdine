@@ -234,11 +234,31 @@ function TicketRow({ title, empty, list, loaded, Icon, ticketFor, billOf, onOpen
 }
 
 // Everything about one table or ticket in one place: what's on it, where each order has got to, and what to do next.
+// The owner's cancelling rules, as this person meets them. Before the kitchen starts cooking, anyone with the cancel
+// right can cancel. Once cooking starts, "no cancelling once cooking" leaves it to the owner. The cashier option
+// lets the counter (cashier, manager, owner) cancel any unpaid order or take off any dish, served included, even
+// without the cancel right. The server holds the same rules; this only hides buttons that would be refused.
+function useCancelRights() {
+  const [rules, setRules] = useState({ lockOnceCooking: false, counterAnyStage: false })
+  useEffect(() => { api.cancelRules().then(setRules).catch(() => {}) }, [])
+  const role = auth.role()
+  const isOwner = role === 'Owner'
+  const anyStage = rules.counterAnyStage && ['Owner', 'Manager', 'Cashier'].includes(role)
+  const hasRight = auth.can('orders.cancel')
+  const locked = (status) => rules.lockOnceCooking && !isOwner && ['Cooking', 'Ready', 'Served'].includes(status)
+  return {
+    mayCancelOrder: (o) => anyStage ? !['Paid', 'Cancelled'].includes(o.status)
+      : hasRight && !['Served', 'Paid', 'Cancelled'].includes(o.status) && !locked(o.status),
+    mayRemoveDish: (o) => anyStage ? !['Paid', 'Cancelled'].includes(o.status)
+      : hasRight && !['Paid', 'Cancelled'].includes(o.status) && !locked(o.status),
+  }
+}
+
 function TableSheet({ group, ticket, bill, tables, byTable, onClose, onBill, onAdd, onSlip, onTicketChanged }) {
   const isTicket = group.channel !== 'Dine'
   const [voiding, setVoiding] = useState(null)   // { order, item }
   const [moving, setMoving] = useState(false)
-  const canCancel = auth.can('orders.cancel')
+  const { mayCancelOrder, mayRemoveDish } = useCancelRights()
   const canMove = !isTicket && auth.can('orders.create')
 
   const cancelOrder = async (o) => {
@@ -302,7 +322,7 @@ function TableSheet({ group, ticket, bill, tables, byTable, onClose, onBill, onA
                 {(i.modifiers?.length > 0 || i.note) && <small>{[i.modifiers?.join(', '), i.note].filter(Boolean).join(' · ')}</small>}
               </span>
               <span className="ts-line-amt">{money(i.price * i.qty)}</span>
-              {canCancel && i.id > 0 && (
+              {mayRemoveDish(o) && i.id > 0 && (
                 <button className="ghost ts-x" title={`Remove ${i.name}`} aria-label={`Remove ${i.name}`} onClick={() => setVoiding({ order: o, item: i })}><CloseIcon size={15} /></button>
               )}
             </div>
@@ -312,7 +332,7 @@ function TableSheet({ group, ticket, bill, tables, byTable, onClose, onBill, onA
             <OrderActions o={o} onError={(e) => toast.error(friendlyError(e))} />
             <button className="ghost btn-sm" onClick={() => onSlip(o, 'kitchen', true)}><KitchenIcon size={15} /> Kitchen slip</button>
             <button className="ghost btn-sm" onClick={() => onSlip(o, 'bill', false)}><PrintIcon size={15} /> Slips</button>
-            {canCancel && o.status !== 'Served' && (
+            {mayCancelOrder(o) && (
               <button className="ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--red)' }} onClick={() => cancelOrder(o)}>Cancel order</button>
             )}
           </div>

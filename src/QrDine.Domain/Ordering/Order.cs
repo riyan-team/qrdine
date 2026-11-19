@@ -146,9 +146,10 @@ public class Order : AggregateRoot, ITenantOwned
         Raise(new OrderPaid(Id, DateTime.UtcNow));
     }
 
-    public void Cancel(string reason, string? by = null)
+    /// <param name="evenServed">The owner lets the counter cancel at any stage, so a served (unpaid) order can go too.</param>
+    public void Cancel(string reason, string? by = null, bool evenServed = false)
     {
-        if (Status is OrderStatus.Served or OrderStatus.Paid or OrderStatus.Cancelled)
+        if (Status is OrderStatus.Paid or OrderStatus.Cancelled || (Status == OrderStatus.Served && !evenServed))
             throw new DomainException("A served or paid order cannot be cancelled.");
         CancelReason = reason;
         CancelledBy = string.IsNullOrWhiteSpace(by) ? null : by;

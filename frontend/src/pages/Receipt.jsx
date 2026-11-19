@@ -66,10 +66,14 @@ export default function Receipt({ bill, invoice }) {
           <div className="r-line"><span>Discount</span><span>− {money(d.discountAmount)}</span></div>}
         {d.serviceChargePercent > 0 &&
           <div className="r-line"><span>Service {d.serviceChargePercent}%</span><span>{money(d.serviceChargeAmount)}</span></div>}
+        {d.serviceTaxAmount > 0 &&
+          <div className="r-line"><span>{taxLabel} on service</span><span>{money(d.serviceTaxAmount)}</span></div>}
         {d.taxAmount > 0 &&
           <div className="r-line"><span>{taxLabel}{d.taxPercent > 0 ? ` ${d.taxPercent}%` : ''}</span><span>{money(d.taxAmount)}</span></div>}
         {d.furtherTaxAmount > 0 &&
           <div className="r-line"><span>Further tax</span><span>{money(d.furtherTaxAmount)}</span></div>}
+        {Math.abs(d.roundingAmount || 0) >= 0.005 &&
+          <div className="r-line"><span>Rounding</span><span>{d.roundingAmount < 0 ? '− ' : '+ '}{money(Math.abs(d.roundingAmount))}</span></div>}
         <div className="r-line r-grand"><span>Total</span><span>{money(d.total)}</span></div>
         {isInvoice && <div className="r-line r-pay"><span>Paid via</span><span>{d.paymentMethod}</span></div>}
         {isInvoice && showCash && <>

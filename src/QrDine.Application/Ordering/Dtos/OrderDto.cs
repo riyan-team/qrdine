@@ -17,7 +17,9 @@ public record OrderDto(
     string? CustomerNote,
     decimal Total,
     IReadOnlyList<OrderItemDto> Items,
-    string Channel = "Dine")
+    string Channel = "Dine",
+    // Only filled on the guest's own order screen: whether "Cancel order" will work right now.
+    bool? GuestCanCancel = null)
 {
     public static OrderDto From(Order o) => new(
         o.Id, o.TableCode, o.TableName, o.BranchName, o.Status.ToString(), o.Source.ToString(), AsUtc(o.CreatedAt),

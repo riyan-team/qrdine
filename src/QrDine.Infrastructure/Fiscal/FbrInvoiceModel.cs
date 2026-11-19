@@ -81,15 +81,16 @@ public static class FbrInvoiceMapper
             InvoiceType = inv.InvoiceType,
         }).ToList();
 
-        // Service charge isn't an FBR field — carry it as a zero-tax line so the
-        // item totals reconcile with TotalBillAmount.
+        // Service charge isn't an FBR field — carry it as its own line (with the tax on it, when the owner
+        // charges tax on service) so the item totals reconcile with TotalBillAmount. Rounding to a whole rupee
+        // is not filed: FBR gets the exact amounts the tax was worked out on.
         if (inv.ServiceChargeAmount > 0)
             items.Add(new FbrInvoiceItem
             {
                 ItemCode = "SERVICE", ItemName = "Service Charge", Quantity = 1,
-                PCTCode = "", TaxRate = 0, SaleValue = (double)inv.ServiceChargeAmount,
-                TaxCharged = 0, Discount = 0, FurtherTax = 0,
-                TotalAmount = (double)inv.ServiceChargeAmount, InvoiceType = inv.InvoiceType,
+                PCTCode = "", TaxRate = (double)inv.ServiceTaxPercent, SaleValue = (double)inv.ServiceChargeAmount,
+                TaxCharged = (double)inv.ServiceTaxAmount, Discount = 0, FurtherTax = 0,
+                TotalAmount = (double)(inv.ServiceChargeAmount + inv.ServiceTaxAmount), InvoiceType = inv.InvoiceType,
             });
 
         return new FbrInvoiceModel

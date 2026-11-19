@@ -83,7 +83,14 @@ public static class FloorEndpoints
 
         // ---- take a dish off a running order ----
         root.MapPost("/orders/{id:int}/items/{itemId:int}/void", async (int id, int itemId, VoidItemRequest body, ClaimsPrincipal user, OrderService svc) =>
-            Results.Ok(await svc.VoidItem(id, itemId, body, Who(user)))).RequireAuthorization(Policies.CanCancel);
+        {
+            // The cancel right, or the owner's cashier option (the counter cancels at any stage without it).
+            var who = Access.CancellerOf(user);
+            if (!user.FindAll(AppClaims.Permission).Any(c => c.Value == Domain.Identity.Permissions.OrdersCancel)
+                && !(who.AtCounter && (await svc.CancelRules()).CounterAnyStage))
+                return Results.Problem(detail: "You don't have permission to remove dishes.", statusCode: 403);
+            return Results.Ok(await svc.VoidItem(id, itemId, body, Who(user), who: who));
+        }).RequireAuthorization(Policies.StaffAny);
 
         // ---- guests calling for a waiter or the bill: the token must be for this table ----
         root.MapPost("/tables/{code}/call", async (string code, CallStaffRequest body, ClaimsPrincipal user, ServiceRequestService svc) =>

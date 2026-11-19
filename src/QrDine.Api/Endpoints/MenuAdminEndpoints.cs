@@ -112,16 +112,16 @@ internal static class ReportsCsv
     public static string Build(IReadOnlyList<Application.Reports.InvoiceReportRow> rows)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Invoice,Date,Branch,Table,Payment,Cashier,NetSales,ServiceCharge,SalesTax,FurtherTax,Discount,Total,Tendered,Change,FiscalStatus,FiscalNumber");
+        sb.AppendLine("Invoice,Date,Branch,Table,Payment,Cashier,NetSales,ServiceCharge,SalesTax,FurtherTax,Discount,Total,Tendered,Change,FiscalStatus,FiscalNumber,Rounding");
         foreach (var r in rows)
             sb.AppendLine(string.Join(",",
                 $"INV-{r.Number:D5}", Q(BusinessDay.ToPkt(r.IssuedAt).ToString("yyyy-MM-dd HH:mm")), Q(r.Branch), Q(r.Table), Q(r.PaymentMethod), Q(r.Cashier),
-                r.NetSales, r.ServiceCharge, r.SalesTax, r.FurtherTax, r.Discount, r.Total, r.AmountTendered, r.ChangeGiven, r.FiscalStatus, Q(r.FiscalNumber)));
+                r.NetSales, r.ServiceCharge, r.SalesTax, r.FurtherTax, r.Discount, r.Total, r.AmountTendered, r.ChangeGiven, r.FiscalStatus, Q(r.FiscalNumber), r.Rounding));
         // Totals row — the numbers a sales-tax return needs at a glance.
         sb.AppendLine(string.Join(",", "TOTAL", "", "", "", "", "",
             rows.Sum(r => r.NetSales), rows.Sum(r => r.ServiceCharge), rows.Sum(r => r.SalesTax),
             rows.Sum(r => r.FurtherTax), rows.Sum(r => r.Discount), rows.Sum(r => r.Total),
-            rows.Sum(r => r.AmountTendered), rows.Sum(r => r.ChangeGiven), "", ""));
+            rows.Sum(r => r.AmountTendered), rows.Sum(r => r.ChangeGiven), "", "", rows.Sum(r => r.Rounding)));
         return sb.ToString();
     }
 

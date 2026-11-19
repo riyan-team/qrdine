@@ -42,7 +42,8 @@ public static class AdminSettingsEndpoints
         // Billing settings — Tax/GST on/off + rate, discount on/off, receipt on/off, stock
         // tracking on/off. Gated to settings.manage (authorized users only).
         g.MapGet("/billing-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetBillingSettings()));
-        g.MapPut("/billing-settings", async (BillingSettingsInput body, RestaurantAdminService svc) => { await svc.SetBillingSettings(body); return Results.NoContent(); });
+        g.MapPut("/billing-settings", async (BillingSettingsInput body, System.Security.Claims.ClaimsPrincipal user, RestaurantAdminService svc) =>
+            { await svc.SetBillingSettings(body, callerIsOwner: user.IsInRole("Owner")); return Results.NoContent(); });
 
         // Receipt branding — printed header/footer text + a centred logo.
         g.MapGet("/receipt-settings", async (RestaurantAdminService svc) => Results.Ok(await svc.GetReceiptSettings()));

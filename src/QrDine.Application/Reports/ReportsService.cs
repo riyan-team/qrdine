@@ -24,7 +24,8 @@ public record TopItemDto(string Name, int Qty, decimal Revenue);
 /// <summary>One settled invoice, flattened for a CSV export / tax return.</summary>
 public record InvoiceReportRow(int Number, DateTime IssuedAt, string Branch, string Table, string PaymentMethod,
     decimal NetSales, decimal ServiceCharge, decimal SalesTax, decimal FurtherTax, decimal Discount, decimal Total,
-    decimal AmountTendered, decimal ChangeGiven, string Cashier, string FiscalStatus, string FiscalNumber);
+    decimal AmountTendered, decimal ChangeGiven, string Cashier, string FiscalStatus, string FiscalNumber,
+    decimal Rounding = 0);
 
 /// <summary>One row in the paginated sales report (the same data the dashboard shows).</summary>
 public record SalesRow(int Id, string Number, DateTime IssuedAt, string Branch, string Table,
@@ -99,7 +100,7 @@ public class ReportsService
         return new DashboardDto(r.Currency,
             today.Sum(i => i.Total), today.Count,
             periodSales, periodBills, avg,
-            invoices.Sum(i => i.TaxAmount), invoices.Sum(i => i.FurtherTaxAmount), invoices.Sum(i => i.Subtotal),
+            invoices.Sum(i => i.TaxAmount + i.ServiceTaxAmount), invoices.Sum(i => i.FurtherTaxAmount), invoices.Sum(i => i.Subtotal),
             trend, payments, topItems, lowStock.Count, lowStock, branches);
     }
 
@@ -134,7 +135,7 @@ public class ReportsService
         var query = FilterInvoices(fromUtc, toUtc, branchId, q, method);
         var total = await query.CountAsync(ct);
         var sumSales = await query.SumAsync(i => (decimal?)i.Total, ct) ?? 0;
-        var sumTax = await query.SumAsync(i => (decimal?)(i.TaxAmount + i.FurtherTaxAmount), ct) ?? 0;
+        var sumTax = await query.SumAsync(i => (decimal?)(i.TaxAmount + i.FurtherTaxAmount + i.ServiceTaxAmount), ct) ?? 0;
         var sumDiscount = await query.SumAsync(i => (decimal?)i.DiscountAmount, ct) ?? 0;
         var sumNet = await query.SumAsync(i => (decimal?)i.Subtotal, ct) ?? 0;
 
@@ -144,7 +145,7 @@ public class ReportsService
         var nameOf = await StaffNames.Lookup(_db, ct);
         var rows = invoices.Select(i => new SalesRow(
             i.Id, i.FormattedNumber, i.IssuedAt, branches.GetValueOrDefault(i.BranchId, ""), i.TableName,
-            i.PaymentMethod, i.Subtotal, i.DiscountAmount, i.TaxAmount + i.FurtherTaxAmount, i.ServiceChargeAmount,
+            i.PaymentMethod, i.Subtotal, i.DiscountAmount, i.TaxAmount + i.FurtherTaxAmount + i.ServiceTaxAmount, i.ServiceChargeAmount,
             i.Total, i.AmountTendered, i.ChangeGiven, nameOf(i.CreatedByUsername), i.FiscalStatus.ToString())).ToList();
 
         var totalPages = (int)Math.Ceiling(total / (double)pageSize);
@@ -162,8 +163,8 @@ public class ReportsService
         var nameOf = await StaffNames.Lookup(_db, ct);
         return invoices.Select(i => new InvoiceReportRow(
             i.Number, i.IssuedAt, branches.GetValueOrDefault(i.BranchId, ""), i.TableName, i.PaymentMethod,
-            i.Subtotal, i.ServiceChargeAmount, i.TaxAmount, i.FurtherTaxAmount, i.DiscountAmount, i.Total,
+            i.Subtotal, i.ServiceChargeAmount, i.TaxAmount + i.ServiceTaxAmount, i.FurtherTaxAmount, i.DiscountAmount, i.Total,
             i.AmountTendered, i.ChangeGiven, nameOf(i.CreatedByUsername),
-            i.FiscalStatus.ToString(), i.FiscalNumber ?? "")).ToList();
+            i.FiscalStatus.ToString(), i.FiscalNumber ?? "", i.RoundingAmount)).ToList();
     }
 }

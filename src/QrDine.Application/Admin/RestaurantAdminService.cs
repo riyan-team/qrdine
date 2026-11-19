@@ -277,10 +277,14 @@ public class RestaurantAdminService
         return new BillingSettingsDto(r.TaxEnabled, string.IsNullOrWhiteSpace(r.TaxName) ? "GST" : r.TaxName,
             r.TaxPercent, r.ServiceChargePercent,
             r.DiscountEnabled, r.DiscountIsPercent, r.DiscountValue,
-            r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency, r.TaxPercentCard);
+            r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency, r.TaxPercentCard,
+            r.ServiceChargeTaxable, r.ServiceAfterDiscount, r.RoundTotals, r.CardRateForAllItems,
+            !r.NoCancelOnceCooking, !r.KeepStockOnCookedCancel, r.CashierCancelAnyStage);
     }
 
-    public async Task SetBillingSettings(BillingSettingsInput i, CancellationToken ct = default)
+    /// <param name="callerIsOwner">The cancelling rules say what everyone but the owner may do, so only the owner
+    /// can change them. A manager saving this card with them unchanged is fine.</param>
+    public async Task SetBillingSettings(BillingSettingsInput i, CancellationToken ct = default, bool callerIsOwner = true)
     {
         // A wrong number is refused, never quietly changed: the owner must see what will be charged.
         if (!BillingRules.IsPercent(i.TaxPercent)) throw new DomainException(BillingRules.TaxMessage);
@@ -303,6 +307,21 @@ public class RestaurantAdminService
         r.DiscountValue = i.DiscountValue;
         r.ReceiptEnabled = i.ReceiptEnabled;
         r.StockTrackingEnabled = i.StockTrackingEnabled;
+
+        if (i.ServiceChargeTaxable is bool st) r.ServiceChargeTaxable = st;
+        if (i.ServiceAfterDiscount is bool sad) r.ServiceAfterDiscount = sad;
+        if (i.RoundTotals is bool rt) r.RoundTotals = rt;
+        if (i.CardRateForAllItems is bool cr) r.CardRateForAllItems = cr;
+
+        var noCancel = i.AllowCancelAfterCooking is bool allow ? !allow : r.NoCancelOnceCooking;
+        var keepStock = i.RestockCookedCancel is bool restock ? !restock : r.KeepStockOnCookedCancel;
+        var anyStage = i.CashierCancelAnyStage ?? r.CashierCancelAnyStage;
+        if (!callerIsOwner && (noCancel != r.NoCancelOnceCooking || keepStock != r.KeepStockOnCookedCancel
+                               || anyStage != r.CashierCancelAnyStage))
+            throw new DomainException("Only the owner can change the cancelling rules.");
+        r.NoCancelOnceCooking = noCancel;
+        r.KeepStockOnCookedCancel = keepStock;
+        r.CashierCancelAnyStage = anyStage;
         await _db.SaveChangesAsync(ct);
     }
 

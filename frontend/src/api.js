@@ -206,6 +206,7 @@ export const api = {
   serve: (id) => staffPost(`/orders/${id}/serve`),
   cancel: (id, reason = null) => staffPost(`/orders/${id}/cancel`, { reason }),
   voidItem: (orderId, itemId, qty, reason) => staffPost(`/orders/${orderId}/items/${itemId}/void`, { qty, reason }),
+  cancelRules: () => staffGet(`/orders/cancel-rules`),   // { lockOnceCooking, counterAnyStage }
   moveTable: (code, toCode) => staffPost(`/tables/${code}/move`, { toCode }),
 
   // parcel and delivery: each ticket is its own private table, so nothing can land on the wrong bill

@@ -209,11 +209,23 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal>("RoundingAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<decimal>("ServiceChargeAmount")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
                     b.Property<decimal>("ServiceChargePercent")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("ServiceTaxAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("ServiceTaxPercent")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
@@ -2067,6 +2079,12 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<bool>("CardRateForAllItems")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("CashierCancelAnyStage")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -2124,6 +2142,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("GuestTakeaway")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("KeepStockOnCookedCancel")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LastChangedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -2144,6 +2165,9 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<bool>("NoCancelOnceCooking")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Ntn")
                         .IsRequired()
@@ -2176,9 +2200,18 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("RoundTotals")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ServiceAfterDiscount")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("ServiceChargePercent")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
+
+                    b.Property<bool>("ServiceChargeTaxable")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("SetupFeePaid")
                         .HasColumnType("boolean");

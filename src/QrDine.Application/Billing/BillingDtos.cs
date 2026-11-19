@@ -18,7 +18,9 @@ public record BillDto(
     string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "",
     // FurtherTaxAmount is in Total and is printed as its own line. SplitRemaining is what is left at the standard
     // rate: parts are always booked at it, so the split screen divides this, not a card-rate Remaining.
-    decimal FurtherTaxAmount = 0, decimal SplitRemaining = 0);
+    // ServiceTaxAmount (tax on the service charge) and RoundingAmount (to a whole rupee) are in Total too, and are
+    // 0 unless the owner turned those bill options on.
+    decimal FurtherTaxAmount = 0, decimal SplitRemaining = 0, decimal ServiceTaxAmount = 0, decimal RoundingAmount = 0);
 
 // Discount is the applied Rs amount the cashier confirmed (pre-filled from settings);
 // AmountTendered is the cash received (used to compute & store the change).
@@ -65,7 +67,7 @@ public record InvoiceDto(
     string? FiscalError, bool ReceiptEnabled = true,
     string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
     string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "",
-    decimal FurtherTaxAmount = 0)
+    decimal FurtherTaxAmount = 0, decimal ServiceTaxAmount = 0, decimal RoundingAmount = 0)
 {
     public static InvoiceDto From(Invoice inv, string restaurantName, string currency,
         string logoUrl = "", string receiptHeader = "", string receiptFooter = "",
@@ -78,5 +80,6 @@ public record InvoiceDto(
         inv.AmountTendered, inv.ChangeGiven, inv.TaxLabel,
         inv.FiscalProvider, inv.FiscalStatus.ToString(), inv.FiscalNumber, inv.FiscalQrPayload,
         inv.FiscalError, receiptEnabled, logoUrl, receiptHeader, receiptFooter,
-        inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName, inv.FurtherTaxAmount);
+        inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName, inv.FurtherTaxAmount,
+        inv.ServiceTaxAmount, inv.RoundingAmount);
 }

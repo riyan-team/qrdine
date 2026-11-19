@@ -44,6 +44,13 @@ public static class Access
         return order.CreatedAt >= DateTimeOffset.FromUnixTimeSeconds(issued).UtcDateTime - PassSlack;
     }
 
+    /// <summary>Who is cancelling, as the owner's cancelling rules see them. The counter is the cashier, the manager
+    /// and the owner: the people who take the money and settle the orders.</summary>
+    public static Canceller CancellerOf(ClaimsPrincipal? user) =>
+        IsGuest(user) ? Canceller.Guest
+        : new Canceller(IsOwner: user!.IsInRole("Owner"),
+            AtCounter: user.IsInRole("Owner") || user.IsInRole("Manager") || user.IsInRole("Cashier"));
+
     // ---- the live feed (SignalR) ----
 
     /// <summary>The restaurant-wide feed (every order, the printers): only that restaurant's staff.</summary>

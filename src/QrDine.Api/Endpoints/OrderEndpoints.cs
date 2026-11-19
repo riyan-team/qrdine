@@ -56,8 +56,14 @@ public static class OrderEndpoints
         {
             var order = await svc.GetOrder(id);
             if (!Access.MayReadOrder(user, order)) throw new DomainException("Order not found.");
+            if (user.FindFirst(AppClaims.TokenType)?.Value == AppClaims.TypeGuest)
+                order = order with { GuestCanCancel = await svc.GuestMayCancel(order) };
             return Results.Ok(order);
         }).RequireAuthorization(Policies.GuestOrStaff);
+
+        // The cancelling rules, so staff screens only show the cancel buttons that will work.
+        g.MapGet("/orders/cancel-rules", async (OrderService svc) => Results.Ok(await svc.CancelRules()))
+            .RequireAuthorization(Policies.StaffAny);
 
         // Cancel order (staff with permission OR guest for their table)
         g.MapPost("/orders/{id:int}/cancel", async (int id, CancelRequest? body, ClaimsPrincipal user, OrderService svc) =>
@@ -66,13 +72,17 @@ public static class OrderEndpoints
             var order = await svc.GetOrder(id);
             if (type == AppClaims.TypeStaff)
             {
-                var canCancel = user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCancel);
+                var who = Access.CancellerOf(user);
+                // The cancel right, or the owner's cashier option (the counter cancels at any stage without it).
+                var canCancel = user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCancel)
+                    || (who.AtCounter && (await svc.CancelRules()).CounterAnyStage);
                 if (!canCancel)
                     return Results.Problem(detail: "You don't have permission to cancel orders.", statusCode: 403);
                 // Staff always say why, and the report keeps who did it: a cancelled order is food that wasn't paid for.
                 if (string.IsNullOrWhiteSpace(body?.Reason))
                     return Results.Problem(detail: "Say why this order is being cancelled.", statusCode: 400);
-                return Results.Ok(await svc.Cancel(id, body.Reason, by: user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value));
+                return Results.Ok(await svc.Cancel(id, body.Reason, by: user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+                    who: who));
             }
             if (type == AppClaims.TypeGuest)
             {
@@ -83,7 +93,7 @@ public static class OrderEndpoints
                 if (order.Status is "Ready" or "Served" or "Paid" or "Cancelled")
                     return Results.Problem(detail: $"Order cannot be cancelled when it is {order.Status.ToLower()}.", statusCode: 400);
 
-                return Results.Ok(await svc.Cancel(id, body?.Reason ?? "Cancelled by customer"));
+                return Results.Ok(await svc.Cancel(id, body?.Reason ?? "Cancelled by customer", who: Canceller.Guest));
             }
             return Results.Problem(detail: "This session can't cancel orders.", statusCode: 403);
         }).RequireAuthorization(Policies.GuestOrStaff);

@@ -132,6 +132,8 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
   cashier/`cash123`, kitchen/`kit123`, waiter/`wait123`; dev platform `superadmin`/`super123`.
 
 ## Sync with a restaurant's own PC (hybrid offline, phase 1)
+For the owner-level picture (what is ready online, offline and hybrid, and how to set each up) see
+**`docs/ONLINE-OFFLINE-HYBRID.md`**.
 Goal: a restaurant's counter PC keeps a copy of **that restaurant's data only** and keeps working when
 the power or internet goes. Phase 1 is the server side only: no PC app exists yet, and nothing is applied
 from a PC. **It is all off until `Sync:Enabled=true`** (`Sync__Enabled=true` in `/etc/qrdine/qrdine.env`).
@@ -177,12 +179,12 @@ body or a valid key, and no change lines are written. The switch is read once at
 4. **Deploy** with the README command. **Leave `Sync__Enabled` out**, so sync stays off.
 5. **Check:**
    - `/health` returns 200.
-   - The newest `__EFMigrationsHistory` row is `20261119132040_OrderCancelledByAndItemTaxZero` (after `20261119120452_AddSyncFoundation`).
+   - The newest `__EFMigrationsHistory` row is `20261119183302_BillOptionsAndCancelRules` (after `20261119132040_OrderCancelledByAndItemTaxZero` and `20261119120452_AddSyncFoundation`).
    - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5100/api/sync/hello` returns 404.
    - `journalctl -u qrdine -n 50` is clean.
    - One test bill on the demo or own restaurant settles.
 6. **Rollback, app only (normal case):** `systemctl stop qrdine && rm -rf /opt/qrdine/app && cp -a /opt/qrdine/app.prev-b264329 /opt/qrdine/app && systemctl start qrdine`. The old build runs on the new schema (tested: see the change log), and its new rows still get a `SyncId` from the database default. Leave the new columns and tables in place. If sync was ever on, every paired PC must take a fresh snapshot after a rollback, because the old build writes no change lines and doesn't update `LastChangedAt`.
-7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119132040_OrderCancelledByAndItemTaxZero 20261112161635_AddDeliveryTracking -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
+7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119183302_BillOptionsAndCancelRules 20261112161635_AddDeliveryTracking -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
 8. **Switching sync on** waits for the PC app (phase 2): set `Sync__Enabled=true`, restart, and pair from the owner's screen.
 
 ## Known quirks
@@ -192,6 +194,24 @@ body or a valid key, and no change lines are written. The switch is read once at
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-19**: **Owner settings for bills and cancelling, plus the online/offline/hybrid guide.** Branch `hybrid-sync-foundation`; not deployed. Every switch starts the way the app always worked, so no restaurant's bills or cancelling change until its owner flips one. Settings → Billing, tax & receipt, blocks "Bill options" and "Cancelling orders".
+  - **Bill options** (`Invoice.Charges`, built by `BillingService.ChargesFor`; every price, split, khata and floor total goes through it):
+    - `ServiceChargeTaxable`: the service charge is taxed at the bill's default rate (the card rate when cashless). Kept apart as `Invoice.ServiceTaxAmount` with its rate in `ServiceTaxPercent`. Reports count it as tax. FBR gets it on the SERVICE line (TaxRate, TaxCharged, TotalAmount = service + tax), so the totals still reconcile.
+    - `ServiceAfterDiscount`: service on `max(0, subtotal − discount)`. The discount report's "Before" adds back the service (and its tax) that came off.
+    - `RoundTotals`: the last step rounds to a whole rupee; `Invoice.RoundingAmount` keeps the difference (−0.50 to +0.50). Change is worked out on the rounded total. **FBR gets the exact, unrounded amounts.** The CSV export gains a `Rounding` column at the end (the old columns keep their places).
+    - `CardRateForAllItems`: paid cashless, an item's own rate above 0 is replaced by the card rate; 0 stays tax-free.
+    - The bill, receipt (`Receipt.jsx`) and printed slip show "GST on service" and "Rounding". The printed slip also gains its missing "Further tax" line.
+  - **Cancelling** (`OrderService.Cancel` / `VoidItem`, who is asking comes from `Access.CancellerOf`):
+    - Before the kitchen starts cooking (Placed, Approved) cancelling works exactly as before.
+    - `NoCancelOnceCooking` (screen: "Allow cancelling once cooking has started", on by default): when locked, food that is cooking or ready (and dishes on a served order) can only be cancelled or removed by the owner. A guest gets "Your food is already being made…". The guest's order screen asks the server (`OrderDto.GuestCanCancel`, filled only for guests) and hides the button.
+    - `CashierCancelAnyStage` (off by default): the counter (Owner, Manager, Cashier roles) can cancel any unpaid order, served included (`Order.Cancel(evenServed)`), or remove any dish, whatever the lock says, even without `orders.cancel`. Without it, cashiers still need `orders.cancel`, which their role doesn't have by default. The void route moved from the `CanCancel` policy to `StaffAny` plus this check. `GET /orders/cancel-rules` gives staff screens the two rules, so Reception shows only buttons that will work.
+    - `KeepStockOnCookedCancel` (screen: "Put ingredients back…", on by default): when off, food cancelled while Cooking/Ready stays used up. Approved food always goes back; served food never did.
+    - Only the owner can change the three cancelling switches (`SetBillingSettings(callerIsOwner)`). The new inputs are nullable, so an older screen sending none of them changes nothing.
+  - Column names are chosen so that false is the old behaviour: EF can't store false in a bool whose database default is true. Migration `BillOptionsAndCancelRules` adds 7 bools to `Restaurants` and 3 decimals to `Invoices`, all defaulting to 0, so the old build inserts fine.
+  - Tests: 284 pass (`BillOptionsTests.cs` adds 19). Checked in the browser on the QA restaurant: the toggles save; a 750 bill with 5% service and 16% GST shows 37.50 service, GST on service 6, rounding +0.50, total 914 (card: 827). Settled at 1000 cash, it gave 86 change. Over real HTTP, a guest is refused once cooking starts, the owner isn't, and a cashier is allowed with the any-stage switch on (403 with it off). The settings page has no side scroll at 375 px.
+  - **Whole-day check on the PC** (same four stages, throwaway Postgres 18 on 127.0.0.1:5434, Release builds, Production mode): old `b264329` fresh 544/544; new build migrating it (15 migrations, newest `BillOptionsAndCancelRules`) 550 pass; old build on the new schema 542 pass (the rollback case); new build with sync on 550 pass, then the sync smoke 34/34. Only the two known slug failures; no app errors in any stage. Still worth rerunning on the server before deploying.
+  - **Local dev DB:** `EnsureCreated` never adds columns. Either delete `qrdine.db`, or add the 10 columns by hand with `ALTER TABLE … ADD COLUMN … DEFAULT 0`.
+  - `docs/ONLINE-OFFLINE-HYBRID.md` is new: what is ready (online yes, offline yes with limits, hybrid phase 1 only), how each works and how to set each up, and the new settings.
 - **2026-11-19**: **Full QA pass: bills, tax and counts (commit `839c1ef`).** Branch `hybrid-sync-foundation`; not deployed. A read-only audit plus hands-on tests on phone, tablet and PC sizes found money that was shown, stored or counted wrong. Each fix has a test in `MoneyLogicTests.cs`.
   - **Split bills.** A part can't be more than what is left (it used to count the extra as drawer cash: day close showed a false shortage). Change on a part-paid bill is worked out against what was left. A bill can't be discounted below what is already paid. Settle sends the amount the cashier saw (`ExpectedTotal`) and is refused if an order landed since. The split screen divides the standard-rate total (`BillDto.SplitRemaining`), because parts are always booked at the standard rate.
   - **Received and change.** `AmountTendered` is everything received for the bill, earlier parts included, so received minus change is always the total. The receipt says "Received" (not "Cash received") on a split bill.
@@ -201,7 +221,7 @@ body or a valid key, and no change lines are written. The switch is read once at
   - **Payroll.** A bonus is paid out when recorded (it writes an expense), so it is no longer added to "still due" as well (it was being paid twice). The salary slip shows it as earned and paid.
   - **Cancelling.** The last order on a table with a part paid can't be cancelled (the money stayed on the table and the next guests got it). Staff must give a reason; `Order.CancelledBy` and `CancelledAt` are recorded and the cancelled-orders report shows who. Cooking straight from Placed takes the stock, so a cancel no longer gives back stock that never left.
   - **Smaller.** Order history counts Pakistan days. Amounts with paisa show two places (Rs 2,625.60). Switching Cash to Card clears the typed cash. A cleared discount box means no discount for a split part too. Discount box messages for over the food or below zero. Split people stay 1–50. Payroll month buttons are 40 px. The removed `POST /orders/{id}/pay` marked an order paid with no invoice (nothing used it).
-  - **Not changed, owner's call:** the service charge is still on the subtotal before discount and untaxed (so a 100%-discounted bill still pays service), totals still keep paisa, and items with their own rate keep it when paid by card.
+  - **Not changed, owner's call:** the service charge is still on the subtotal before discount and untaxed (so a 100%-discounted bill still pays service), totals still keep paisa, and items with their own rate keep it when paid by card. These became owner settings the same day (see the bill options entry above).
 - **2026-11-19**: **Full QA pass: forms and screens (commits `dbd058e`, merged in `5acb988`, then `a8605b0` and `46a3aaa`).** Same branch, not deployed. Tests: 265 pass (`FormRulesTests.cs` adds 49).
   - **Refused, not quietly changed.** Bill settings (tax, card tax, service 0–100, discount ≥ 0 and ≤ 100 when a %), item tax and further tax 0–100, and a deal price at or above the price now come back with a reason. They used to be clamped or dropped without a word. `BillingRules` holds the limits and messages.
   - **One phone rule** (`Common/Phone.cs`, `frontend/src/phone.js`): digits with spaces, dashes, brackets or a leading +, and 7 to 15 digits. It applies to tickets, guest orders, customers, suppliers, staff mobiles, employees and riders. A running delivery can't blank out its phone or address.

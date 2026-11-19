@@ -435,7 +435,8 @@ public class AppDbContext : DbContext, IAppDbContext
             foreach (var p in new[] { nameof(Invoice.Subtotal), nameof(Invoice.TaxPercent),
                 nameof(Invoice.TaxAmount), nameof(Invoice.FurtherTaxAmount), nameof(Invoice.ServiceChargePercent),
                 nameof(Invoice.ServiceChargeAmount), nameof(Invoice.DiscountAmount), nameof(Invoice.Total),
-                nameof(Invoice.AmountTendered), nameof(Invoice.ChangeGiven) })
+                nameof(Invoice.AmountTendered), nameof(Invoice.ChangeGiven),
+                nameof(Invoice.ServiceTaxPercent), nameof(Invoice.ServiceTaxAmount), nameof(Invoice.RoundingAmount) })
                 e.Property(p).HasPrecision(12, 2);
             e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.InvoiceId).OnDelete(DeleteBehavior.Cascade);
         });

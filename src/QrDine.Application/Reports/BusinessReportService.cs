@@ -74,7 +74,7 @@ public class BusinessReportService
         var entries = allEntries.Where(e => e.Date >= start && e.Date <= end).ToList();
 
         DateTime DayOf(Invoice i) => BusinessDay.ToPkt(i.IssuedAt).Date;
-        decimal TaxOf(Invoice i) => i.TaxAmount + i.FurtherTaxAmount;
+        decimal TaxOf(Invoice i) => i.TaxAmount + i.FurtherTaxAmount + i.ServiceTaxAmount;
 
         // ---- summary ----
         var sales = invoices.Sum(i => i.Total);
@@ -257,10 +257,17 @@ public class BusinessReportService
 
     private static bool IsCash(string? method) => MoneyTaken.IsCash(method);
 
-    /// <summary>What the bill would have been with no discount: what was paid, plus the discount, plus the tax
-    /// that came off with it (tax is charged after the discount).</summary>
-    private static decimal BeforeDiscount(Invoice i) => Math.Round(i.Total + i.DiscountAmount
-        + i.Lines.Sum(l => l.DiscountAmount * (l.TaxRate + l.FurtherTaxRate) / 100m), 2, MidpointRounding.AwayFromZero);
+    /// <summary>What the bill would have been with no discount: what was paid (before rounding), plus the discount,
+    /// plus the tax that came off with it (tax is charged after the discount), plus the service charge and its tax
+    /// that came off with it when the owner works service out after the discount.</summary>
+    private static decimal BeforeDiscount(Invoice i)
+    {
+        var fullService = Math.Round(i.Subtotal * i.ServiceChargePercent / 100m, 2, MidpointRounding.AwayFromZero);
+        var serviceOff = Math.Max(0, fullService - i.ServiceChargeAmount) * (1 + i.ServiceTaxPercent / 100m);
+        return Math.Round(i.Total - i.RoundingAmount + i.DiscountAmount
+            + i.Lines.Sum(l => l.DiscountAmount * (l.TaxRate + l.FurtherTaxRate) / 100m) + serviceOff,
+            2, MidpointRounding.AwayFromZero);
+    }
     private static bool IsKhata(string? method) => string.Equals(method, "Khata", StringComparison.OrdinalIgnoreCase);
 
     private static string ChannelLabel(OrderChannel channel) => channel switch

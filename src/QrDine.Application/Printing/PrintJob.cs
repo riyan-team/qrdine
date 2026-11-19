@@ -36,8 +36,11 @@ public static class PrintJobs
         lines.Add(new string('-', 32));
         lines.Add("Subtotal".PadRight(24) + Money(inv.Subtotal).PadLeft(8));
         if (inv.ServiceChargePercent > 0) lines.Add($"Service {inv.ServiceChargePercent}%".PadRight(24) + Money(inv.ServiceChargeAmount).PadLeft(8));
+        if (inv.ServiceTaxAmount > 0) lines.Add("Tax on service".PadRight(24) + Money(inv.ServiceTaxAmount).PadLeft(8));
         if (inv.TaxPercent > 0) lines.Add($"GST {inv.TaxPercent}%".PadRight(24) + Money(inv.TaxAmount).PadLeft(8));
+        if (inv.FurtherTaxAmount > 0) lines.Add("Further tax".PadRight(24) + Money(inv.FurtherTaxAmount).PadLeft(8));
         if (inv.DiscountAmount > 0) lines.Add("Discount".PadRight(24) + ("-" + Money(inv.DiscountAmount)).PadLeft(8));
+        if (inv.RoundingAmount != 0) lines.Add("Rounding".PadRight(24) + $"{inv.Currency} {inv.RoundingAmount:0.00}".PadLeft(8));
         lines.Add("TOTAL".PadRight(24) + Money(inv.Total).PadLeft(8));
         lines.Add($"Paid via {inv.PaymentMethod}");
 

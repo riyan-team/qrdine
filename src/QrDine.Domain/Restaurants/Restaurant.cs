@@ -47,6 +47,18 @@ public class Restaurant : Entity
     public bool ReceiptEnabled { get; set; } = true;   // print/show a receipt after settlement
     public bool StockTrackingEnabled { get; set; } = true;  // deduct recipe stock + low-stock alerts
 
+    // ---- Bill options. All off by default, which is how bills always worked. ----
+    public bool ServiceChargeTaxable { get; set; }      // charge tax (the bill's standard or card rate) on the service charge too
+    public bool ServiceAfterDiscount { get; set; }      // work the service charge out on the food after the discount
+    public bool RoundTotals { get; set; }               // round each bill to the nearest whole rupee (shown as "Rounding")
+    public bool CardRateForAllItems { get; set; }       // the card rate replaces an item's own rate too (tax-free items stay tax-free)
+
+    // ---- Cancelling. Off by default, which is how cancelling always worked. Named so that "off" is the old way,
+    // because EF can't save false into a bool column whose database default is true. ----
+    public bool NoCancelOnceCooking { get; set; }       // once cooking starts, no one can cancel the order or remove its dishes
+    public bool KeepStockOnCookedCancel { get; set; }   // food cancelled after cooking started: its ingredients stay used up
+    public bool CashierCancelAnyStage { get; set; }     // the counter (cashier, manager, owner) can cancel any unpaid order at any stage
+
     // ---- Receipt branding (printed on 80mm thermal receipts) ----
     public string LogoUrl { get; set; } = "";          // logo shown centred at the top of the receipt
     public string ReceiptHeader { get; set; } = "";    // address / phone line under the name

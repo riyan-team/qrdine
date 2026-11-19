@@ -39,14 +39,23 @@ public record ServiceSettingsInput(bool? WaiterAutoAssign = null, bool? GuestTak
     decimal? DeliveryFee = null, string? DeliveryNote = null, double? Latitude = null, double? Longitude = null, decimal? DeliveryRadiusKm = null);
 
 // Billing settings: Tax/GST, discount, receipt and stock behaviour. Owner-managed.
+// The bill options and cancelling rules are named the way the owner reads them ("allow ...", "put back ..."),
+// whatever the column is called. Their defaults are how the app always worked.
 public record BillingSettingsDto(
     bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
     bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
-    bool ReceiptEnabled, bool StockTrackingEnabled, string Currency, decimal? TaxPercentCard = null);
+    bool ReceiptEnabled, bool StockTrackingEnabled, string Currency, decimal? TaxPercentCard = null,
+    bool ServiceChargeTaxable = false, bool ServiceAfterDiscount = false, bool RoundTotals = false,
+    bool CardRateForAllItems = false, bool AllowCancelAfterCooking = true, bool RestockCookedCancel = true,
+    bool CashierCancelAnyStage = false);
+// The new fields are optional (null = leave as it is), so a screen that doesn't know them yet can't change them.
 public record BillingSettingsInput(
     bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
     bool DiscountEnabled, bool DiscountIsPercent, decimal DiscountValue,
-    bool ReceiptEnabled, bool StockTrackingEnabled, decimal? TaxPercentCard = null);
+    bool ReceiptEnabled, bool StockTrackingEnabled, decimal? TaxPercentCard = null,
+    bool? ServiceChargeTaxable = null, bool? ServiceAfterDiscount = null, bool? RoundTotals = null,
+    bool? CardRateForAllItems = null, bool? AllowCancelAfterCooking = null, bool? RestockCookedCancel = null,
+    bool? CashierCancelAnyStage = null);
 
 // Onboarding
 public record OnboardRequest(string RestaurantName, string? Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);
