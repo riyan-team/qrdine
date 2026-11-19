@@ -32,6 +32,10 @@ public class Order : AggregateRoot, ITenantOwned
     public string? CancelledBy { get; private set; }      // the staff username, or null when the guest cancelled
     public DateTime? CancelledAt { get; private set; }
 
+    /// <summary>The guest pass (one phone) that placed this order, so only that phone can cancel it.
+    /// Null for orders a waiter or the counter took, and for orders saved before this existed.</summary>
+    public string? GuestPassId { get; set; }
+
     private readonly List<OrderItem> _items = new();
     public IReadOnlyList<OrderItem> Items => _items.AsReadOnly();
 

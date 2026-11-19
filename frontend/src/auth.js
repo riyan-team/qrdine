@@ -84,6 +84,49 @@ export const auth = {
   getTable(slug) {
     try { return sessionStorage.getItem(`qrdine.table.${slug}`) || '' } catch { return '' }
   },
+  // The secret part of a table's QR code (?k=…). A pass is only given with it, so "T1" alone opens nothing.
+  rememberTableKey(slug, tableCode, k) {
+    if (!slug || !tableCode || !k) return
+    // A fresh scan starts a fresh pass: an older one on this phone may have ended while the page was closed.
+    const same = (c) => String(c).toUpperCase() === String(tableCode).toUpperCase()
+    for (const t of Object.keys(this._guestTokens)) if (t.startsWith(`${slug}:`) && same(t.slice(slug.length + 1))) delete this._guestTokens[t]
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const s = sessionStorage.key(i) || ''
+        if (s.startsWith(`qrdine.guestToken.${slug}:`) && same(s.slice(`qrdine.guestToken.${slug}:`.length))) sessionStorage.removeItem(s)
+      }
+      sessionStorage.setItem(`qrdine.tablekey.${slug}:${String(tableCode).toUpperCase()}`, String(k).trim())
+      sessionStorage.removeItem(`qrdine.passEnded.${slug}`)
+    } catch {}
+  },
+  // Whether this phone can order at this table: it scanned the table's QR code, or still holds a pass from it.
+  canOrderAt(slug, tableCode) {
+    if (this.staffToken && this.staffSlug() === slug) return true
+    if (this.tableKey(slug, tableCode)) return true
+    const key = `${slug}:${tableCode}`
+    if (fresh(this._guestTokens[key])) return true
+    try { return fresh(sessionStorage.getItem(`qrdine.guestToken.${key}`)) } catch { return false }
+  },
+  tableKey(slug, tableCode) {
+    try { return sessionStorage.getItem(`qrdine.tablekey.${slug}:${String(tableCode).toUpperCase()}`) || '' } catch { return '' }
+  },
+  // The table's bill was settled (or the guests moved): this phone's table passes and keys go, so it can't
+  // follow the next guests' orders. Scanning the table's QR code again starts fresh.
+  endTablePasses(slug) {
+    for (const k of Object.keys(this._guestTokens)) if (k.startsWith(`${slug}:`) && !isTicketCode(k.slice(slug.length + 1))) delete this._guestTokens[k]
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i) || ''
+        if (k === `qrdine.guestToken.${slug}`
+          || (k.startsWith(`qrdine.guestToken.${slug}:`) && !isTicketCode(k.slice(`qrdine.guestToken.${slug}:`.length)))
+          || k.startsWith(`qrdine.tablekey.${slug}:`)) sessionStorage.removeItem(k)
+      }
+      sessionStorage.setItem(`qrdine.passEnded.${slug}`, '1')
+    } catch {}
+  },
+  passEnded(slug) {
+    try { return sessionStorage.getItem(`qrdine.passEnded.${slug}`) === '1' } catch { return false }
+  },
   // A takeaway/delivery ticket's pass. The server hands it out once, when the guest places the order,
   // and never again (ticket numbers are easy to guess), so it is kept on this phone to follow the order.
   keepTicket(slug, ticket, token) {
@@ -142,8 +185,16 @@ export const auth = {
     // The menu and the live feed ask at the same moment: one request serves both.
     if (!this._pending[key]) {
       this._pending[key] = (async () => {
-        const res = await fetch(`/api/r/${slug}/tables/${code}/session`, { method: 'POST' })
-        if (!res.ok) throw new Error('Could not start table session')
+        const k = this.tableKey(slug, code)
+        if (!k) throw Object.assign(new Error('Please scan the QR code on your table to order.'), { needScan: true })
+        const res = await fetch(`/api/r/${slug}/tables/${code}/session`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: k }),
+        })
+        if (!res.ok) {
+          let msg = 'Please scan the QR code on your table to order.'
+          try { const b = await res.json(); if (typeof b?.detail === 'string') msg = b.detail } catch {}
+          throw Object.assign(new Error(msg), { needScan: true })
+        }
         const { token } = await res.json()
         this._guestTokens[key] = token
         try {

@@ -34,6 +34,10 @@ public static class BillingEndpoints
         g.MapPost("/tables/{code}/pay-part", async (string code, PayPartRequest body, ClaimsPrincipal user, BillingService svc)
             => Results.Ok(await svc.PayPartial(code, body, Operator(user), default, CanDiscount(user))));
 
+        // Give money back from a table's part payments (a dish came off after the guest paid towards it).
+        g.MapPost("/tables/{code}/give-back", async (string code, GiveBackRequest body, ClaimsPrincipal user, BillingService svc)
+            => Results.Ok(await svc.GiveBack(code, body, Operator(user) ?? "")));
+
         // Reprint a settled invoice.
         g.MapGet("/invoices/{id:int}", async (int id, BillingService svc) =>
         {

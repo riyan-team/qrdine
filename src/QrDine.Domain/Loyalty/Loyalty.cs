@@ -43,6 +43,10 @@ public class LoyaltyMember : Entity, ITenantOwned
     public string Token { get; set; } = "";           // remembers the member on the guest's phone
     public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastVisitAt { get; set; }
+    // A one-time code the staff give a member to open their points on a new phone (typing the number alone isn't enough).
+    public string? PhoneCode { get; set; }
+    public DateTime? PhoneCodeUntil { get; set; }
+    public int PhoneCodeTries { get; set; }
 
     /// <summary>Add (or, with a negative number, take off) points; the balance never goes below zero.</summary>
     public int Apply(int points)

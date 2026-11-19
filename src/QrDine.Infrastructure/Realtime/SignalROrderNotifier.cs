@@ -11,7 +11,8 @@ namespace QrDine.Infrastructure.Realtime;
 public class SignalROrderNotifier : IOrderNotifier
 {
     private readonly IHubContext<OrderHub> _hub;
-    public SignalROrderNotifier(IHubContext<OrderHub> hub) => _hub = hub;
+    private readonly LiveConnections _live;
+    public SignalROrderNotifier(IHubContext<OrderHub> hub, LiveConnections live) { _hub = hub; _live = live; }
 
     public async Task OrderChanged(string slug, OrderDto order, CancellationToken ct = default)
     {
@@ -26,5 +27,16 @@ public class SignalROrderNotifier : IOrderNotifier
     {
         await _hub.Clients.Group(OrderHub.StaffGroup(slug)).SendAsync("serviceRequest", request, ct);
         await _hub.Clients.Group(OrderHub.TableGroup(slug, request.TableCode)).SendAsync("serviceRequest", request, ct);
+    }
+
+    public async Task TablePassesEnded(string slug, string tableCode, CancellationToken ct = default)
+    {
+        var group = OrderHub.TableGroup(slug, tableCode);
+        foreach (var id in _live.GuestsIn(group))
+        {
+            await _hub.Groups.RemoveFromGroupAsync(id, group, ct);
+            _live.LeftGroup(id, group);
+            await _hub.Clients.Client(id).SendAsync("passEnded", ct);
+        }
     }
 }

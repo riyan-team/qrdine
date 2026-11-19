@@ -22,6 +22,7 @@ public class TenantResolutionMiddleware
     public TenantResolutionMiddleware(RequestDelegate next) => _next = next;
 
     private const string Ended = "Your sign-in has ended. Please sign in again.";
+    public const string PassEnded = "This table's bill is settled. Thank you! To order again, scan the QR code on your table.";
 
     public async Task Invoke(HttpContext ctx, CurrentTenant tenant, AppDbContext db, IConfiguration config,
         StaffSessions sessions, Application.Platform.PlatformService platform)
@@ -83,6 +84,19 @@ public class TenantResolutionMiddleware
                         return;
                     }
                     ctx.User = StaffSessions.WithCurrentAccess(ctx.User, now);
+                }
+                else if (type == AppClaims.TypeGuest)
+                {
+                    // A table pass ends when the table's bill is settled, its guests move, or its QR code
+                    // changes, so the people who sat there before can't see or change the next guests' orders.
+                    var code = ctx.User.FindFirst(AppClaims.TableCode)?.Value;
+                    var table = string.IsNullOrEmpty(code) ? null
+                        : await db.Tables.AsNoTracking().FirstOrDefaultAsync(t => t.Code == code, ctx.RequestAborted);
+                    if (table is null || !table.PassStillGood(Access.IssuedAtOf(ctx.User)))
+                    {
+                        await Write(ctx, StatusCodes.Status401Unauthorized, new { title = PassEnded, status = 401, passEnded = true });
+                        return;
+                    }
                 }
             }
         }

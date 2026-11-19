@@ -1,7 +1,10 @@
 namespace QrDine.Application.Loyalty;
 
 // ---- guest (QR page) ----
-public record LoyaltyJoinInput(string? Name, string Phone, string? TableCode);
+/// <summary>Code: the 6-digit code from the staff, needed when the number already belongs to a member.</summary>
+public record LoyaltyJoinInput(string? Name, string Phone, string? TableCode, string? Code = null);
+/// <summary>A one-time code for a member's new phone, shown to the staff to read out.</summary>
+public record LoyaltyPhoneCodeDto(string Code, int Minutes, string PhoneMasked);
 public record LoyaltyRedeemInput(int RewardId, string? TableCode);
 public record LoyaltyLinkInput(string TableCode);
 
@@ -22,7 +25,7 @@ public record LoyaltyRedemptionDto(int Id, string RewardTitle, string RewardEmoj
 /// <summary>A member's own view: balance, waiting requests and recent history.</summary>
 public record LoyaltyMeDto(string Token, string Name, string PhoneMasked, int Points, int AvailablePoints,
     int LifetimePoints, int Visits, DateTime JoinedAt, bool JustJoined, int WelcomeBonusAwarded,
-    IReadOnlyList<LoyaltyRedemptionDto> Redemptions, IReadOnlyList<LoyaltyTxnDto> History);
+    IReadOnlyList<LoyaltyRedemptionDto> Redemptions, IReadOnlyList<LoyaltyTxnDto> History, bool NeedsCode = false);
 
 // ---- admin ----
 public record LoyaltyProgramInput(bool Enabled, string Name, string? Tagline, int EarnPoints, decimal PerAmount,

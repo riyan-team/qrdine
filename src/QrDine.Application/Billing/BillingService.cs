@@ -80,7 +80,9 @@ public class BillingService
                 // Tax OFF → no tax at all. Tax ON → the item's own rate if it has one (0 means the item is
                 // tax-free), otherwise (blank) the restaurant's default GST rate applies to the item. When the owner
                 // says so, a card payment's lower rate replaces an item's own rate too; tax-free stays tax-free.
+                // "One tax for all items": every item at the bill's rate, whatever its own (tax-free included).
                 var taxRate = !r.TaxEnabled ? 0
+                    : r.OneTaxForAllItems ? defaultRate
                     : mi?.TaxRate is decimal own ? (own > 0 && CardRateReplacesOwn(r, method) ? defaultRate : own)
                     : defaultRate;
                 return new InvoiceLine
@@ -217,6 +219,59 @@ public class BillingService
         return totals;
     }
 
+    /// <summary>
+    /// What a seating's open orders come to at the standard rate with the owner's standing discount: the total
+    /// that part payments are booked against. Used to refuse a cancel that would leave less to pay than is paid.
+    /// </summary>
+    public async Task<decimal> StandardTotal(int sessionId, IReadOnlyCollection<Order> openOrders, CancellationToken ct = default)
+    {
+        if (openOrders.Count == 0) return 0;
+        var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
+        var session = await _db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        var lines = await BuildLines(openOrders, r, session, null, ct);
+        return Invoice.Price(lines, ChargesFor(r, session, null), SettingsDiscount(r, FoodSubtotal(lines))).Total;
+    }
+
+    /// <summary>
+    /// Gives money back from a table's part payments (a dish came off after the guest paid towards it). The newest
+    /// parts are reduced first, each in its own method, so the cashier knows how to hand it back. It can't take
+    /// back more than was paid, and it is recorded with who did it and why.
+    /// </summary>
+    public async Task<GiveBackResult> GiveBack(string tableCode, GiveBackRequest req, string by, CancellationToken ct = default)
+    {
+        var reason = (req.Reason ?? "").Trim();
+        if (reason.Length == 0) throw new DomainException("Say why this money is being given back.");
+        if (req.Amount <= 0) throw new DomainException("Enter an amount greater than zero.");
+        Admin.BillingRules.EnsureAmount(req.Amount);
+        var sessionId = await OpenSessionId(tableCode, ct) ?? throw new DomainException("No open bill for this table.");
+        var session = await _db.Sessions.FirstAsync(s => s.Id == sessionId, ct);
+        var parts = await _db.Payments.Where(p => p.TableSessionId == sessionId).OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id).ToListAsync(ct);
+        var paid = parts.Sum(p => p.Amount);
+        if (req.Amount > paid + 0.001m)
+            throw new DomainException($"Only Rs {paid:N2} has been paid on this table, so no more than that can be given back.");
+
+        var left = Math.Round(req.Amount, 2, MidpointRounding.AwayFromZero);
+        var back = new List<GiveBackPart>();
+        foreach (var p in parts)
+        {
+            if (left <= 0) break;
+            var take = Math.Min(p.Amount, left);
+            p.Amount -= take;
+            left -= take;
+            back.Add(new GiveBackPart(p.Method, take));
+            if (p.Amount <= 0) _db.Payments.Remove(p);
+        }
+        foreach (var g in back.GroupBy(b => b.Method))
+            _db.PaymentReturns.Add(new Domain.Ordering.PaymentReturn
+            {
+                BranchId = session.BranchId, TableSessionId = session.Id, TableName = session.TableName,
+                Amount = g.Sum(x => x.Amount), Method = g.Key, Reason = reason, GivenBy = by,
+            });
+        await _db.SaveChangesAsync(ct);
+        var merged = back.GroupBy(b => b.Method).Select(g => new GiveBackPart(g.Key, g.Sum(x => x.Amount))).ToList();
+        return new GiveBackResult(merged, paid - req.Amount);
+    }
+
     /// <summary>The discount to pre-apply from the restaurant's settings (0 when off).</summary>
     private static decimal SettingsDiscount(Restaurant r, decimal subtotal)
     {
@@ -229,6 +284,8 @@ public class BillingService
     public async Task<InvoiceDto> Settle(string tableCode, SettleRequest req, string? operatorUsername = null, CancellationToken ct = default,
         bool canDiscount = true)
     {
+        Admin.BillingRules.EnsureAmount(req.AmountTendered, "cash received");
+        Admin.BillingRules.EnsureAmount(req.Discount, "discount");
         var (r, session, orders) = await LoadOpen(tableCode, ct);
         var paid = (await _db.Payments.Where(p => p.TableSessionId == session.Id).Select(p => p.Amount).ToListAsync(ct)).Sum();
         var rateMethod = paid > 0 ? null : req.Method;
@@ -357,6 +414,10 @@ public class BillingService
         _db.Invoices.Add(invoice);
         foreach (var o in orders) o.Settle();
         session.Close();
+        // The table's guests have paid: their passes end, so they can't see or change the next guests' orders.
+        var dineTable = session.Channel == OrderChannel.Dine
+            ? await _db.Tables.FirstOrDefaultAsync(t => t.Id == session.DiningTableId, ct) : null;
+        dineTable?.EndGuestPasses(DateTime.UtcNow);
 
         // Saved together with the invoice, so a bill can't be settled on khata without reaching the khata.
         CustomerEntry? khataEntry = null;
@@ -379,7 +440,7 @@ public class BillingService
             invoice.Number = nextNumber;
             invoice.Usin = $"USIN{nextNumber:D6}";       // unique per restaurant; FBR idempotency key
             try { await _db.SaveChangesAsync(ct); break; }
-            catch (DbUpdateException) when (attempt < 6)
+            catch (DbUpdateException ex) when (attempt < 6 && DbErrors.IsUniqueViolation(ex))
             {
                 await Task.Delay(20 * attempt, ct);      // brief backoff, then recompute
             }
@@ -410,8 +471,10 @@ public class BillingService
 
         foreach (var o in orders)
             await _notifier.OrderChanged(Slug, OrderDto.From(o), ct);
+        if (dineTable is not null) await _notifier.TablePassesEnded(Slug, dineTable.Code, ct);
 
-        var dto = InvoiceDto.From(invoice, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled);
+        var dto = InvoiceDto.From(invoice, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled,
+            r.FbrEnabled ? r.Ntn : "", r.FbrEnabled ? r.Strn : "");
         // Only auto-print/dispatch a receipt when the owner has receipts turned on.
         if (r.ReceiptEnabled)
             await _print.Dispatch(Slug, PrintJobs.Receipt(dto), ct);
@@ -482,6 +545,7 @@ public class BillingService
     {
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
-        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled);
+        return inv is null ? null : InvoiceDto.From(inv, r.Name, r.Currency, r.LogoUrl, r.ReceiptHeader, r.ReceiptFooter, r.ReceiptEnabled,
+            inv.FiscalStatus != FiscalStatus.NotRequired ? r.Ntn : "", inv.FiscalStatus != FiscalStatus.NotRequired ? r.Strn : "");
     }
 }

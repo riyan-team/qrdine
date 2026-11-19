@@ -43,6 +43,8 @@ public class JwtTokenService : ITokenService
             new(AppClaims.TableCode, tableCode),
             // Lets a guest re-open their own finished orders, but not earlier guests' at that table.
             new(AppClaims.IssuedAt, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
+            // This phone's pass: a guest can cancel the orders this pass placed, not the rest of the table's.
+            new(AppClaims.PassId, Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12)).ToLowerInvariant()),
         };
         return Build(claims, _opt.GuestHours);
     }

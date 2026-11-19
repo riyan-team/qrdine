@@ -55,6 +55,7 @@ public static class SyncRules
         ["Invoice"] = SyncRule.OwnedByOrigin,
         ["Payment"] = SyncRule.OwnedByOrigin,
         ["OrderVoid"] = SyncRule.OwnedByOrigin,
+        ["PaymentReturn"] = SyncRule.OwnedByOrigin,
         ["ServiceRequest"] = SyncRule.OwnedByOrigin,
         ["DayClosing"] = SyncRule.OwnedByOrigin,
         ["CustomerEntry"] = SyncRule.OwnedByOrigin,

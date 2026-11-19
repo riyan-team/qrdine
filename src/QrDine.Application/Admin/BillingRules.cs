@@ -18,4 +18,11 @@ public static class BillingRules
     public const string FurtherTaxMessage = "Further tax % must be between 0 and 100.";
 
     public static bool IsPercent(decimal value) => value is >= 0 and <= 100;
+
+    /// <summary>Refuses an amount no bill can hold (an extra zero typed by mistake) with a clear reason, never a 500.</summary>
+    public static void EnsureAmount(decimal amount, string what = "amount")
+    {
+        if (amount >= MaxAmount || amount <= -MaxAmount)
+            throw new Domain.Common.DomainException($"That {what} is too big. Please check the number.");
+    }
 }

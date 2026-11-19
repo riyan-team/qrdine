@@ -147,7 +147,7 @@ function navGroups() {
       title: 'Setup',
       items: [
         can('settings.manage') && { to: '/admin/loyalty', label: 'Rewards', Icon: StarIcon },
-        has('fbr') && (can('reports.view') || can('invoice.sync')) && { to: '/admin/fbr', label: 'FBR invoices', Icon: BankIcon },
+        has('fbr') && (can('reports.view') || can('invoice.sync')) && { to: '/admin/fbr', label: 'Tax office invoices', Icon: BankIcon },
         can('settings.manage') && { to: '/admin/settings', label: 'Settings', Icon: GearIcon },
       ],
     },

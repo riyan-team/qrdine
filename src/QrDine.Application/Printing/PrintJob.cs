@@ -47,19 +47,25 @@ public static class PrintJobs
         // Fiscal footer. The receipt always prints; only this section reflects the FBR
         // state, so a failed/offline filing never blocks the print.
         string? qr = null;
+        var office = inv.FiscalOffice;
         if (!string.IsNullOrWhiteSpace(inv.FiscalNumber))
         {
             lines.Add(new string('-', 32));
-            lines.Add("*** INTEGRATED WITH FBR ***");
-            lines.Add($"FBR Invoice: {inv.FiscalNumber}");
-            lines.Add("Verify in the FBR Tax Asaan app");
+            if (inv.FiscalEnvironment == "Practice") lines.Add("*** PRACTICE - NOT A TAX INVOICE ***");
+            else if (inv.FiscalEnvironment == "Test") lines.Add($"*** {office} TEST - NOT A TAX INVOICE ***");
+            else lines.Add($"*** INTEGRATED WITH {office} ***");
+            if (!string.IsNullOrWhiteSpace(inv.SellerNtn)) lines.Add($"NTN: {inv.SellerNtn}");
+            if (!string.IsNullOrWhiteSpace(inv.SellerStrn)) lines.Add($"STRN: {inv.SellerStrn}");
+            if (inv.PosId is long pos) lines.Add($"POS ID: {pos}");
+            lines.Add($"{office} Invoice: {inv.FiscalNumber}");
+            lines.Add(office == "PRA" ? "Scan to check it on PRA's website" : "Verify in the FBR Tax Asaan app");
             qr = inv.FiscalQrPayload ?? inv.FiscalNumber;
         }
         else if (inv.FiscalStatus is "Pending" or "Failed")
         {
             lines.Add(new string('-', 32));
-            lines.Add("FBR filing pending - sale is valid,");
-            lines.Add("will be filed with FBR shortly.");
+            lines.Add($"{office} filing pending - sale is valid,");
+            lines.Add($"will be filed with {office} shortly.");
         }
         return new PrintJob("receipt", inv.RestaurantName, lines, qr, "Thank you — please come again!");
     }

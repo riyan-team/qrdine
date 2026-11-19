@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using QrDine.Application.Auth;
 using QrDine.Application.Common;
 
@@ -19,8 +20,25 @@ public class OrderHub : Hub
 {
     private const string SignInAgain = "Please sign in again.";
     private readonly StaffSessions _sessions;
+    private readonly LiveConnections _live;
+    private readonly Persistence.AppDbContext _db;
 
-    public OrderHub(StaffSessions sessions) => _sessions = sessions;
+    public OrderHub(StaffSessions sessions, LiveConnections live, Persistence.AppDbContext db)
+    {
+        _sessions = sessions; _live = live; _db = db;
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        _live.Left(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
+    }
+
+    private async Task Add(string group)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, group);
+        _live.Joined(Context.ConnectionId, Context.User!, group);
+    }
 
     public static string StaffGroup(string slug) => $"staff:{slug}";
     // SignalR group names are case-sensitive, but table codes are compared
@@ -38,20 +56,32 @@ public class OrderHub : Hub
     public async Task JoinStaff(string slug)
     {
         await RequireStaffOf(slug);
-        await Groups.AddToGroupAsync(Context.ConnectionId, StaffGroup(TokenSlug));
+        await Add(StaffGroup(TokenSlug));
     }
 
     public async Task JoinTable(string slug, string tableCode)
     {
         if (!Access.MayJoinTableFeed(Context.User, slug, tableCode)) throw new HubException(SignInAgain);
         if (Access.IsStaff(Context.User)) await RequireStaffOf(slug);
-        await Groups.AddToGroupAsync(Context.ConnectionId, TableGroup(TokenSlug, tableCode));
+        else await RequireGoodPass();
+        await Add(TableGroup(TokenSlug, tableCode));
+    }
+
+    // A guest pass ends when the table's bill is settled: an old phone can't join the next guests' feed.
+    private async Task RequireGoodPass()
+    {
+        var rid = int.TryParse(Context.User?.FindFirst(AppClaims.RestaurantId)?.Value, out var r) ? r : 0;
+        var code = Context.User?.FindFirst(AppClaims.TableCode)?.Value ?? "";
+        var table = await _db.Tables.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(t => t.RestaurantId == rid && t.Code == code);
+        if (table is null || !table.PassStillGood(Access.IssuedAtOf(Context.User)))
+            throw new HubException("passEnded");
     }
 
     public async Task JoinPrinters(string slug)
     {
         await RequireStaffOf(slug);
-        await Groups.AddToGroupAsync(Context.ConnectionId, PrintGroup(TokenSlug));
+        await Add(PrintGroup(TokenSlug));
     }
 
     /// <summary>Broadcast a timer tick so all devices see the same remaining time. Staff only.</summary>

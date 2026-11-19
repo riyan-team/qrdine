@@ -31,10 +31,12 @@ async function j(res) {
 }
 
 // Guest answers: like j(), but a refused table pass never sends a customer to the staff sign-in page.
+// A pass that ended (the table's bill was settled) tells the menu, which asks the guest to scan again.
 async function g(res) {
   if (!res.ok) {
     const err = await parseError(res)
     if (err.locked) window.dispatchEvent(new CustomEvent('qrdine:locked', { detail: err.message }))
+    if (err.passEnded) window.dispatchEvent(new CustomEvent('dinein:pass-ended', { detail: err.message }))
     throw err
   }
   const t = await res.text()
@@ -93,6 +95,7 @@ export const loyalty = {
   members: (q = '', page = 1) => staffGet(`/admin/loyalty/members?q=${encodeURIComponent(q)}&page=${page}&pageSize=20`),
   member: (id) => staffGet(`/admin/loyalty/members/${id}`),
   adjust: (id, points, note) => staffPost(`/admin/loyalty/members/${id}/adjust`, { points, note }),
+  phoneCode: (id) => staffPost(`/admin/loyalty/members/${id}/phone-code`),
 
   // reception
   redemptions: (status = '') => staffGet(`/admin/loyalty/redemptions${status ? `?status=${status}` : ''}`),
@@ -281,6 +284,8 @@ export const api = {
   },
   settle: (code, method, discount, amountTendered = 0, customerId = null, expectedTotal = null) => staffPost(`/tables/${code}/settle`, { method, discount, amountTendered, customerId, expectedTotal }),
   payPart: (code, amount, method, discount = null) => staffPost(`/tables/${code}/pay-part`, { amount, method, discount }),
+  // Hands back part of what a table already paid (a dish came off after paying, or too much was taken).
+  giveBack: (code, amount, reason) => staffPost(`/tables/${code}/give-back`, { amount, reason }),
   invoice: (id) => staffGet(`/invoices/${id}`),
 
   // reception dashboard (today's takings, pending bills, settled history)
@@ -339,6 +344,7 @@ export const api = {
 
   // tables admin
   listTables: () => staffGet(`/admin/tables`),
+  newTableQr: (id) => staffPost(`/admin/tables/${id}/new-qr`),
   addTable: (code, name, branchId) => staffPost(`/admin/tables`, { code, name, branchId }),
   updateTable: (id, code, name, branchId) => staffPut(`/admin/tables/${id}`, { code, name, branchId }),
   deleteTable: (id) => staffDelete(`/admin/tables/${id}`),
@@ -369,6 +375,10 @@ export const api = {
   fbrSynced: () => staffGet(`/admin/fbr/invoices/synced`),
   fbrPending: () => staffGet(`/admin/fbr/invoices/pending`),
   fbrRetry: (id) => staffPost(`/admin/fbr/invoices/${id}/retry`),
+  // The picked bills, or (no ids) every waiting one, up to 25 a press.
+  fbrRetryMany: (ids) => staffPost(`/admin/fbr/invoices/retry`, { ids: ids && ids.length ? ids : null }),
+  fbrCheck: () => staffGet(`/admin/fbr/check`),
+  fbrTest: (branchId) => staffPost(`/admin/fbr/branches/${branchId}/test`),
 
   // permissions (owner only)
   getPermissions: () => staffGet(`/admin/permissions`),

@@ -10,6 +10,24 @@ public enum FbrMode
 }
 
 /// <summary>
+/// Which tax office this branch files its bills with. A restaurant's sales tax on services goes to the province it
+/// is in: Punjab files with PRA; Islamabad (and FBR-registered sellers elsewhere) with FBR.
+/// </summary>
+public enum FiscalAuthority
+{
+    FBR,
+    PRA,
+}
+
+/// <summary>Where this branch's bills go.</summary>
+public enum FiscalEnvironment
+{
+    Practice,   // nothing leaves the app: a made-up number, to learn the screens (receipts say PRACTICE)
+    Test,       // the tax office's sandbox, with the test POSID and token it gave you (receipts say TEST)
+    Live,       // the real tax office: every bill is a legal tax invoice
+}
+
+/// <summary>
 /// A physical location of a restaurant. Tables belong to a branch, and each order
 /// / session / invoice is stamped with its branch so a chain can report per site.
 /// Menu, staff and inventory stay shared at the restaurant level.
@@ -25,9 +43,11 @@ public class Branch : Entity, ITenantOwned
     public string Address { get; set; } = "";
     public bool IsActive { get; set; } = true;
 
-    // ---- FBR POS registration (per branch) ----
-    public FbrMode FbrMode { get; set; } = FbrMode.Local;
-    public bool FbrSandbox { get; set; } = true;              // test component/endpoint until go-live
+    // ---- Tax office POS registration (per branch) ----
+    public FiscalAuthority FiscalAuthority { get; set; } = FiscalAuthority.FBR;
+    public FiscalEnvironment FiscalEnvironment { get; set; } = FiscalEnvironment.Practice;
+    public FbrMode FbrMode { get; set; } = FbrMode.Cloud;
+    public bool FbrSandbox { get; set; } = true;              // kept in step with FiscalEnvironment (true unless Live) for older screens
     public long? FbrPosId { get; set; }                       // branch default POS registration number
     public string? FbrToken { get; set; }                     // branch default cloud bearer token
     public string? FbrEndpointOverride { get; set; }          // optional: override the default URL

@@ -26,6 +26,13 @@ public static class AdminSettingsEndpoints
         g.MapPost("/tables", async (TableInput body, RestaurantAdminService svc) => Results.Ok(new { id = await svc.AddTable(body) }));
         g.MapPut("/tables/{id:int}", async (int id, TableInput body, RestaurantAdminService svc) => { await svc.UpdateTable(id, body); return Results.NoContent(); });
         g.MapDelete("/tables/{id:int}", async (int id, RestaurantAdminService svc) => { await svc.DeleteTable(id); return Results.NoContent(); });
+        // A new QR code for one table: the old printed code and every pass from it stop working.
+        g.MapPost("/tables/{id:int}/new-qr", async (int id, string slug, RestaurantAdminService svc, QrDine.Application.Common.IOrderNotifier live) =>
+        {
+            var code = await svc.NewTableQr(id);
+            await live.TablePassesEnded(slug, code);
+            return Results.NoContent();
+        });
 
         // staff — owner-role accounts can only be created/modified/reset/deleted by an
         // owner (a manager holds settings.manage but must not escalate to owner).

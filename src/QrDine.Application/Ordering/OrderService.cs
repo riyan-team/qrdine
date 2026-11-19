@@ -21,10 +21,12 @@ public class OrderService
     private readonly IPrintDispatcher _print;
     private readonly Inventory.InventoryService _inventory;
 
+    private readonly Billing.BillingService? _billing;
+
     public OrderService(IAppDbContext db, ICurrentTenant tenant, IOrderNotifier notifier,
-        IPrintDispatcher print, Inventory.InventoryService inventory)
+        IPrintDispatcher print, Inventory.InventoryService inventory, Billing.BillingService? billing = null)
     {
-        _db = db; _tenant = tenant; _notifier = notifier; _print = print; _inventory = inventory;
+        _db = db; _tenant = tenant; _notifier = notifier; _print = print; _inventory = inventory; _billing = billing;
     }
 
     private static List<(int, int)> Lines(Order o) => o.Items.Select(i => (i.MenuItemId, i.Qty)).ToList();
@@ -33,8 +35,14 @@ public class OrderService
     private string Slug => _tenant.Slug ?? "";
 
     // ---------- place (guest QR self-order, or a waiter ordering on behalf) ----------
+    /// <summary>
+    /// Places an order for a table (or a parcel/delivery ticket). Every line is priced from the menu as it is now
+    /// (portion, live deal price, add-ons), and lines that can't be served are left out. Nothing is saved, not even
+    /// a new seating, until at least one line can be served. <paramref name="guestPassId"/> is the guest phone's
+    /// pass, kept on the order so only that phone can cancel it.
+    /// </summary>
     public async Task<OrderDto> Place(PlaceOrderRequest req, OrderSource source = OrderSource.Qr,
-        string? waiterName = null, CancellationToken ct = default)
+        string? waiterName = null, CancellationToken ct = default, string? guestPassId = null)
     {
         // The subscription plan may be menu-only — then self-ordering is off.
         var restaurant = await _db.Restaurants.FirstAsync(r => r.Id == TenantId, ct);
@@ -47,31 +55,6 @@ public class OrderService
         if (req.Items is null || req.Items.Count == 0)
             throw new DomainException("Your order is empty.");
 
-        // Reuse the table's open session, or open a fresh one for this seating.
-        var session = await _db.Sessions
-            .Where(s => s.DiningTableId == table.Id && s.IsOpen)
-            .OrderByDescending(s => s.OpenedAt)
-            .FirstOrDefaultAsync(ct);
-        if (session is null)
-        {
-            // A parcel or delivery ticket is one customer's order: once it's settled or cancelled it stays closed.
-            if (table.Kind != OrderChannel.Dine)
-                throw new DomainException("This order is already closed. Please start a new one.");
-            session = TableSession.Open(table);
-            _db.Sessions.Add(session);
-            await _db.SaveChangesAsync(ct);   // materialise the session id
-        }
-
-        var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
-        var order = Order.Place(TenantId,
-            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName), req.Note, source);
-        order.Channel = table.Kind;
-
-        // A waiter taking the order is the one serving that table — attach them now so
-        // it shows on their board and skips auto-assignment later.
-        if (source == OrderSource.Waiter && !string.IsNullOrWhiteSpace(waiterName))
-            order.AssignWaiter(waiterName.Trim());
-
         // Only load the handful of items actually on this order (not the whole menu),
         // read-only — we project prices/names and never mutate the menu here.
         var wantedIds = req.Items.Select(i => i.MenuItemId).Distinct().ToList();
@@ -82,6 +65,8 @@ public class OrderService
             .Include(m => m.ModifierGroups).ThenInclude(g => g.Options)
             .ToListAsync(ct);
 
+        var lines = new List<(int MenuItemId, string Name, string? Variant, decimal UnitPrice, int Qty, string? Note,
+            List<(string Name, decimal Price)> Chosen)>();
         foreach (var line in req.Items)
         {
             var mi = menu.FirstOrDefault(m => m.Id == line.MenuItemId);
@@ -113,9 +98,39 @@ public class OrderService
                 chosen.AddRange(picked.Select(o => (o.Name, o.Price)));
             }
 
-            var unitPrice = basePrice + chosen.Sum(m => m.Price);
-            order.AddItem(mi.Id, mi.Name, variantName, unitPrice, line.Qty, line.Note, chosen);
+            lines.Add((mi.Id, mi.Name, variantName, basePrice + chosen.Sum(m => m.Price), line.Qty, line.Note, chosen));
         }
+        if (lines.Count == 0)
+            throw new DomainException("None of these items can be ordered right now. Please choose something else.");
+
+        // Reuse the table's open session, or open a fresh one for this seating.
+        var session = await _db.Sessions
+            .Where(s => s.DiningTableId == table.Id && s.IsOpen)
+            .OrderByDescending(s => s.OpenedAt)
+            .FirstOrDefaultAsync(ct);
+        if (session is null)
+        {
+            // A parcel or delivery ticket is one customer's order: once it's settled or cancelled it stays closed.
+            if (table.Kind != OrderChannel.Dine)
+                throw new DomainException("This order is already closed. Please start a new one.");
+            session = TableSession.Open(table);
+            _db.Sessions.Add(session);
+            await _db.SaveChangesAsync(ct);   // materialise the session id
+        }
+
+        var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
+        var order = Order.Place(TenantId,
+            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName), req.Note, source);
+        order.Channel = table.Kind;
+        if (source == OrderSource.Qr) order.GuestPassId = guestPassId;
+
+        // A waiter taking the order is the one serving that table — attach them now so
+        // it shows on their board and skips auto-assignment later.
+        if (source == OrderSource.Waiter && !string.IsNullOrWhiteSpace(waiterName))
+            order.AssignWaiter(waiterName.Trim());
+
+        foreach (var l in lines)
+            order.AddItem(l.MenuItemId, l.Name, l.Variant, l.UnitPrice, l.Qty, l.Note, l.Chosen);
         order.ConfirmPlaced();
 
         _db.Orders.Add(order);
@@ -205,8 +220,8 @@ public class OrderService
                 ? "Your food is already being made, so this order can't be cancelled now. Please ask the staff."
                 : "Cooking has started on this order, so only the owner can cancel it now.");
         var restock = StockComesBack(order.Status, r);
-        await RefuseIfLastOrderHasPaidParts(order, ct);
         order.Cancel(string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim(), by, evenServed: anyStage);
+        await RefuseIfBillBelowPaid(order, ct);
         await _db.SaveChangesAsync(ct);
         var dto = await Publish(order, ct);
         if (restock)
@@ -244,17 +259,33 @@ public class OrderService
     }
 
     /// <summary>
-    /// Part of this table's bill is already paid, and this is the last order on it. Cancelling it would leave that
-    /// money sitting on an empty table, where the next guests' bill would count it as theirs.
+    /// Part of this table's bill is already paid. A cancel or a dish coming off (already applied to
+    /// <paramref name="changed"/>, not saved) must not bring the bill below what was paid: that money would have
+    /// nothing to pay for, the bill could never be settled, and an empty table would carry it to the next guests.
+    /// The cashier gives the difference back first (Bill → Give back), then makes the change.
     /// </summary>
-    private async Task RefuseIfLastOrderHasPaidParts(Order order, CancellationToken ct)
+    private async Task RefuseIfBillBelowPaid(Order changed, CancellationToken ct)
     {
-        var othersOpen = await _db.Orders.AnyAsync(o => o.TableSessionId == order.TableSessionId && o.Id != order.Id
-            && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled, ct);
-        if (othersOpen) return;
-        var paid = (await _db.Payments.Where(p => p.TableSessionId == order.TableSessionId).Select(p => p.Amount).ToListAsync(ct)).Sum();
-        if (paid > 0)
-            throw new DomainException($"Rs {paid:N0} of this table's bill is already paid, so its last order can't be cancelled. Settle the bill instead (a discount can bring it down).");
+        var paid = (await _db.Payments.Where(p => p.TableSessionId == changed.TableSessionId).Select(p => p.Amount).ToListAsync(ct)).Sum();
+        if (paid <= 0) return;
+        var open = await _db.Orders.Include(o => o.Items).ThenInclude(i => i.Modifiers)
+            .Where(o => o.TableSessionId == changed.TableSessionId && o.Id != changed.Id
+                && o.Status != OrderStatus.Paid && o.Status != OrderStatus.Cancelled)
+            .ToListAsync(ct);
+        if (changed.Status is not (OrderStatus.Paid or OrderStatus.Cancelled) && changed.Items.Count > 0) open.Add(changed);
+
+        decimal total;
+        if (_billing is not null) total = await _billing.StandardTotal(changed.TableSessionId, open, ct);
+        else if (open.Count == 0) total = 0;
+        else return;   // no bill pricing here (a bare test set-up): only the empty-table case can be judged
+
+        if (paid > total + 0.01m)
+        {
+            var back = paid - total;
+            throw new DomainException(total <= 0
+                ? $"Rs {paid:N0} of this table's bill is already paid. Give it back first (Bill → Give back), then cancel."
+                : $"Rs {paid:N0} of this table's bill is already paid, and without this the bill comes to Rs {total:N0}. Give back Rs {back:N0} first (Bill → Give back), then try again.");
+        }
     }
 
     /// <summary>
@@ -275,6 +306,7 @@ public class OrderService
             throw new DomainException("Cooking has started on this order, so only the owner can take a dish off it now.");
         var restock = StockComesBack(order.Status, r);
         var item = order.VoidItem(itemId, req.Qty);
+        await RefuseIfBillBelowPaid(order, ct);
         var label = item.VariantName is null ? item.Name : $"{item.Name} ({item.VariantName})";
         _db.OrderVoids.Add(new OrderVoid
         {
@@ -313,6 +345,9 @@ public class OrderService
 
         var existing = await _db.Sessions.Where(s => s.DiningTableId == target.Id && s.IsOpen).OrderByDescending(s => s.OpenedAt).FirstOrDefaultAsync(ct);
         var session = existing ?? source;
+        // The guests left the old table: passes for it end, and they scan the new table's QR code.
+        var oldTable = await _db.Tables.FirstOrDefaultAsync(t => t.Id == source.DiningTableId, ct);
+        oldTable?.EndGuestPasses(DateTime.UtcNow);
         if (existing is not null)
         {
             var paid = await _db.Payments.Where(p => p.TableSessionId == source.Id).ToListAsync(ct);
@@ -339,6 +374,7 @@ public class OrderService
             await _notifier.OrderMoved(Slug, from, dto, ct);
             moved.Add(dto);
         }
+        if (oldTable is not null) await _notifier.TablePassesEnded(Slug, oldTable.Code, ct);
         return moved;
     }
 
@@ -346,67 +382,69 @@ public class OrderService
     public async Task<OrderDto> GetOrder(int id, CancellationToken ct = default)
         => OrderDto.From(await LoadOrder(id, ct));
 
-    public async Task<OrderDto> Reorder(int id, CancellationToken ct = default)
+    /// <summary>
+    /// "Order again": the same dishes, portions and add-ons, priced from today's menu and placed exactly like a new
+    /// order (so plan switches, the guest rules and a closed parcel or delivery ticket all apply). Dishes, portions
+    /// or add-ons that are no longer on the menu are left out and named.
+    /// </summary>
+    public async Task<OrderDto> Reorder(int id, CancellationToken ct = default, OrderSource source = OrderSource.Qr,
+        string? waiterName = null, string? guestPassId = null)
     {
         var original = await LoadOrder(id, ct);
         if (original.Status is not (OrderStatus.Served or OrderStatus.Paid or OrderStatus.Cancelled))
             throw new DomainException("Can only reorder completed or cancelled orders.");
 
-        var restaurant = await _db.Restaurants.FirstAsync(r => r.Id == TenantId, ct);
-        if (!restaurant.FeatureOrdering)
-            throw new DomainException("Online ordering isn't enabled for this restaurant.");
+        var ids = original.Items.Select(i => i.MenuItemId).Distinct().ToList();
+        var menu = await _db.MenuItems.AsNoTracking().Where(m => ids.Contains(m.Id))
+            .Include(m => m.Variants)
+            .Include(m => m.ModifierGroups).ThenInclude(g => g.Options)
+            .ToListAsync(ct);
 
-        var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == original.TableCode, ct)
-            ?? throw new DomainException("Unknown table.");
-
-        var session = await _db.Sessions
-            .Where(s => s.DiningTableId == table.Id && s.IsOpen)
-            .OrderByDescending(s => s.OpenedAt)
-            .FirstOrDefaultAsync(ct);
-        if (session is null)
-        {
-            session = TableSession.Open(table);
-            _db.Sessions.Add(session);
-            await _db.SaveChangesAsync(ct);
-        }
-
-        var branchName = (await _db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == table.BranchId, ct))?.Name ?? "";
-        var newOrder = Order.Place(TenantId,
-            new TableSessionInfo(session.Id, table.Id, table.Code, table.Name, table.BranchId, branchName),
-            original.CustomerNote, OrderSource.Qr);
-
-        var menu = await _db.MenuItems.AsNoTracking().ToListAsync(ct);
-        var addedCount = 0;
-        var unavailableNames = new List<string>();
-
+        var lines = new List<OrderLineRequest>();
+        var missing = new List<string>();
         foreach (var item in original.Items)
         {
             var mi = menu.FirstOrDefault(m => m.Id == item.MenuItemId);
-            if (mi is null || !mi.Available)
+            if (mi is null || !mi.Available) { missing.Add(item.Name); continue; }
+
+            int? variantId = null;
+            if (mi.Variants.Count > 0)
             {
-                unavailableNames.Add(item.Name);
-                continue;
+                var v = mi.Variants.FirstOrDefault(x => string.Equals(x.Name, item.VariantName, StringComparison.OrdinalIgnoreCase));
+                if (v is null) { missing.Add(item.VariantName is null ? item.Name : $"{item.Name} ({item.VariantName})"); continue; }
+                variantId = v.Id;
             }
 
-            newOrder.AddItem(item.MenuItemId, item.Name, item.VariantName, item.Price, item.Qty, item.Note,
-                item.Modifiers.Select(m => (m.Name, m.Price)));
-            addedCount++;
+            // Each add-on by name, from the item's groups as they are now.
+            var options = mi.ModifierGroups.SelectMany(g => g.Options).ToList();
+            var optionIds = new List<int>();
+            var lost = false;
+            foreach (var m in item.Modifiers)
+            {
+                var o = options.FirstOrDefault(x => string.Equals(x.Name, m.Name, StringComparison.OrdinalIgnoreCase));
+                if (o is null) { lost = true; break; }
+                optionIds.Add(o.Id);
+            }
+            // The groups' rules may have changed too (a required choice added): then it needs choosing again.
+            if (!lost && mi.ModifierGroups.Any(g =>
+                    { var n = g.Options.Count(o => optionIds.Contains(o.Id)); return n < g.MinSelect || n > g.MaxSelect; }))
+                lost = true;
+            if (lost) { missing.Add(item.Name); continue; }
+
+            lines.Add(new OrderLineRequest(mi.Id, item.Qty, item.Note, variantId, optionIds));
         }
 
-        if (addedCount == 0)
-        {
-            var msg = unavailableNames.Count > 0
-                ? $"The following item(s) are currently unavailable: {string.Join(", ", unavailableNames.Distinct())}."
-                : "None of the items from this order are currently available.";
-            throw new DomainException(msg);
-        }
+        if (lines.Count == 0)
+            throw new DomainException(missing.Count > 0
+                ? $"These can't be ordered again as they were: {string.Join(", ", missing.Distinct())}. Please order from the menu."
+                : "None of the items from this order are currently available.");
 
-        newOrder.ConfirmPlaced();
-
-        _db.Orders.Add(newOrder);
-        await _db.SaveChangesAsync(ct);
-        return await Publish(newOrder, ct);
+        return await Place(new PlaceOrderRequest(original.TableCode, lines, original.CustomerNote), source, waiterName, ct, guestPassId);
     }
+
+    /// <summary>The guest pass that placed an order (null for staff orders), so only that phone can cancel it.</summary>
+    public async Task<string?> GuestPassOf(int id, CancellationToken ct = default) =>
+        await _db.Orders.AsNoTracking().Where(o => o.Id == id).Select(o => o.GuestPassId).FirstOrDefaultAsync(ct);
 
     // ---------- queries ----------
     public async Task<IReadOnlyList<OrderDto>> StaffOrders(CancellationToken ct = default)

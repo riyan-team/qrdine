@@ -193,8 +193,14 @@ public class FloorTests : IDisposable
     {
         var ticket = await Parcel();
         var auth = new AuthService(_db, _tenant, new NoTokens(), new NoHasher(), new PermissionService(_db));
-        await Assert.ThrowsAsync<DomainException>(() => auth.IssueGuestSession(ticket.Ticket.TableCode));
-        Assert.NotNull(await auth.IssueGuestSession("T1"));
+        var ticketKey = (await _db.Tables.FirstAsync(t => t.Code == ticket.Ticket.TableCode)).QrKey;
+        await Assert.ThrowsAsync<DomainException>(() => auth.IssueGuestSession(ticket.Ticket.TableCode, ticketKey));
+        var t1 = await _db.Tables.FirstAsync(t => t.Code == "T1");
+        Assert.NotNull(await auth.IssueGuestSession("T1", t1.QrKey));
+        // Without the key from the printed QR code, or with a wrong one, nobody gets a pass: "T1" alone isn't enough.
+        await Assert.ThrowsAsync<DomainException>(() => auth.IssueGuestSession("T1", null));
+        await Assert.ThrowsAsync<DomainException>(() => auth.IssueGuestSession("T1", "wrongkey00"));
+        Assert.NotNull(await auth.IssueGuestSession("T1", "  " + t1.QrKey.ToUpperInvariant() + " "));
     }
 
     // ---- takeaway and delivery from the guest's own phone (the restaurant's order QR) ----
@@ -919,6 +925,179 @@ public class FloorTests : IDisposable
 
         // The other restaurant's ticket numbers start again from 1.
         Assert.Equal("Parcel 1", (await Parcel()).Ticket.TableName);
+    }
+
+    // ---- table QR keys, guest passes, giving money back ----
+
+    private OrderService OrdersWithBill => new(_db, _tenant, _notifier, new NoPrinter(), new InventoryService(_db), Billing);
+    private static long Unix(DateTime utc) => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+
+    [Fact]
+    public async Task Every_table_gets_its_own_unguessable_qr_key()
+    {
+        var keys = await _db.Tables.Select(t => t.QrKey).ToListAsync();
+        Assert.All(keys, k => Assert.Equal(10, k.Length));
+        Assert.Equal(keys.Count, keys.Distinct().Count());
+        var t1 = await _db.Tables.FirstAsync(t => t.Code == "T1");
+        Assert.True(t1.KeyMatches(t1.QrKey));
+        Assert.False(t1.KeyMatches(""));
+        Assert.False(t1.KeyMatches(null));
+        Assert.False(t1.KeyMatches(t1.QrKey[..9]));
+    }
+
+    [Fact]
+    public async Task Settling_a_table_ends_every_guest_pass_from_before()
+    {
+        var before = Unix(DateTime.UtcNow.AddSeconds(-5));
+        await Dine("T1");
+        await Billing.Settle("T1", new SettleRequest("Cash", 0));
+
+        var t1 = await _db.Tables.AsNoTracking().FirstAsync(t => t.Code == "T1");
+        Assert.NotNull(t1.GuestPassesFrom);
+        Assert.False(t1.PassStillGood(before));                              // the phones of the guests who just paid
+        Assert.True(t1.PassStillGood(Unix(DateTime.UtcNow.AddSeconds(5))));  // the next guests, after they scan
+        Assert.True((await _db.Tables.AsNoTracking().FirstAsync(t => t.Code == "T2")).PassStillGood(before));
+    }
+
+    [Fact]
+    public async Task Moving_guests_ends_the_old_tables_passes()
+    {
+        var before = Unix(DateTime.UtcNow.AddSeconds(-5));
+        await Dine("T1");
+        await Orders.MoveTable("T1", "T2");
+        Assert.False((await _db.Tables.AsNoTracking().FirstAsync(t => t.Code == "T1")).PassStillGood(before));
+    }
+
+    [Fact]
+    public async Task A_new_qr_code_stops_the_old_one_and_its_passes()
+    {
+        var t1 = await _db.Tables.AsNoTracking().FirstAsync(t => t.Code == "T1");
+        var oldKey = t1.QrKey;
+        var code = await new RestaurantAdminService(_db, new NoHasher(), _tenant).NewTableQr(t1.Id);
+        Assert.Equal("T1", code);
+
+        var now = await _db.Tables.AsNoTracking().FirstAsync(t => t.Code == "T1");
+        Assert.NotEqual(oldKey, now.QrKey);
+        Assert.False(now.KeyMatches(oldKey));
+        Assert.False(now.PassStillGood(Unix(DateTime.UtcNow.AddSeconds(-5))));
+        var auth = new AuthService(_db, _tenant, new NoTokens(), new NoHasher(), new PermissionService(_db));
+        await Assert.ThrowsAsync<DomainException>(() => auth.IssueGuestSession("T1", oldKey));
+        Assert.NotNull(await auth.IssueGuestSession("T1", now.QrKey));
+    }
+
+    [Fact]
+    public async Task A_guest_order_remembers_the_phone_that_placed_it()
+    {
+        var guest = await Orders.Place(new PlaceOrderRequest("T1", Lines(), null), OrderSource.Qr, guestPassId: "pass-a");
+        var waiter = await Dine("T1", naan: 1, biryani: 0);
+        Assert.Equal("pass-a", await Orders.GuestPassOf(guest.Id));
+        Assert.Null(await Orders.GuestPassOf(waiter.Id));
+    }
+
+    [Fact]
+    public async Task Nothing_servable_leaves_no_empty_seating_behind()
+    {
+        var item = await _db.MenuItems.FirstAsync(m => m.Id == _biryani);
+        item.Available = false;
+        await _db.SaveChangesAsync();
+        var seatings = await _db.Sessions.CountAsync();
+        await Assert.ThrowsAsync<DomainException>(() => Dine("T1"));
+        Assert.Equal(seatings, await _db.Sessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task Cancelling_below_what_was_paid_is_refused_until_the_money_is_given_back()
+    {
+        var big = await Dine("T1", biryani: 2);               // 1000
+        await Dine("T1", naan: 1, biryani: 0);                // 50
+        await Billing.PayPartial("T1", new PayPartRequest(1000, "Cash"));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() => OrdersWithBill.Cancel(big.Id, "changed mind"));
+        Assert.Contains("Give back Rs 950", ex.Message);
+        _db.ChangeTracker.Clear();   // as a refused web request would: nothing of the cancel was kept
+        Assert.NotEqual(OrderStatus.Cancelled, (await _db.Orders.AsNoTracking().FirstAsync(o => o.Id == big.Id)).Status);
+
+        await Assert.ThrowsAsync<DomainException>(() => Billing.GiveBack("T1", new GiveBackRequest(950, " "), "cashier"));   // a reason is needed
+        await Assert.ThrowsAsync<DomainException>(() => Billing.GiveBack("T1", new GiveBackRequest(1001, "too much"), "cashier"));
+        var back = await Billing.GiveBack("T1", new GiveBackRequest(950, "Biryani cancelled"), "cashier");
+        Assert.Equal(50, back.StillPaid);
+
+        await OrdersWithBill.Cancel(big.Id, "changed mind");
+        var bill = await Billing.GetBill("T1");
+        Assert.Equal(50, bill.Total);
+        Assert.Equal(50, bill.AmountPaid);
+        Assert.Equal(950, (await _db.PaymentReturns.SingleAsync()).Amount);
+    }
+
+    [Fact]
+    public async Task Taking_a_dish_off_below_what_was_paid_is_refused()
+    {
+        var order = await Dine("T1", biryani: 2);
+        await Billing.PayPartial("T1", new PayPartRequest(800, "Cash"));
+        var line = (await _db.Orders.AsNoTracking().Include(o => o.Items).FirstAsync(o => o.Id == order.Id)).Items.First().Id;
+        await Assert.ThrowsAsync<DomainException>(() => OrdersWithBill.VoidItem(order.Id, line, new VoidItemRequest(1, "cold"), "cashier"));
+        _db.ChangeTracker.Clear();
+        await Billing.GiveBack("T1", new GiveBackRequest(300, "Biryani was cold"), "cashier");
+        await OrdersWithBill.VoidItem(order.Id, line, new VoidItemRequest(1, "cold"), "cashier");
+        var bill = await Billing.GetBill("T1");
+        Assert.Equal(500, bill.Total);
+        Assert.Equal(500, bill.AmountPaid);
+    }
+
+    [Fact]
+    public async Task Giving_back_takes_from_the_newest_payment_first()
+    {
+        await Dine("T1", biryani: 2);
+        await Billing.PayPartial("T1", new PayPartRequest(300, "Cash"));
+        await Billing.PayPartial("T1", new PayPartRequest(400, "Card"));
+
+        var back = await Billing.GiveBack("T1", new GiveBackRequest(500, "overcharged"), "cashier");
+
+        Assert.Equal(new[] { ("Card", 400m), ("Cash", 100m) }, back.Parts.Select(p => (p.Method, p.Amount)).ToArray());
+        Assert.Equal(200, back.StillPaid);
+        var left = await _db.Payments.ToListAsync();
+        Assert.Equal(("Cash", 200m), (left.Single().Method.ToString(), left.Single().Amount));
+        Assert.Equal(2, await _db.PaymentReturns.CountAsync());
+    }
+
+    [Fact]
+    public async Task The_operators_totals_are_counted_by_the_database()
+    {
+        await Dine("T1", biryani: 2);
+        await Billing.Settle("T1", new SettleRequest("Cash", 0));
+        await Dine("T2", naan: 1, biryani: 0);
+        await Billing.Settle("T2", new SettleRequest("Card", 0));
+
+        var platform = new QrDine.Application.Platform.PlatformService(_db, new NoTokens(), new NoHasher());
+        var stats = await platform.Stats();
+        Assert.Equal(2, stats.TotalBills);
+        Assert.Equal(1050, stats.TotalSales);
+        var row = Assert.Single(await platform.ListRestaurants());
+        Assert.Equal((1050m, 2), (row.Sales, row.Bills));
+        Assert.Equal(3, row.Tables);
+    }
+
+    [Fact]
+    public async Task An_amount_no_bill_can_hold_is_refused_with_a_reason()
+    {
+        await Dine("T1");
+        var ex = await Assert.ThrowsAsync<DomainException>(() => Billing.Settle("T1", new SettleRequest("Cash", 0, 99_999_999_999m)));
+        Assert.Contains("too big", ex.Message);
+        await Assert.ThrowsAsync<DomainException>(() => Billing.GiveBack("T1", new GiveBackRequest(99_999_999_999m, "typo"), "cashier"));
+    }
+
+    [Fact]
+    public async Task Order_again_charges_todays_price()
+    {
+        var first = await Dine("T1");
+        await Billing.Settle("T1", new SettleRequest("Cash", 0));
+        var item = await _db.MenuItems.FirstAsync(m => m.Id == _biryani);
+        item.Price = 600;
+        await _db.SaveChangesAsync();
+
+        var again = await Orders.Reorder(first.Id, source: OrderSource.Waiter);
+        Assert.Equal(600, again.Total);
+        Assert.Equal(600, (await Billing.GetBill("T1")).Total);
     }
 
     // ---- stand-ins for what the services talk to ----

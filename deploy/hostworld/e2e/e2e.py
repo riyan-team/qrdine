@@ -166,8 +166,17 @@ def line(item, qty=1, **kw):
     return {'menuItemId': item, 'qty': qty, 'note': None, **kw}
 
 
+def table_key(code):
+    # The secret part of the table's printed QR code (?k=...). Only staff can list it.
+    keys = state.get('qrkeys') or {}
+    if code not in keys:
+        keys = {t['code']: t['qrKey'] for t in step('table QR keys', 'GET', r('/tables'), token=T())}
+        state['qrkeys'] = keys
+    return keys[code]
+
+
 def guest(code):
-    return step(f'guest session {code}', 'POST', r(f'/tables/{code}/session'))['token']
+    return step(f'guest session {code}', 'POST', r(f'/tables/{code}/session'), {'key': table_key(code)})['token']
 
 
 def staff_order(code, *lines):
@@ -189,6 +198,10 @@ def settle(code, method='Cash', discount=0, tendered=0, customer=None, expect=20
 # ------------------------------------------------------------------ dine in from a guest's phone
 def dine_in():
     A, V = state['A'], state['V']
+    step('a pass needs the QR key', 'POST', r('/tables/T1/session'), expect=400)
+    step('a wrong QR key gets no pass', 'POST', r('/tables/T1/session'), {'key': 'wrongkey23'}, expect=400)
+    step("another table's QR key gets no pass", 'POST', r('/tables/T1/session'), {'key': table_key('T2')}, expect=400)
+    step('the key also works in the address', 'POST', r(f"/tables/T1/session?k={table_key('T1')}"))
     g = guest('T1')
     o = step('guest places order', 'POST', r('/orders'), {'tableCode': 'T1', 'note': 'e2e', 'items': [
         line(A, 2), line(V, 1, variantId=state['large'], modifierOptionIds=[state['cheese']])]}, g)
@@ -217,6 +230,11 @@ def dine_in():
     after = step('table clear after settling', 'GET', r('/tables/T1/bill'), token=T())
     same('nothing open', after['hasOpenOrders'], False)
     settle('T1', expect=[400, 404, 409])
+    # The guests who paid can't follow (or order on) the next guests' table from their phones.
+    step("the paid guests' pass has ended", 'GET', r('/tables/T1/orders'), token=g, expect=401)
+    step("the paid guests can't order on it", 'POST', r('/orders'), {'tableCode': 'T1', 'items': [line(A)], 'note': None}, g, expect=401)
+    time.sleep(1.1)
+    step('the next guests scan and are in', 'GET', r('/tables/T1/orders'), token=guest('T1'))
 
 
 section('dine in from a guest phone (QR to receipt)', dine_in)

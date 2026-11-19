@@ -117,10 +117,17 @@ public class AuthService
         return _tokens.CreateStaffToken(user, Slug, perms);
     }
 
-    public async Task<GuestSessionResponse> IssueGuestSession(string tableCode, CancellationToken ct = default)
+    /// <summary>What a guest sees when the code or key is wrong: the same words either way, so it gives nothing away.</summary>
+    public const string BadTableQr = "This QR code doesn't work any more. Please ask the staff for your table's QR code.";
+
+    /// <summary>
+    /// A guest scanned a table's QR code. The pass is only given with the table's secret key (from the code),
+    /// so nobody can open a table by guessing "T1" from outside the restaurant.
+    /// </summary>
+    public async Task<GuestSessionResponse> IssueGuestSession(string tableCode, string? key, CancellationToken ct = default)
     {
-        var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode && t.Kind == Domain.Ordering.OrderChannel.Dine, ct)
-            ?? throw new DomainException("Unknown table.");
+        var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode && t.Kind == Domain.Ordering.OrderChannel.Dine, ct);
+        if (table is null || !table.KeyMatches(key)) throw new DomainException(BadTableQr);
         var token = _tokens.CreateGuestToken(TenantId, Slug, table.Code);
         return new GuestSessionResponse(token, table.Code);
     }

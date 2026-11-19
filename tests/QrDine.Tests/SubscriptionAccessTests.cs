@@ -54,16 +54,20 @@ public class SubscriptionAccessTests
     }
 
     [Fact]
-    public void Once_the_grace_days_end_it_locks()
+    public void Once_the_grace_days_end_it_pauses_at_the_next_5am_never_during_service()
     {
-        Assert.Equal(SubscriptionState.Locked, At(-3).State);
+        // Grace ran out at 5 pm Pakistan time (12:00 UTC): tonight's service carries on.
+        Assert.Equal(SubscriptionState.Overdue, At(-3).State);
+        var paid = Now.AddDays(-3);
+        Assert.Equal(SubscriptionState.Overdue, SubscriptionAccess.Evaluate(paid, Now.Date.AddDays(1).AddMinutes(-1), Grace).State);   // 4:59 am
+        Assert.Equal(SubscriptionState.Locked, SubscriptionAccess.Evaluate(paid, Now.Date.AddDays(1), Grace).State);                 // 5:00 am
         Assert.Equal(SubscriptionState.Locked, At(-30).State);
     }
 
     [Fact]
-    public void Zero_grace_locks_as_soon_as_the_date_passes()
+    public void Zero_grace_pauses_at_the_first_5am_after_the_date()
     {
-        var a = SubscriptionAccess.Evaluate(Now.AddMinutes(-1), Now, 0);
-        Assert.Equal(SubscriptionState.Locked, a.State);
+        Assert.Equal(SubscriptionState.Overdue, SubscriptionAccess.Evaluate(Now.AddMinutes(-1), Now, 0).State);
+        Assert.Equal(SubscriptionState.Locked, SubscriptionAccess.Evaluate(Now.AddMinutes(-1), Now.Date.AddDays(1), 0).State);
     }
 }

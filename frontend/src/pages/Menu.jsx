@@ -76,6 +76,33 @@ export default function Menu() {
   const [hubOpen, setHubOpen] = useState(false)
   const linkedRef = useRef(false)
 
+  // The table's QR code carries a secret key (?k=…). Keep it for this visit and take it out of the address bar,
+  // so a shared screenshot or link of the menu can't be used to order on this table later.
+  const scannedKey = mode === 'table' ? params.get('k') : null
+  const keptKeyRef = useRef('')
+  if (scannedKey && keptKeyRef.current !== `${code}:${scannedKey}`) {
+    keptKeyRef.current = `${code}:${scannedKey}`
+    auth.rememberTableKey(slug, code, scannedKey)
+  }
+  const isStaff = !!(auth.staffToken && auth.staffSlug() === slug)
+  const [passEnded, setPassEnded] = useState(() => mode === 'table' && !isStaff && !scannedKey && auth.passEnded(slug))
+  const [needScan, setNeedScan] = useState(() => mode === 'table' && !isStaff && !scannedKey && !auth.canOrderAt(slug, code))
+  const [justLooking, setJustLooking] = useState(false)
+  useEffect(() => {
+    if (!scannedKey) return
+    setPassEnded(false); setNeedScan(false)
+    const next = new URLSearchParams(params)
+    next.delete('k')
+    navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' }, { replace: true, state: location.state })
+  }, [scannedKey])
+  // The bill was settled (or the staff made a new QR code): this phone stops following the table.
+  useEffect(() => {
+    if (mode !== 'table' || isStaff) return
+    const onEnded = () => { auth.endTablePasses(slug); setOrders([]); setPassEnded(true); setJustLooking(false) }
+    window.addEventListener('dinein:pass-ended', onEnded)
+    return () => window.removeEventListener('dinein:pass-ended', onEnded)
+  }, [slug, mode, isStaff])
+
   useEffect(() => {
     // Remember table code for guest session persistence
     if (slug && code) auth.rememberTable(slug, code)
@@ -229,6 +256,17 @@ export default function Menu() {
       <div className="gm-closed-card">
         <h1>This menu isn't available right now</h1>
         <p>Please ask a member of staff to take your order.</p>
+      </div>
+    </div>
+  )
+  if ((passEnded || needScan) && !justLooking) return (
+    <div className="gm-closed">
+      <div className="gm-closed-card">
+        <h1>{passEnded ? 'Thank you for dining with us!' : 'Scan the QR code on your table'}</h1>
+        <p>{passEnded
+          ? "This table's bill is settled. To order again, scan the QR code on your table."
+          : 'To order, scan the QR code on your table with your phone camera. A link or photo of the menu can’t place orders.'}</p>
+        <button className="ghost" style={{ marginTop: 18 }} onClick={() => setJustLooking(true)}>See the menu</button>
       </div>
     </div>
   )

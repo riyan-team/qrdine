@@ -27,18 +27,27 @@ export function useHub(slug, group, onOrderChanged, onTimerTick, onServiceReques
     conn.on('orderChanged', (o) => cb.current && cb.current(o))
     conn.on('timerTick', (serverTime) => tickCb.current && tickCb.current(serverTime))
     conn.on('serviceRequest', (r) => reqCb.current && reqCb.current(r))
+    // This phone's table pass ended (the bill was settled, or the staff gave the table a new QR code).
+    const ended = () => {
+      stopped = true
+      window.dispatchEvent(new CustomEvent('dinein:pass-ended', { detail: '' }))
+      conn.stop()
+    }
+    conn.on('passEnded', ended)
+    conn.on('signedOut', () => { stopped = true; conn.stop() })
 
     const join = async () => {
       if (group === 'staff') await conn.invoke('JoinStaff', slug)
       else await conn.invoke('JoinTable', slug, group)
     }
-    conn.start().then(join).catch(() => {})
-    conn.onreconnected(() => join().catch(() => {}))
-    // The server closes a connection when its pass runs out; start again with a fresh one.
+    const failed = (e) => { if (String(e?.message || '').includes('passEnded')) ended(); if (e?.needScan) stopped = true }
     let stopped = false
+    conn.start().then(join).catch(failed)
+    conn.onreconnected(() => join().catch(failed))
+    // The server closes a connection when its pass runs out; start again with a fresh one.
     conn.onclose(() => {
       if (stopped) return
-      setTimeout(() => { if (!stopped) conn.start().then(join).catch(() => {}) }, 3000)
+      setTimeout(() => { if (!stopped) conn.start().then(join).catch(failed) }, 3000)
     })
 
     return () => { stopped = true; conn.stop() }

@@ -1,9 +1,10 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { auth } from '../auth'
 import { Empty, Loading, PageHead, Problem, useData } from '../backoffice.jsx'
+import { ui } from '../ui.jsx'
 import { BagIcon, BankIcon, PrintIcon } from '../icons.jsx'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -15,7 +16,17 @@ export default function Owner() {
   const sheet = useRef(null)
   const slug = auth.staffSlug()
   const place = auth.getStaff()?.restaurantName || ''
-  const urlFor = (code) => `${window.location.origin}/r/${slug}/t/${code}`
+  // Each table's code carries its secret key, so a guest can only open the table they are sitting at.
+  const urlFor = (t) => `${window.location.origin}/r/${slug}/t/${t.code}?k=${encodeURIComponent(t.qrKey || '')}`
+  const canChange = auth.can('settings.manage') || auth.role() === 'Owner'
+  const [busy, setBusy] = useState(0)
+  const newQr = async (t) => {
+    const ok = await ui.confirm(`Make a new QR code for ${t.name}? The printed code on that table stops working, and anyone using it has to scan the new one. Print and put out the new code straight away.`)
+    if (!ok) return
+    setBusy(t.id)
+    try { await api.newTableQr(t.id); await reload() } catch (e) { ui.alert(e.message) }
+    setBusy(0)
+  }
   const orderUrl = `${window.location.origin}/r/${slug}/go`
   const orderOn = !!(service?.guestTakeaway || service?.guestDelivery)
   const orderWays = [service?.guestTakeaway && 'takeaway', service?.guestDelivery && 'delivery'].filter(Boolean).join(' or ')
@@ -92,9 +103,13 @@ export default function Owner() {
             <div className="qr-grid">
               {list.map((t) => (
                 <div className="qr-card" key={t.code} data-qr={t.name}>
-                  <QRCodeSVG value={urlFor(t.code)} size={148} level="M" />
+                  <QRCodeSVG value={urlFor(t)} size={148} level="M" />
                   <b>{t.name}</b>
-                  <Link to={`/r/${slug}/t/${t.code}`}><button className="ghost btn-sm">Open this table's menu</button></Link>
+                  <Link to={`/r/${slug}/t/${t.code}?k=${encodeURIComponent(t.qrKey || '')}`}><button className="ghost btn-sm">Open this table's menu</button></Link>
+                  {canChange && t.id > 0 && (
+                    <button className="ghost btn-sm" disabled={busy === t.id} onClick={() => newQr(t)}
+                      title="Use this if a photo of this table's QR code is being misused">{busy === t.id ? 'Making…' : 'New QR code'}</button>
+                  )}
                 </div>
               ))}
             </div>

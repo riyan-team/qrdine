@@ -51,7 +51,7 @@ const SETTINGS_TABS = [
   { id: 'venue', label: 'Branches & tables' },
   { id: 'staff', label: 'Staff & roles' },
   { id: 'service', label: 'Service' },
-  { id: 'fbr', label: 'FBR / tax filing' },
+  { id: 'fbr', label: 'Tax office (FBR / PRA)' },
   { id: 'account', label: 'Your account' },
 ]
 
@@ -162,6 +162,7 @@ function BillingSettings() {
         receiptEnabled: !!s.receiptEnabled, stockTrackingEnabled: !!s.stockTrackingEnabled,
         serviceChargeTaxable: !!s.serviceChargeTaxable, serviceAfterDiscount: !!s.serviceAfterDiscount,
         roundTotals: !!s.roundTotals, cardRateForAllItems: !!s.cardRateForAllItems,
+        oneTaxForAllItems: !!s.oneTaxForAllItems,
         // Only the owner can change the cancelling rules; anyone else sends them back as they are.
         ...(isOwner ? {
           allowCancelAfterCooking: !!s.allowCancelAfterCooking, restockCookedCancel: !!s.restockCookedCancel,
@@ -192,6 +193,20 @@ function BillingSettings() {
                 <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Same" value={s.taxPercentCard ?? ''} onChange={(e) => set('taxPercentCard', e.target.value)} /></label>
             </div>
           )}
+          {s.taxEnabled && (
+            <div style={{ marginTop: 10 }}>
+              <div className="set-head" style={{ marginBottom: 4 }}>Tax on items</div>
+              <div className="seg" role="radiogroup" aria-label="Tax on items">
+                <button type="button" className={!s.oneTaxForAllItems ? 'on' : ''} aria-pressed={!s.oneTaxForAllItems} onClick={() => set('oneTaxForAllItems', false)}>Each item's own rate</button>
+                <button type="button" className={s.oneTaxForAllItems ? 'on' : ''} aria-pressed={!!s.oneTaxForAllItems} onClick={() => set('oneTaxForAllItems', true)}>One rate for all items</button>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {s.oneTaxForAllItems
+                  ? `Every item is charged ${Number(s.taxPercent) || 0}%${hasCardRate ? ` (${Number(s.taxPercentCard) || 0}% by card)` : ''}, whatever rate it has in the menu. Tax-free items are taxed too.`
+                  : `An item with its own rate in the menu (Menu → item → Tax %) uses it; 0 means tax-free. The rest use ${Number(s.taxPercent) || 0}%.`}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Service charge: its own setting, so it can be on while tax is off */}
@@ -215,9 +230,9 @@ function BillingSettings() {
           <Toggle label="Round each bill to the nearest rupee" checked={s.roundTotals}
             onChange={(v) => set('roundTotals', v)}
             hint={s.roundTotals ? 'The bill shows a "Rounding" line (at most 50 paisa). FBR still gets the exact amounts.' : 'Bills keep their paisa.'} />
-          <Toggle label="Card rate replaces an item's own tax rate too" checked={s.cardRateForAllItems} disabled={!s.taxEnabled || !hasCardRate}
+          <Toggle label="Card rate replaces an item's own tax rate too" checked={s.cardRateForAllItems || s.oneTaxForAllItems} disabled={!s.taxEnabled || !hasCardRate || s.oneTaxForAllItems}
             onChange={(v) => set('cardRateForAllItems', v)}
-            hint={!s.taxEnabled || !hasCardRate ? 'Set a card rate first.' : s.cardRateForAllItems
+            hint={!s.taxEnabled || !hasCardRate ? 'Set a card rate first.' : s.oneTaxForAllItems ? 'On: with one rate for all items, card bills use the card rate on everything.' : s.cardRateForAllItems
               ? 'Paid by card or wallet: every taxed item uses the card rate. Tax-free items stay tax-free.'
               : 'Paid by card or wallet: items with their own rate keep it; the rest use the card rate.'} />
         </div>
@@ -497,13 +512,15 @@ function ShopLocation({ s, save }) {
   )
 }
 
-// Restaurant-level FBR settings. The enable switch only works when the platform
-// operator has turned FBR on for this account (featureFbr).
+// Restaurant-level tax office settings: filing on/off, the seller's identity, and when bills are sent.
+// Filing only works when the platform operator has it in this restaurant's plan (featureFbr).
+// Each branch then chooses FBR or PRA and Practice / Test / Live (TaxBranches below).
 function FbrSettings() {
   const [s, setS] = useState(null)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(0)   // bumps the branch list after a save (filing switched on/off)
   const load = () => api.getFbrSettings().then(setS).catch((e) => setErr(e.message))
   useEffect(() => { load() }, [])
   if (!s) return null
@@ -514,28 +531,47 @@ function FbrSettings() {
     if (!/^[0-9 -]*$/.test(s.strn || '')) return setErr('STRN can only have numbers and dashes.')
     setErr(''); setMsg(''); setBusy(true)
     try {
-      await api.setFbrSettings({ fbrEnabled: s.fbrEnabled, businessName: (s.businessName || '').trim(), ntn: (s.ntn || '').trim(), strn: (s.strn || '').trim() })
-      setMsg('Saved.'); setTimeout(() => setMsg(''), 1500)
+      await api.setFbrSettings({
+        fbrEnabled: s.fbrEnabled, businessName: (s.businessName || '').trim(), ntn: (s.ntn || '').trim(), strn: (s.strn || '').trim(),
+        sendAtSettle: !!s.sendAtSettle, autoRetry: !!s.autoRetry,
+      })
+      setMsg('Saved.'); setTimeout(() => setMsg(''), 1500); setSaved((n) => n + 1)
     } catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
 
   return (
+    <>
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="row between">
-        <b>FBR fiscal integration</b>
+        <b>Tax office filing (FBR / PRA)</b>
         {!s.featureFbr && <span className="pill s-Placed">Not in your plan</span>}
       </div>
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
         {s.featureFbr
-          ? 'File each settled invoice with FBR. Turn it on, set your seller identity, then configure each branch’s POS (mode + POSID) below.'
-          : 'FBR filing isn’t enabled for your account. Ask the operator to enable it for your restaurant.'}
+          ? 'Send each settled bill to FBR or PRA. Turn it on, add your NTN, then set up each branch below: which office, its POSID and token, and Practice, Test or Live.'
+          : 'Filing with FBR or PRA isn’t in your plan. Ask Dine In to turn it on for your restaurant.'}
       </p>
-      <label className="row" style={{ gap: 8, marginBottom: 10 }}>
-        <input type="checkbox" disabled={!s.featureFbr} checked={s.fbrEnabled} onChange={(e) => set('fbrEnabled', e.target.checked)} />
-        <span>Sync invoices with FBR</span>
-      </label>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      {s.forcedPractice && s.featureFbr && (
+        <div className="card" style={{ background: 'var(--surface2)', fontSize: 13, marginBottom: 10 }}>
+          <b>This system is in practice mode.</b> No bill is sent to FBR or PRA, whatever a branch says: bills get a
+          PRACTICE number and the receipt says “not a tax invoice”. Ask Dine In to switch real filing on when you are ready.
+        </div>
+      )}
+      <Toggle label="File bills with the tax office" checked={s.fbrEnabled} disabled={!s.featureFbr}
+        onChange={(v) => set('fbrEnabled', v)}
+        hint={s.fbrEnabled ? 'Every settled bill is filed with the office its branch is set to.' : 'Bills are not filed. Bills settled while this is off are never sent later.'} />
+      <Toggle label="Send each bill as soon as it is settled" checked={s.sendAtSettle} disabled={!s.featureFbr || !s.fbrEnabled}
+        onChange={(v) => set('sendAtSettle', v)}
+        hint={s.sendAtSettle
+          ? 'The bill is sent at settle and the receipt prints with its tax office number. If the office can’t be reached, the bill still prints and waits.'
+          : 'Bills wait in Tax office invoices → Waiting until someone presses Send there (one, the picked ones, or all).'} />
+      <Toggle label="Keep trying waiting bills automatically" checked={s.autoRetry} disabled={!s.featureFbr || !s.fbrEnabled}
+        onChange={(v) => set('autoRetry', v)}
+        hint={s.autoRetry
+          ? 'Every few minutes, bills that couldn’t reach the office are sent again. Refused bills are tried 3 more times, in case you fixed the setup.'
+          : 'Waiting bills are only sent when someone presses Send.'} />
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 }}>
         <label className="fld" style={{ flex: 2, minWidth: 180 }}><span>Registered business name <span className="opt">(optional)</span></span>
           <input maxLength={150} value={s.businessName || ''} onChange={(e) => set('businessName', e.target.value)} /></label>
         <label className="fld" style={{ flex: 1, minWidth: 110 }}><span>NTN <span className="opt">(optional)</span></span>
@@ -544,7 +580,81 @@ function FbrSettings() {
           <input maxLength={20} inputMode="numeric" value={s.strn || ''} onChange={(e) => set('strn', e.target.value)} /></label>
         <button className="primary" disabled={!s.featureFbr || busy} onClick={save}>{busy ? 'Saving…' : msg || 'Save'}</button>
       </div>
-      {!s.featureFbr && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Save is off because FBR isn't in your plan.</div>}
+      {!s.featureFbr && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Save is off because filing isn't in your plan.</div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
+    </div>
+    {s.featureFbr && <TaxBranches key={saved} localAvailable={!!s.localAvailable} forcedPractice={!!s.forcedPractice} />}
+    </>
+  )
+}
+
+const ENV_TEXT = {
+  Practice: 'Nothing is sent. Bills get a made-up PRACTICE number, to learn the screens.',
+  Test: 'Bills go to the office’s test (sandbox) server with your test POSID and token. Not real tax invoices.',
+  Live: 'Every bill is filed as a real tax invoice.',
+}
+// Practice amber, Test blue, Live red (real tax invoices).
+const envPill = (env) => (env === 'Live' ? 's-Cooking' : env === 'Test' ? 's-Approved' : 's-Placed')
+
+// Each branch's tax office setup, and the check that says what is missing, in plain words.
+function TaxBranches({ localAvailable, forcedPractice }) {
+  const [rows, setRows] = useState([])
+  const [checks, setChecks] = useState({})
+  const [openFor, setOpenFor] = useState(null)
+  const [err, setErr] = useState('')
+  const [checking, setChecking] = useState(false)
+  const load = () => {
+    api.listBranches().then(setRows).catch((e) => setErr(friendlyError(e)))
+    runCheck()
+  }
+  const runCheck = async () => {
+    setChecking(true)
+    try { const list = await api.fbrCheck(); setChecks(Object.fromEntries(list.map((c) => [c.branchId, c]))) }
+    catch (e) { setErr(friendlyError(e)) }
+    setChecking(false)
+  }
+  useEffect(() => { load() }, [])
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="row between">
+        <b>Branches</b>
+        <button className="ghost btn-sm" disabled={checking} onClick={runCheck}>{checking ? 'Checking…' : 'Check setup'}</button>
+      </div>
+      <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
+        Start in Practice, move to Test with the test POSID and token from FBR or PRA, send a test bill, then switch to Live.
+      </p>
+      {rows.map((b) => {
+        const c = checks[b.id]
+        const env = c?.environment || b.fiscalEnvironment
+        return (
+          <div key={b.id} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
+            <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <span>
+                <b>{b.name}</b>{' '}
+                <span className="pill">{b.fiscalAuthority}</span>{' '}
+                <span className={'pill ' + envPill(env)}>{env}{forcedPractice && b.fiscalEnvironment !== 'Practice' ? ` (set to ${b.fiscalEnvironment})` : ''}</span>{' '}
+                {c && <span className={'pill ' + (c.ready ? 's-Ready' : 's-Cancelled')}>{c.ready ? 'Ready' : 'Needs setup'}</span>}
+                <span className="muted" style={{ fontSize: 13 }}>
+                  {b.fbrPosId ? ` · POSID ${b.fbrPosId}` : ''}
+                  {b.fiscalAuthority === 'FBR' ? ` · ${b.fbrMode === 'Local' ? 'on this computer' : 'online'}` : ''}
+                </span>
+              </span>
+              <button className={openFor === b.id ? 'primary btn-sm' : 'ghost btn-sm'} onClick={() => setOpenFor(openFor === b.id ? null : b.id)}>
+                {openFor === b.id ? 'Close' : 'Set up'}
+              </button>
+            </div>
+            {c && (c.problems.length > 0 || c.warnings.length > 0) && (
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 13 }}>
+                {c.problems.map((p, k) => <li key={'p' + k} style={{ color: 'var(--red)' }}>{p}</li>)}
+                {c.warnings.map((w, k) => <li key={'w' + k} className="muted">{w}</li>)}
+              </ul>
+            )}
+            {openFor === b.id && <BranchFbr b={b} localAvailable={localAvailable} onSaved={() => load()} />}
+          </div>
+        )
+      })}
+      {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No branches yet. Add one in Branches &amp; tables.</div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
@@ -554,12 +664,13 @@ function Branches() {
   const [rows, setRows] = useState([])
   const [f, setF] = useState({ name: '', address: '' })
   const [err, setErr] = useState('')
-  const [fbrOn, setFbrOn] = useState(false)   // is FBR integration enabled for this restaurant?
+  const [fbrOn, setFbrOn] = useState(false)   // is tax office filing on for this restaurant?
+  const [fbrLocal, setFbrLocal] = useState(false)
   const [fbrFor, setFbrFor] = useState(null)
   const [editFor, setEditFor] = useState(null)
   const load = () => {
     api.listBranches().then(setRows).catch((e) => setErr(e.message))
-    api.getFbrSettings().then((s) => setFbrOn(!!(s.featureFbr && s.fbrEnabled))).catch(() => {})
+    api.getFbrSettings().then((s) => { setFbrOn(!!(s.featureFbr && s.fbrEnabled)); setFbrLocal(!!s.localAvailable) }).catch(() => {})
   }
   useEffect(() => { load() }, [])
 
@@ -577,7 +688,7 @@ function Branches() {
     <div className="card" style={{ marginBottom: 16 }}>
       <b>Branches</b>
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>
-        Each location has its own tables, QR codes and (when FBR is on) its own POS registration. Sales report per branch.
+        Each location has its own tables, QR codes and (when tax filing is on) its own FBR or PRA registration. Sales report per branch.
       </p>
       {rows.map((b) => (
         <div key={b.id} style={{ borderBottom: '1px solid var(--line)' }}>
@@ -586,15 +697,15 @@ function Branches() {
           ) : (
             <div className="row between list-row" style={{ padding: '7px 0' }} onDoubleClick={() => setEditFor(b.id)}>
               <span><b>{b.name}</b> <span className="muted">· {b.address || 'no address'} · {b.tables} {b.tables === 1 ? 'table' : 'tables'}
-                {fbrOn && b.fbrPosId ? ` · FBR ${b.fbrMode} POS ${b.fbrPosId}` : ''}</span></span>
+                {fbrOn ? ` · ${b.fiscalAuthority} ${b.fiscalEnvironment}${b.fbrPosId ? ` POSID ${b.fbrPosId}` : ''}` : ''}</span></span>
               <div className="row" style={{ gap: 4 }}>
-                {fbrOn && <button className="ghost btn-sm" onClick={() => setFbrFor(fbrFor === b.id ? null : b.id)}>FBR POS</button>}
+                {fbrOn && <button className="ghost btn-sm" onClick={() => setFbrFor(fbrFor === b.id ? null : b.id)}>Tax office</button>}
                 <button className="ghost icon-btn" title="Edit branch" onClick={() => setEditFor(b.id)}><EditIcon /></button>
                 <button className="ghost icon-btn danger" title="Delete branch" onClick={() => del(b)}><TrashIcon /></button>
               </div>
             </div>
           )}
-          {fbrOn && fbrFor === b.id && editFor !== b.id && <BranchFbr b={b} onSaved={() => { setFbrFor(null); load() }} />}
+          {fbrOn && fbrFor === b.id && editFor !== b.id && <BranchFbr b={b} localAvailable={fbrLocal} onSaved={() => { setFbrFor(null); load() }} />}
         </div>
       ))}
       <div className="cat-title" style={{ fontSize: 13, margin: '10px 0 6px' }}>Add branch</div>
@@ -611,7 +722,7 @@ function Branches() {
 }
 
 // Inline editor for a branch's name + address (opened by the Edit button or a
-// double-click). FBR POS config stays on its own panel.
+// double-click). The tax office setup stays on its own panel and is left as it is.
 function BranchEdit({ b, onDone, onCancel }) {
   const [name, setName] = useState(b.name)
   const [address, setAddress] = useState(b.address || '')
@@ -619,7 +730,7 @@ function BranchEdit({ b, onDone, onCancel }) {
   const [busy, setBusy] = useState(false)
   const save = async () => {
     setErr(''); setBusy(true)
-    try { await api.updateBranch(b.id, { ...b, name: name.trim(), address: address.trim() }); onDone() }
+    try { await api.updateBranch(b.id, { name: name.trim(), address: address.trim(), isActive: b.isActive, keepFiscal: true }); onDone() }
     catch (e) { setErr(friendlyError(e)); setBusy(false) }
   }
   return (
@@ -637,62 +748,142 @@ function BranchEdit({ b, onDone, onCancel }) {
   )
 }
 
-// Per-branch FBR POS registration: Local (IMS component) vs Cloud gateway, the
-// branch's default POSID/token, and (cloud) the static IP registered with FBR.
-function BranchFbr({ b, onSaved }) {
-  const [f, setF] = useState({
-    name: b.name, address: b.address, isActive: b.isActive,
-    fbrMode: b.fbrMode || 'Local', fbrSandbox: b.fbrSandbox ?? true,
-    fbrPosId: b.fbrPosId || '', fbrToken: b.fbrToken || '',
-    fbrStaticIp: b.fbrStaticIp || '', fbrEndpointOverride: b.fbrEndpointOverride || '',
-  })
+// One branch's tax office setup: FBR or PRA; Practice, Test or Live; for FBR, online (its internet gateway) or
+// on this computer (FBR's software on the counter PC, PC edition only); the POSID, token and registered address.
+// The saved token never comes back to the screen: typing a new one replaces it, "Remove" clears it.
+function BranchFbr({ b, localAvailable, onSaved }) {
+  const start = {
+    // "On this computer" only works in the PC edition: elsewhere a branch saved that way (the old default) starts online.
+    office: b.fiscalAuthority || 'FBR', env: b.fiscalEnvironment || 'Practice',
+    mode: b.fbrMode === 'Local' && localAvailable ? 'Local' : 'Cloud',
+    posId: b.fbrPosId || '', token: '', clearToken: false,
+    ip: b.fbrStaticIp || '', testUrl: b.fbrEndpointOverride || '',
+  }
+  const [f, setF] = useState(start)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const [test, setTest] = useState(null)
+  const set = (k, v) => { setF((x) => ({ ...x, [k]: v })); setTest(null) }
+  const dirty = JSON.stringify(f) !== JSON.stringify(start)
+  const online = f.office === 'PRA' || f.mode === 'Cloud'
+  const hasToken = (b.hasFbrToken && !f.clearToken) || !!f.token.trim()
+
+  const problem = () => {
+    if (!isPosIdOrBlank(f.posId)) return 'POSID must be a whole number above 0.'
+    if (f.env === 'Live') {
+      if (!String(f.posId).trim()) return `Add the live POSID from ${f.office} before choosing Live.`
+      if (online && !hasToken) return `Add the live ${f.office} token before choosing Live.`
+    }
+    if (f.env === 'Test' && f.testUrl.trim() && !/^https?:\/\//i.test(f.testUrl.trim())) return 'The test server address must start with https://'
+    return ''
+  }
   const save = async () => {
-    if (!isPosIdOrBlank(f.fbrPosId)) return setErr('POS ID must be a whole number above 0.')
+    const why = problem()
+    if (why) return setErr(why)
+    if (f.env === 'Live' && start.env !== 'Live') {
+      const ok = await ui.confirm({
+        title: `File real tax invoices with ${f.office}?`,
+        message: `From now on every bill settled at ${b.name} is filed with ${f.office} as a real tax invoice. Check the POSID and token are the LIVE ones ${f.office} gave you, not the test ones.`,
+        confirmText: 'Switch to Live',
+      })
+      if (!ok) return
+    }
     setErr(''); setBusy(true)
     try {
       await api.updateBranch(b.id, {
-        ...f, fbrPosId: String(f.fbrPosId).trim() ? Number(f.fbrPosId) : null,
-        fbrToken: f.fbrToken.trim() || null, fbrStaticIp: f.fbrStaticIp.trim(), fbrEndpointOverride: f.fbrEndpointOverride.trim() || null,
+        name: b.name, address: b.address || '', isActive: b.isActive,
+        fiscalAuthority: f.office, fiscalEnvironment: f.env, fbrMode: f.office === 'PRA' ? 'Cloud' : f.mode,
+        fbrSandbox: f.env !== 'Live',
+        fbrPosId: String(f.posId).trim() ? Number(f.posId) : null,
+        // null keeps the saved token; '' removes it.
+        fbrToken: f.token.trim() ? f.token.trim() : f.clearToken ? '' : null,
+        fbrStaticIp: f.ip.trim(),
+        fbrEndpointOverride: f.env === 'Test' && f.testUrl.trim() ? f.testUrl.trim() : null,
       })
+      toast.success(`${b.name}: saved.`)
+      setF((x) => ({ ...x, token: '', clearToken: false }))   // the saved token is now "saved, ends …"
       onSaved()
     } catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
+  const sendTest = async () => {
+    setErr(''); setTest({ busy: true })
+    try { setTest(await api.fbrTest(b.id)) }
+    catch (e) { setTest(null); setErr(friendlyError(e)) }
+  }
 
   return (
-    <div style={{ background: 'var(--surface2)', borderRadius: 8, margin: '4px 0 8px', padding: 12 }}>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <label className="row" style={{ gap: 6 }}>
-          <span className="muted" style={{ fontSize: 13 }}>Mode</span>
-          <select value={f.fbrMode} onChange={(e) => set('fbrMode', e.target.value)}>
-            <option value="Local">Local (IMS on POS PC)</option>
-            <option value="Cloud">Cloud (FBR gateway)</option>
-          </select>
-        </label>
-        <label className="row" style={{ gap: 6 }}>
-          <input type="checkbox" checked={f.fbrSandbox} onChange={(e) => set('fbrSandbox', e.target.checked)} />
-          <span style={{ fontSize: 13 }}>Sandbox (test)</span>
-        </label>
+    <div style={{ background: 'var(--surface2)', borderRadius: 8, margin: '8px 0', padding: 12 }}>
+      <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginBottom: 10, alignItems: 'flex-end' }}>
+        <label className="fld"><span>Tax office</span>
+          <select value={f.office} onChange={(e) => set('office', e.target.value)}>
+            <option value="FBR">FBR (federal sales tax)</option>
+            <option value="PRA">PRA (Punjab Revenue Authority)</option>
+          </select></label>
+        {f.office === 'FBR' && (
+          <label className="fld"><span>How bills reach FBR</span>
+            <select value={f.mode} onChange={(e) => set('mode', e.target.value)}>
+              <option value="Cloud">Online (FBR’s internet gateway)</option>
+              <option value="Local">On this computer (FBR software on the counter PC)</option>
+            </select></label>
+        )}
       </div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'flex-end' }}>
-        <label className="fld" style={{ width: 150 }}><span>POS ID (from FBR)</span>
-          <input type="number" min="1" step="1" inputMode="numeric" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} /></label>
-        {f.fbrMode === 'Cloud' && <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>Bearer token</span>
-          <input maxLength={200} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} /></label>}
-        {f.fbrMode === 'Cloud' && <label className="fld" style={{ width: 150 }}><span>Registered static IP</span>
-          <input maxLength={45} inputMode="decimal" placeholder="203.0.113.10" value={f.fbrStaticIp} onChange={(e) => set('fbrStaticIp', e.target.value)} /></label>}
+      <div className="set-head" style={{ marginBottom: 4 }}>Where bills go</div>
+      <div className="seg" role="radiogroup" aria-label="Where bills go" style={{ marginBottom: 4 }}>
+        {['Practice', 'Test', 'Live'].map((e) => (
+          <button key={e} type="button" className={f.env === e ? 'on' : ''} aria-pressed={f.env === e} onClick={() => set('env', e)}>{e}</button>
+        ))}
       </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        {f.fbrMode === 'Local'
-          ? 'Local mode posts to the FBR IMS component on this PC, with no IP whitelisting. Owner/manager can sync.'
-          : 'Cloud mode posts to FBR’s gateway with the token above; the static IP must be the one registered with FBR.'}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>{ENV_TEXT[f.env]}</div>
+
+      {f.env !== 'Practice' && (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'flex-end' }}>
+          <label className="fld" style={{ width: 150 }}><span>{f.env === 'Live' ? 'Live' : 'Test'} POSID</span>
+            <input type="number" min="1" step="1" inputMode="numeric" value={f.posId} onChange={(e) => set('posId', e.target.value)} /></label>
+          {online && (
+            <label className="fld" style={{ flex: 1, minWidth: 200 }}><span>{f.env === 'Live' ? 'Live' : 'Test'} token{b.hasFbrToken && !f.clearToken && !f.token ? ` (saved, ends …${b.tokenEnds})` : ''}</span>
+              <input maxLength={200} autoComplete="off" spellCheck={false}
+                placeholder={b.hasFbrToken && !f.clearToken ? 'Type a new token to replace the saved one' : `Paste the token from ${f.office}'s portal`}
+                value={f.token} onChange={(e) => set('token', e.target.value)} /></label>
+          )}
+          {online && b.hasFbrToken && !f.clearToken && (
+            <button type="button" className="ghost btn-sm" onClick={() => { set('clearToken', true); set('token', '') }}>Remove saved token</button>
+          )}
+          {online && (
+            <label className="fld" style={{ width: 160 }}><span>Registered IP <span className="opt">(optional)</span></span>
+              <input maxLength={45} inputMode="decimal" placeholder="203.0.113.10" value={f.ip} onChange={(e) => set('ip', e.target.value)} /></label>
+          )}
+        </div>
+      )}
+      {f.clearToken && <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>The saved token will be removed when you save.</div>}
+      {f.env === 'Test' && (
+        <label className="fld" style={{ marginBottom: 8, maxWidth: 460 }}><span>Test server address <span className="opt">(optional: only if {f.office} gave you a different one)</span></span>
+          <input maxLength={300} placeholder="Leave blank for the office's own test server" value={f.testUrl} onChange={(e) => set('testUrl', e.target.value)} /></label>
+      )}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+        {f.env === 'Practice' ? 'No POSID or token needed in Practice.'
+          : !online ? (localAvailable
+              ? 'Bills go to the FBR software on this PC. It must be installed and signed in with this POSID.'
+              : '“On this computer” only works in the PC edition, which runs on the counter PC. The online system can’t reach a PC’s FBR software, so choose “Online”.')
+          : `${f.office} only accepts bills from the internet address it has on record for you. If bills are refused with “didn't accept the token”, ask ${f.office} to add this system's address.`}
       </div>
-      <div className="row" style={{ gap: 8 }}>
-        <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save FBR settings'}</button>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className="primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        {start.env !== 'Live' && (
+          <button className="ghost" disabled={busy || dirty || test?.busy} title={dirty ? 'Save first' : ''} onClick={sendTest}>
+            {test?.busy ? 'Sending…' : 'Send a test bill'}
+          </button>
+        )}
+        {dirty && start.env !== 'Live' && <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>Save first, then send a test bill.</span>}
       </div>
+      {test && !test.busy && (
+        <div className="card" style={{ marginTop: 8, fontSize: 13, borderColor: test.accepted ? 'var(--accent2)' : 'var(--red)' }}>
+          {test.accepted
+            ? <><b>Accepted by {test.office} {test.environment}.</b> Number: <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{test.number}</span>
+                <div className="muted">A Rs {test.total} test bill (Rs {test.tax} tax). Nothing was saved.</div></>
+            : <><b style={{ color: 'var(--red)' }}>Not accepted ({test.office} {test.environment}).</b> <span>{test.error}</span></>}
+        </div>
+      )}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )

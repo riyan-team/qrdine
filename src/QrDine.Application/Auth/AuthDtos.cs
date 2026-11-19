@@ -14,3 +14,4 @@ public record AuthResponse(string Token, string DisplayName, string Role,
 public record StaffLogin(QrDine.Domain.Identity.StaffMember User, QrDine.Domain.Restaurants.Restaurant Restaurant);
 
 public record GuestSessionResponse(string Token, string TableCode);
+public record GuestSessionRequest(string? Key);

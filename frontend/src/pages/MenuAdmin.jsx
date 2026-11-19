@@ -174,6 +174,9 @@ function BulkPrice({ cats, onClose, onDone }) {
 }
 
 function ItemEditor({ item, categories, onClose, onSaved }) {
+  // "One rate for all items" (Settings → Billing & tax) means an item's own Tax % isn't used.
+  const [oneTax, setOneTax] = useState(null)
+  useEffect(() => { api.getBillingSettings().then((b) => setOneTax(b.taxEnabled && b.oneTaxForAllItems ? b.taxPercent : null)).catch(() => {}) }, [])
   const [f, setF] = useState(() => item ? {
     categoryId: findCategoryId(categories, item.id) ?? categories[0].id,
     name: item.name, nameUrdu: item.nameUrdu || '', description: item.description || '',
@@ -322,7 +325,8 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Tax for FBR. Leave blank for the restaurant rate; 0 means no tax.</div>
         <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
           <label className="fld" style={{ flex: 1 }}><span>Tax % <span className="opt">(optional)</span></span>
-            <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Restaurant rate" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} style={inp} /></label>
+            <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Restaurant rate" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} style={inp} />
+            {oneTax != null && <span className="muted" style={{ fontSize: 11 }}>Not used: every item is charged {oneTax}% (Settings → Billing &amp; tax).</span>}</label>
           <label className="fld" style={{ flex: 1 }}><span>Further tax % <span className="opt">(optional)</span></span>
             <input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={f.furtherTaxRate} onChange={(e) => set('furtherTaxRate', e.target.value)} style={inp} /></label>
           <label className="fld" style={{ flex: 1 }}><span>PCT / HS code <span className="opt">(optional)</span></span>

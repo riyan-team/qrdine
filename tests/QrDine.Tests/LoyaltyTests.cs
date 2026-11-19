@@ -82,14 +82,50 @@ public class LoyaltyTests : IDisposable
         Assert.Equal(50, first.WelcomeBonusAwarded);
         Assert.Equal("0300••••567", first.PhoneMasked);
 
-        // the same number typed another way is the same member: no second bonus, name not overwritten
+        // the same number typed another way is the same member: no second bonus, name not overwritten,
+        // and nothing of theirs shown without the staff's code
         var again = await _svc.Join(new LoyaltyJoinInput("Someone else", "+92 300 1234567", null));
-        Assert.False(again.JustJoined);
-        Assert.Equal(first.Token, again.Token);
-        Assert.Equal("Ayesha", again.Name);
-        Assert.Equal(50, again.Points);
+        Assert.True(again.NeedsCode);
+        Assert.Equal("", again.Token);
+        Assert.Equal("", again.Name);
+        Assert.Equal(0, again.Points);
         Assert.Equal(1, await _db.LoyaltyMembers.CountAsync());
         Assert.Equal(1, await _db.LoyaltyTransactions.CountAsync(t => t.Type == LoyaltyTxnType.Welcome));
+        Assert.Equal("Ayesha", (await _db.LoyaltyMembers.SingleAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Someone_elses_number_opens_their_points_only_with_the_staffs_code()
+    {
+        await Seed();
+        var owner = await _svc.Join(new LoyaltyJoinInput("Ayesha", "03001234567", null));
+        var id = (await _db.LoyaltyMembers.SingleAsync()).Id;
+
+        await Assert.ThrowsAsync<DomainException>(() => _svc.Join(new LoyaltyJoinInput(null, "03001234567", null, "123456")));   // no code given out yet
+        var code = await _svc.NewPhoneCode(id);
+        Assert.Matches("^[0-9]{6}$", code.Code);
+        var wrong = code.Code == "000000" ? "111111" : "000000";
+        await Assert.ThrowsAsync<DomainException>(() => _svc.Join(new LoyaltyJoinInput(null, "03001234567", null, wrong)));
+
+        var opened = await _svc.Join(new LoyaltyJoinInput(null, "0300 1234567", null, code.Code));
+        Assert.False(opened.NeedsCode);
+        Assert.Equal(owner.Token, opened.Token);
+        Assert.Equal(50, opened.Points);
+        // used up: the same code can't open it on a third phone
+        Assert.True((await _svc.Join(new LoyaltyJoinInput(null, "03001234567", null))).NeedsCode);
+        await Assert.ThrowsAsync<DomainException>(() => _svc.Join(new LoyaltyJoinInput(null, "03001234567", null, code.Code)));
+    }
+
+    [Fact]
+    public async Task Five_wrong_codes_end_the_code()
+    {
+        await Seed();
+        await _svc.Join(new LoyaltyJoinInput("Ayesha", "03001234567", null));
+        var code = await _svc.NewPhoneCode((await _db.LoyaltyMembers.SingleAsync()).Id);
+        var wrong = code.Code == "000000" ? "111111" : "000000";
+        for (var i = 0; i < LoyaltyService.PhoneCodeMaxTries; i++)
+            await Assert.ThrowsAsync<DomainException>(() => _svc.Join(new LoyaltyJoinInput(null, "03001234567", null, wrong)));
+        await Assert.ThrowsAsync<DomainException>(() => _svc.Join(new LoyaltyJoinInput(null, "03001234567", null, code.Code)));
     }
 
     [Fact]

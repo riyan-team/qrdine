@@ -72,6 +72,9 @@ public static class LoyaltyEndpoints
         a.MapPost("/members/{id:int}/adjust", async (int id, LoyaltyAdjustInput body, ClaimsPrincipal user, LoyaltyService svc)
                 => Results.Ok(await svc.Adjust(id, body, By(user))))
             .RequireAuthorization(Policies.CanManageSettings);
+        // A one-time code a member types on a new phone to see and spend their points there.
+        a.MapPost("/members/{id:int}/phone-code", async (int id, LoyaltyService svc) => Results.Ok(await svc.NewPhoneCode(id)))
+            .RequireAuthorization(Policies.CanPay);
 
         // ---- reception: reward requests and the running bill's member ----
         a.MapGet("/redemptions", async (string? status, LoyaltyService svc) => Results.Ok(await svc.Redemptions(status)))

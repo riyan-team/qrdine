@@ -54,6 +54,8 @@ public class Invoice : Entity, ITenantOwned
     // FiscalNumber is the authority's invoice id printed on the receipt; the QR
     // encodes FiscalQrPayload. Error/attempt fields drive the pending-invoice view.
     public string FiscalProvider { get; set; } = "None";
+    public string FiscalEnvironment { get; set; } = "";     // Practice / Test / Live when it was filed
+    public DateTime? FiscalClaimUntil { get; set; }         // someone is sending it right now (never two at once)
     public FiscalStatus FiscalStatus { get; set; } = FiscalStatus.NotRequired;
     public string? FiscalNumber { get; set; }
     public string? FiscalQrPayload { get; set; }
@@ -92,6 +94,17 @@ public class Invoice : Entity, ITenantOwned
         FiscalLastAttemptAt = DateTime.UtcNow;
         if (posId is not null) SyncedByPosId = posId;
     }
+
+    /// <summary>The owner sends bills later (not at settle): it waits in Pending until it is sent.</summary>
+    public void MarkFiscalWaiting(string provider, string environment)
+    {
+        FiscalProvider = provider;
+        FiscalEnvironment = environment;
+        FiscalStatus = FiscalStatus.Pending;
+        FiscalError = WaitingToSend;
+    }
+
+    public const string WaitingToSend = "Waiting to be sent.";
 
     /// <summary>Fiscal is off for this restaurant — nothing to file.</summary>
     public void MarkFiscalNotRequired()

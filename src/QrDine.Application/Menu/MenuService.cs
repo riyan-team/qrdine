@@ -56,7 +56,11 @@ public class MenuService
     public async Task<IReadOnlyList<TableDto>> GetTables(CancellationToken ct = default)
     {
         var branches = await _db.Branches.AsNoTracking().ToDictionaryAsync(b => b.Id, b => b.Name, ct);
-        var tables = await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).OrderBy(t => t.Code).ToListAsync(ct);
-        return tables.Select(t => new TableDto(t.Code, t.Name, branches.GetValueOrDefault(t.BranchId, ""))).ToList();
+        var tables = await _db.Tables.Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).OrderBy(t => t.Code).ToListAsync(ct);
+        // A table saved by an older build has no key yet: give it one now, so its QR code can be printed.
+        var keyless = tables.Where(t => string.IsNullOrEmpty(t.QrKey)).ToList();
+        foreach (var t in keyless) t.QrKey = Domain.Tables.DiningTable.NewQrKey();
+        if (keyless.Count > 0) await _db.SaveChangesAsync(ct);
+        return tables.Select(t => new TableDto(t.Code, t.Name, branches.GetValueOrDefault(t.BranchId, ""), t.QrKey, t.Id)).ToList();
     }
 }

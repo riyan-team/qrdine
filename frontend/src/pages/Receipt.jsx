@@ -9,6 +9,7 @@ export default function Receipt({ bill, invoice }) {
   const d = invoice || bill
   if (!d) return null
   const isInvoice = !!invoice
+  const office = d.fiscalOffice || (d.fiscalProvider === 'PRA' ? 'PRA' : 'FBR')   // which tax office filed it
   // Tax label: the snapshot on a settled invoice, or the current name on a preview.
   const taxLabel = d.taxLabel || d.taxName || 'Tax'
   // Show what was received + change for cash payments, or whenever change was given. A bill paid in
@@ -85,22 +86,28 @@ export default function Receipt({ bill, invoice }) {
       {/* Fiscal block. The receipt ALWAYS prints; this only reflects the FBR state. */}
       {isInvoice && d.fiscalNumber && (
         <div className="r-fbr">
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em' }}>INTEGRATED WITH FBR</div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em' }}>
+            {d.fiscalEnvironment === 'Practice' ? 'PRACTICE: NOT A TAX INVOICE'
+              : d.fiscalEnvironment === 'Test' ? `${office} TEST: NOT A TAX INVOICE` : `INTEGRATED WITH ${office}`}
+          </div>
+          {(d.sellerNtn || d.sellerStrn || d.posId) && (
+            <div style={{ fontSize: 10.5, marginTop: 2 }}>
+              {[d.sellerNtn && `NTN ${d.sellerNtn}`, d.sellerStrn && `STRN ${d.sellerStrn}`, d.posId && `POS ID ${d.posId}`].filter(Boolean).join(' · ')}
+            </div>
+          )}
           <div style={{ background: '#fff', display: 'inline-block', padding: 4, marginTop: 4 }}>
             <QRCodeSVG value={d.fiscalQrPayload || d.fiscalNumber} size={92} level="M" />
           </div>
-          <div style={{ fontSize: 11, marginTop: 6 }}>
-            {(d.fiscalProvider === 'Simulated' || d.fiscalProvider === 'Sandbox') ? 'FBR (test)' : 'FBR'} Fiscal Invoice
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.02em' }}>{d.fiscalNumber}</div>
-          <div style={{ fontSize: 10, color: '#666' }}>Verify with the FBR Tax Asaan app</div>
+          <div style={{ fontSize: 11, marginTop: 6 }}>{office} Fiscal Invoice</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.02em', wordBreak: 'break-all' }}>{d.fiscalNumber}</div>
+          <div style={{ fontSize: 10, color: '#666' }}>{office === 'PRA' ? "Scan to check it on PRA's website" : 'Verify with the FBR Tax Asaan app'}</div>
         </div>
       )}
       {isInvoice && !d.fiscalNumber && (d.fiscalStatus === 'Pending' || d.fiscalStatus === 'Failed') && (
         <div className="r-fbr">
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#a00' }}>FBR FILING PENDING</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a00' }}>{office} FILING PENDING</div>
           <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
-            This sale is valid. It will be filed with FBR shortly.
+            This sale is valid. It will be filed with {office} shortly.
           </div>
         </div>
       )}

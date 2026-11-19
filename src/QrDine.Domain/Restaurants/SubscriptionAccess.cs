@@ -22,7 +22,7 @@ public readonly record struct SubscriptionAccess(SubscriptionState State, int Da
     {
         if (paidThrough is not DateTime paid) return new(SubscriptionState.Active, 0);
 
-        var lockAt = paid.AddDays(Math.Max(0, graceDays));
+        var lockAt = QuietHourAfter(paid.AddDays(Math.Max(0, graceDays)));
         if (nowUtc >= lockAt) return new(SubscriptionState.Locked, 0);
         if (nowUtc >= paid) return new(SubscriptionState.Overdue, DaysUntil(lockAt, nowUtc));
         if (nowUtc >= paid.AddDays(-WarnDays)) return new(SubscriptionState.EndingSoon, DaysUntil(paid, nowUtc));
@@ -30,4 +30,14 @@ public readonly record struct SubscriptionAccess(SubscriptionState State, int Da
     }
 
     private static int DaysUntil(DateTime when, DateTime now) => (int)Math.Ceiling((when - now).TotalDays);
+
+    /// <summary>
+    /// A plan never pauses in the middle of service: the pause waits for the next 5 am in Pakistan (midnight UTC),
+    /// when every restaurant is closed and the night's bills are settled.
+    /// </summary>
+    public static DateTime QuietHourAfter(DateTime utc)
+    {
+        var midnight = utc.Date;
+        return utc == midnight ? utc : midnight.AddDays(1);
+    }
 }

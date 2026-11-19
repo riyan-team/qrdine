@@ -23,6 +23,14 @@ public static class Access
     /// <summary>A token issued for this restaurant (by its address).</summary>
     public static bool IsFor(ClaimsPrincipal? user, string slug) => Same(user?.FindFirst(AppClaims.Slug)?.Value, slug);
 
+    /// <summary>This guest pass's own id (one phone), or null for staff and older passes.</summary>
+    public static string? PassIdOf(ClaimsPrincipal? user) =>
+        IsGuest(user) ? user!.FindFirst(AppClaims.PassId)?.Value : null;
+
+    /// <summary>When the guest pass was issued (unix seconds), or 0 when it says nothing.</summary>
+    public static long IssuedAtOf(ClaimsPrincipal? user) =>
+        long.TryParse(user?.FindFirst(AppClaims.IssuedAt)?.Value, out var t) ? t : 0;
+
     /// <summary>A guest's pass is for this one table.</summary>
     public static bool IsGuestAt(ClaimsPrincipal? user, string? tableCode) =>
         IsGuest(user) && Same(user!.FindFirst(AppClaims.TableCode)?.Value, tableCode);

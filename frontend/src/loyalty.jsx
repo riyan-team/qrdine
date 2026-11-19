@@ -33,8 +33,10 @@ export function useLoyalty(slug, code) {
     refresh()
   }, [slug, refresh])
 
-  const join = async (name, phone) => {
-    const m = await loyalty.join(slug, { name, phone, tableCode: code })
+  // A number that is already a member opens its points here only with the staff's 6-digit code.
+  const join = async (name, phone, phoneCode) => {
+    const m = await loyalty.join(slug, { name, phone, tableCode: code, code: phoneCode || null })
+    if (m.needsCode || !m.token) return m
     memberStore.set(slug, m.token)
     setMe(m)
     return m
@@ -238,15 +240,21 @@ function JoinView({ loy }) {
   const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [askCode, setAskCode] = useState(false)   // the number is already a member: the staff's code opens it here
+  const [phoneCode, setPhoneCode] = useState('')
   const submit = async (e) => {
     e.preventDefault()
     if (busy) return
     setErr('')
     if (phone.replace(/\D/g, '').length < 10) { setErr('Enter your mobile number, e.g. 0300 1234567.'); return }
+    if (askCode && !/^\d{6}$/.test(phoneCode.trim())) { setErr('Enter the 6-digit code from the staff.'); return }
     setBusy(true)
     try {
-      const m = await loy.join(name.trim(), phone)
-      if (m.justJoined) {
+      const m = await loy.join(name.trim(), phone, askCode ? phoneCode.trim() : null)
+      if (m.needsCode) {
+        setAskCode(true)
+        toast.success('This bill earns points for this number.')
+      } else if (m.justJoined) {
         burst()
         toast.success(m.welcomeBonusAwarded > 0 ? `Welcome! ${pts(m.welcomeBonusAwarded)} added` : 'Welcome to rewards!')
       } else toast.success(`Welcome back, ${m.name}!`)
@@ -276,10 +284,20 @@ function JoinView({ loy }) {
           <span className="field-label">Mobile number</span>
           <div className="lx-input"><PhoneIcon size={16} /><input required aria-invalid={!!err} aria-describedby={err ? 'lx-join-err' : undefined} value={phone} type="tel" inputMode="tel" maxLength={20} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" autoComplete="tel" /></div>
         </label>
+        {askCode && (
+          <label className="field">
+            <span className="field-label">Code from the staff</span>
+            <div className="muted" style={{ fontSize: 12.5, margin: '0 0 6px' }}>
+              This number is already a member, and this bill earns points for it. To see and spend the points on this phone, ask the staff for a 6-digit code.
+            </div>
+            <div className="lx-input"><input value={phoneCode} inputMode="numeric" maxLength={6} autoComplete="one-time-code"
+              onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, ''))} placeholder="6 digits" /></div>
+          </label>
+        )}
         {err && <div className="field-error" id="lx-join-err" role="alert">{err}</div>}
-        <button className="primary lx-cta" disabled={busy}>{busy ? 'Joining…' : info.welcomeBonus > 0 ? `Join & get ${pts(info.welcomeBonus)}` : 'Join rewards'}</button>
+        <button className="primary lx-cta" disabled={busy}>{busy ? 'Joining…' : askCode ? 'Open my points' : info.welcomeBonus > 0 ? `Join & get ${pts(info.welcomeBonus)}` : 'Join rewards'}</button>
         <div className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-          Already a member? Enter the same number to see your points. Rewards are confirmed by our staff.
+          Already a member on another phone? Enter the same number, then the code the staff give you. Rewards are confirmed by our staff.
         </div>
       </form>
 

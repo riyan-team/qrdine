@@ -48,6 +48,15 @@ public interface IAppDbContext
     DbSet<QrDine.Domain.Staffing.EmployeeEntry> EmployeeEntries { get; }
     DbSet<QrDine.Domain.Staffing.AttendanceMark> AttendanceMarks { get; }
     DbSet<QrDine.Domain.Ordering.OrderVoid> OrderVoids { get; }
+    DbSet<QrDine.Domain.Ordering.PaymentReturn> PaymentReturns { get; }
+
+    /// <summary>
+    /// Marks an invoice as being sent to the tax office right now, in one step in the database, so two sends (a
+    /// cashier's Retry and the automatic resend, or two screens) can never file the same bill twice. False when it
+    /// is already filed or someone else is sending it.
+    /// </summary>
+    Task<bool> ClaimInvoiceForFiling(int invoiceId, DateTime untilUtc, CancellationToken ct = default);
+    Task ReleaseInvoiceClaim(int invoiceId, CancellationToken ct = default);
     DbSet<QrDine.Domain.Ordering.ServiceRequest> ServiceRequests { get; }
     DbSet<QrDine.Domain.Billing.DayClosing> DayClosings { get; }
     DbSet<QrDine.Domain.Sync.SyncDevice> SyncDevices { get; }

@@ -9,6 +9,7 @@ namespace QrDine.Application.Common;
 public interface ITokenService
 {
     string CreateStaffToken(StaffMember staff, string slug, IEnumerable<string> permissions);
+    /// <summary>A guest pass for one table (or one parcel/delivery ticket). Each pass has its own id.</summary>
     string CreateGuestToken(int restaurantId, string slug, string tableCode);
     string CreatePlatformToken(PlatformAdmin admin);
 }

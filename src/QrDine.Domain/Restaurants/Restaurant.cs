@@ -88,6 +88,13 @@ public class Restaurant : Entity
     // owner's own on/off switch (only usable while FeatureFbr is on).
     public bool FeatureFbr { get; set; } = false;
     public bool FbrEnabled { get; set; } = false;
+    // Send each bill to the tax office the moment it is settled (so the receipt prints its tax number). Off: bills
+    // wait in Pending until someone sends them, or the automatic resend picks them up.
+    public bool FiscalSendAtSettle { get; set; } = true;
+    // Every few minutes, send again the bills that couldn't reach the tax office (no internet, office down).
+    public bool FiscalAutoRetry { get; set; } = true;
+    // Tax: every item at the bill's tax rate, whatever rate an item has of its own (tax-free items included).
+    public bool OneTaxForAllItems { get; set; }
 
     // Subscription
     public SubscriptionPlan Plan { get; set; } = SubscriptionPlan.Trial;   // legacy tier (kept for history)

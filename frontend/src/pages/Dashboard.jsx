@@ -138,7 +138,7 @@ function GettingStarted({ welcome }) {
   const steps = [
     { id: 'menu', title: 'Check your menu', sub: "We've put in a starter menu. Change it to yours, or read it from a photo.", to: '/admin/menu', show: auth.can('menu.manage') },
     { id: 'qr', title: 'Print your table QR codes', sub: 'One for each table.', to: '/owner', show: auth.can('settings.manage') },
-    { id: 'try', title: 'Order something yourself', sub: 'Open a table on your phone and see it reach Reception.', to: table ? `/r/${auth.staffSlug()}/t/${table.code}` : '/owner', show: true },
+    { id: 'try', title: 'Order something yourself', sub: 'Open a table on your phone and see it reach Reception.', to: table ? `/r/${auth.staffSlug()}/t/${table.code}?k=${encodeURIComponent(table.qrKey || '')}` : '/owner', show: true },
     { id: 'staff', title: 'Add your staff', sub: 'Give your cashier, kitchen and waiters their own sign-in.', to: '/admin/settings', show: auth.can('settings.manage') },
   ].filter((s) => s.show)
   const tick = (id) => { if (!state.done.includes(id)) save({ ...state, done: [...state.done, id] }) }

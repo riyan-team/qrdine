@@ -52,6 +52,8 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQrDineAuth(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new QrDine.Application.Common.UtcDateTimeConverter()));
 builder.Services.AddSignalR();
+// Every minute, drops live connections whose sign-in or table pass has ended.
+builder.Services.AddHostedService<QrDine.Infrastructure.Realtime.LiveFeedGuard>();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database");
 
 // CORS: the SPA is served from the API's own origin, so cross-origin isn't needed
@@ -82,15 +84,30 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 // .RequireRateLimiting(name). Rejections return 429 with a friendly problem+json body.
 // A home or phone network gets a whole /64 block of IPv6 addresses, so the block counts as one
 // visitor. Otherwise a guesser could switch address on every try and never hit a limit.
-string ClientKey(HttpContext ctx)
+string ClientKey(HttpContext ctx) => QrDine.Api.Middleware.ClientAddress.Of(ctx);
+// The sign-in guard counts wrong passwords per address too, so a stranger can't lock the owner out.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<QrDine.Application.Auth.IRequestSource, QrDine.Api.Middleware.HttpRequestSource>();
+
+// Who a limit counts against. In Pakistan a whole restaurant's WiFi, or thousands of phones on one mobile network,
+// can share a single address, so a signed-in staff member and a table's guests each count on their own; anyone else
+// counts by address, separately for each restaurant and table, so one busy place never locks out another.
+string PartitionKey(HttpContext ctx)
 {
-    var ip = ctx.Connection.RemoteIpAddress;
-    if (ip is null) return "unknown";
-    if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-    if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) return ip.ToString();
-    var bytes = ip.GetAddressBytes();
-    Array.Clear(bytes, 8, 8);
-    return new System.Net.IPAddress(bytes) + "/64";
+    var u = ctx.User;
+    if (u.Identity?.IsAuthenticated == true)
+    {
+        var rid = u.FindFirst(QrDine.Application.Common.AppClaims.RestaurantId)?.Value ?? "";
+        var type = u.FindFirst(QrDine.Application.Common.AppClaims.TokenType)?.Value ?? "";
+        var table = u.FindFirst(QrDine.Application.Common.AppClaims.TableCode)?.Value;
+        if (table is not null) return $"guest:{rid}:{table.ToUpperInvariant()}";
+        var who = u.FindFirst(QrDine.Application.Common.AppClaims.StaffId)?.Value
+            ?? u.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? u.FindFirst("sub")?.Value;
+        if (who is not null) return $"{type}:{rid}:{who}";
+    }
+    var slug = (ctx.Request.RouteValues["slug"] as string ?? "").ToLowerInvariant();
+    var code = (ctx.Request.RouteValues["code"] as string ?? "").ToUpperInvariant();
+    return $"{ClientKey(ctx)}|{slug}|{code}";
 }
 
 FixedWindowRateLimiterOptions Window(int permit, int seconds) =>
@@ -106,20 +123,21 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     // Sign-in / password endpoints: tight, to slow credential stuffing.
+    // Each restaurant's sign-in counts apart (a shift of staff signs in from one WiFi); wrong passwords also lock the account.
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
-        ClientKey(ctx), _ => Window(Limit("login", 10), WindowSecs("login", 60))));
+        PartitionKey(ctx), _ => Window(Limit("login", 20), WindowSecs("login", 60))));
     // New-restaurant sign-up: very tight — few legitimate attempts per IP.
     o.AddPolicy("register", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ClientKey(ctx), _ => Window(Limit("register", 5), WindowSecs("register", 3600))));
     // Order placement (guest + waiter): generous but bounded against spam.
     o.AddPolicy("orders", ctx => RateLimitPartition.GetFixedWindowLimiter(
-        ClientKey(ctx), _ => Window(Limit("orders", 40), WindowSecs("orders", 60))));
+        PartitionKey(ctx), _ => Window(Limit("orders", 40), WindowSecs("orders", 60))));
     // A guest's own takeaway/delivery ticket: each one opens a ticket on reception, so far tighter than table orders.
     o.AddPolicy("guest-ticket", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ClientKey(ctx), _ => Window(Limit("guest-ticket", 10), WindowSecs("guest-ticket", 600))));
     // Public guest endpoints (table session issue, feedback): bounded per IP.
     o.AddPolicy("public", ctx => RateLimitPartition.GetFixedWindowLimiter(
-        ClientKey(ctx), _ => Window(Limit("public", 60), WindowSecs("public", 60))));
+        PartitionKey(ctx), _ => Window(Limit("public", 120), WindowSecs("public", 60))));
 
     // Friendly rejection body (never a bare 429). Don't reveal whether an account exists.
     o.OnRejected = async (ctx, ct) =>
@@ -188,9 +206,9 @@ app.UseStaticFiles();
 app.UseForwardedHeaders();                          // real client IP behind the proxy
 app.UseSerilogRequestLogging();                     // one tidy log line per request
 app.UseCors();
-app.UseRateLimiter();                               // throttle login endpoints
 app.UseMiddleware<ExceptionHandlingMiddleware>();   // outermost: catches everything below
 app.UseAuthentication();                            // populate ctx.User before tenant check
+app.UseRateLimiter();                               // after sign-in is read, so each staff member and table counts apart
 app.UseMiddleware<TenantResolutionMiddleware>();    // resolve tenant + block cross-tenant tokens
 app.UseAuthorization();                              // enforce role policies on endpoints
 

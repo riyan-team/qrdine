@@ -174,9 +174,11 @@ public class BusinessReportService
             cashSales + cashKhata - cashExpenses - cashSupplier, methods, khataSales, khataReceipts, cashKhata);
 
         var customers = await _db.Customers.AsNoTracking().Where(c => c.IsActive).ToListAsync(ct);
+        // Grouped once: a restaurant with thousands of khata customers and entries must not compare every pair.
+        var khataBy = allKhata.ToLookup(e => e.CustomerId);
         var customerRows = customers.Select(c =>
         {
-            var mine = allKhata.Where(e => e.CustomerId == c.Id).ToList();
+            var mine = khataBy[c.Id].ToList();
             var inRange = mine.Where(e => e.Date >= start && e.Date <= end).ToList();
             return new ReportCustomer(c.Id, c.Name, c.Phone,
                 inRange.Where(e => e.Type == Domain.Customers.CustomerEntryType.Sale).Sum(e => e.Amount),
@@ -202,9 +204,10 @@ public class BusinessReportService
 
         // ---- what's owed is as of now, not as of the range ----
         var suppliers = await _db.Suppliers.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync(ct);
+        var entriesBy = allEntries.ToLookup(e => e.SupplierId);
         var supplierRows = suppliers.Select(s =>
         {
-            var mine = allEntries.Where(e => e.SupplierId == s.Id).ToList();
+            var mine = entriesBy[s.Id].ToList();
             var inRange = mine.Where(e => e.Date >= start && e.Date <= end).ToList();
             return new ReportSupplier(s.Id, s.Name, s.Phone,
                 inRange.Where(e => e.Type == SupplierEntryType.Purchase).Sum(e => e.Amount),

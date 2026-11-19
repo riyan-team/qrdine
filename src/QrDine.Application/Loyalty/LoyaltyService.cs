@@ -133,15 +133,58 @@ public class LoyaltyService
 
     // ───────────────────────── guest: join, me, link ─────────────────────────
 
+    public const int PhoneCodeMinutes = 10;
+    public const int PhoneCodeMaxTries = 5;
+
+    /// <summary>
+    /// Joins rewards, or opens a member's points on this phone. A new number joins straight away. A number that is
+    /// already a member needs the 6-digit code the staff give them (Rewards → member → Code for a new phone):
+    /// otherwise anyone who knew a mobile number could see and spend that person's points. Without the code the
+    /// table's bill still earns for that number, and nothing about the member is shown.
+    /// </summary>
     public async Task<LoyaltyMeDto> Join(LoyaltyJoinInput req, CancellationToken ct = default)
     {
         var p = await Program(ct);
         if (!p.Enabled) throw new DomainException("Rewards aren't available here right now.");
         var phone = NormalizePhone(req.Phone);
         var (member, created, bonus) = await FindOrCreate(phone, req.Name, p, by: "", ct);
+        var code = (req.Code ?? "").Trim();
+        var trusted = created;
+        if (!created && code.Length > 0)
+        {
+            if (!PhoneCodeMatches(member, code))
+            {
+                member.PhoneCodeTries++;
+                if (member.PhoneCodeTries >= PhoneCodeMaxTries) { member.PhoneCode = null; member.PhoneCodeUntil = null; }
+                await _db.SaveChangesAsync(ct);
+                throw new DomainException(member.PhoneCode is null
+                    ? "That code isn't right, or it has ended. Please ask the staff for a new code."
+                    : "That code isn't right. Please check the 6 digits the staff gave you.");
+            }
+            member.PhoneCode = null; member.PhoneCodeUntil = null; member.PhoneCodeTries = 0;   // used up
+            trusted = true;
+        }
         if (!string.IsNullOrWhiteSpace(req.TableCode)) await LinkSession(member, req.TableCode!, ct);
         await _db.SaveChangesAsync(ct);
+        if (!trusted)
+            return new LoyaltyMeDto("", "", MaskPhone(member.Phone), 0, 0, 0, 0, DateTime.UtcNow, false, 0,
+                Array.Empty<LoyaltyRedemptionDto>(), Array.Empty<LoyaltyTxnDto>(), NeedsCode: true);
         return await Me(member, created, bonus, ct);
+    }
+
+    private static bool PhoneCodeMatches(LoyaltyMember m, string code) =>
+        code.Length == 6 && m.PhoneCode is { Length: 6 } want && m.PhoneCodeUntil is DateTime until && until > DateTime.UtcNow
+        && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(want), Encoding.ASCII.GetBytes(code));
+
+    /// <summary>A one-time code (valid <see cref="PhoneCodeMinutes"/> minutes) to open this member's points on a new phone.</summary>
+    public async Task<LoyaltyPhoneCodeDto> NewPhoneCode(int id, CancellationToken ct = default)
+    {
+        var m = await _db.LoyaltyMembers.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new DomainException("This member no longer exists.");
+        m.PhoneCode = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        m.PhoneCodeUntil = DateTime.UtcNow.AddMinutes(PhoneCodeMinutes);
+        m.PhoneCodeTries = 0;
+        await _db.SaveChangesAsync(ct);
+        return new LoyaltyPhoneCodeDto(m.PhoneCode, PhoneCodeMinutes, MaskPhone(m.Phone));
     }
 
     /// <summary>The member a guest's phone remembers, or null when the token is unknown (e.g. deleted).</summary>

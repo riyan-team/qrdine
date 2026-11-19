@@ -11,6 +11,7 @@ public static class AppClaims
     public const string StaffId = "stf";     // staff tokens: the staff member's row id
     public const string Stamp = "stm";       // staff and platform tokens: changes when the password changes
     public const string IssuedAt = "iat";    // guest tokens: when the table pass was issued (unix seconds)
+    public const string PassId = "gpid";     // guest tokens: this phone's pass, so a guest can cancel only their own orders
 
     public const string TypeStaff = "staff";
     public const string TypeGuest = "guest";

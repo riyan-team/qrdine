@@ -14,9 +14,11 @@ public class RestaurantAdminService
     private readonly IPasswordHasher _hasher;
     private readonly ICurrentTenant _tenant;
 
-    public RestaurantAdminService(IAppDbContext db, IPasswordHasher hasher, ICurrentTenant tenant)
+    private readonly Billing.IFiscalCapabilities? _caps;
+
+    public RestaurantAdminService(IAppDbContext db, IPasswordHasher hasher, ICurrentTenant tenant, Billing.IFiscalCapabilities? caps = null)
     {
-        _db = db; _hasher = hasher; _tenant = tenant;
+        _db = db; _hasher = hasher; _tenant = tenant; _caps = caps;
     }
 
     private int TenantId => _tenant.RestaurantId ?? throw new DomainException("No restaurant in context.");
@@ -27,8 +29,11 @@ public class RestaurantAdminService
         var tableCounts = (await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).Select(t => t.BranchId).ToListAsync(ct))
             .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
         var branches = await _db.Branches.AsNoTracking().OrderBy(b => b.Id).ToListAsync(ct);
+        // The token is a password for filing in the restaurant's name: screens only learn that one is saved.
         return branches.Select(b => new BranchDto(b.Id, b.Name, b.Address, b.IsActive, tableCounts.GetValueOrDefault(b.Id),
-            b.FbrMode.ToString(), b.FbrSandbox, b.FbrPosId, b.FbrToken, b.FbrEndpointOverride, b.FbrStaticIp)).ToList();
+            b.FbrMode.ToString(), b.FbrSandbox, b.FbrPosId, null, b.FbrEndpointOverride, b.FbrStaticIp,
+            b.FiscalAuthority.ToString(), b.FiscalEnvironment.ToString(), !string.IsNullOrWhiteSpace(b.FbrToken),
+            string.IsNullOrWhiteSpace(b.FbrToken) ? "" : b.FbrToken.Trim()[^Math.Min(4, b.FbrToken.Trim().Length)..])).ToList();
     }
 
     public async Task<int> AddBranch(BranchInput i, CancellationToken ct = default)
@@ -48,14 +53,41 @@ public class RestaurantAdminService
         await _db.SaveChangesAsync(ct);
     }
 
+    // A name-and-address edit (KeepFiscal) never touches the tax office setup.
     private static void ApplyFbr(Branch b, BranchInput i)
     {
-        b.FbrMode = Enum.TryParse<FbrMode>(i.FbrMode, true, out var m) ? m : FbrMode.Local;
-        b.FbrSandbox = i.FbrSandbox;
+        if (i.KeepFiscal) return;
+        if (i.FiscalAuthority is not null)
+            b.FiscalAuthority = Enum.TryParse<FiscalAuthority>(i.FiscalAuthority, true, out var a) ? a
+                : throw new DomainException("Choose FBR or PRA.");
+        if (i.FbrMode is not null)
+            b.FbrMode = Enum.TryParse<FbrMode>(i.FbrMode, true, out var m) ? m : FbrMode.Cloud;
+        if (b.FiscalAuthority == FiscalAuthority.PRA) b.FbrMode = FbrMode.Cloud;   // PRA takes bills online only
+        if (i.FbrPosId is <= 0) throw new DomainException("POSID must be a whole number above 0.");
         b.FbrPosId = i.FbrPosId;
-        b.FbrToken = string.IsNullOrWhiteSpace(i.FbrToken) ? null : i.FbrToken.Trim();
-        b.FbrEndpointOverride = string.IsNullOrWhiteSpace(i.FbrEndpointOverride) ? null : i.FbrEndpointOverride.Trim();
+        if (i.FbrToken is not null) b.FbrToken = string.IsNullOrWhiteSpace(i.FbrToken) ? null : i.FbrToken.Trim();
+        if (b.FbrToken is { Length: > 200 }) throw new DomainException("That token is too long. Paste only the token.");
+        var url = string.IsNullOrWhiteSpace(i.FbrEndpointOverride) ? null : i.FbrEndpointOverride.Trim();
+        if (url is not null && !(Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == "https" || u.Scheme == "http")))
+            throw new DomainException("The test server address must start with https://");
+        b.FbrEndpointOverride = url;
         b.FbrStaticIp = i.FbrStaticIp?.Trim() ?? "";
+
+        if (i.FiscalEnvironment is not null)
+            b.FiscalEnvironment = Enum.TryParse<FiscalEnvironment>(i.FiscalEnvironment, true, out var env) ? env
+                : throw new DomainException("Choose Practice, Test or Live.");
+        else if (i.FiscalAuthority is null)
+            b.FiscalEnvironment = i.FbrSandbox ? (b.FiscalEnvironment == FiscalEnvironment.Live ? FiscalEnvironment.Test : b.FiscalEnvironment) : FiscalEnvironment.Live;
+        // Live files real tax invoices: it needs the POSID and (online) the token before it can be chosen.
+        if (b.FiscalEnvironment == FiscalEnvironment.Live)
+        {
+            var office = b.FiscalAuthority.ToString();
+            if (b.FbrPosId is null) throw new DomainException($"Add this branch's live POSID from {office} before choosing Live.");
+            var online = b.FiscalAuthority == FiscalAuthority.PRA || b.FbrMode == FbrMode.Cloud;
+            if (online && string.IsNullOrWhiteSpace(b.FbrToken)) throw new DomainException($"Add this branch's live {office} token before choosing Live.");
+            if (url is not null) throw new DomainException("Live always goes to the tax office itself. Clear the test server address first.");
+        }
+        b.FbrSandbox = b.FiscalEnvironment != FiscalEnvironment.Live;
     }
 
     public async Task DeleteBranch(int id, CancellationToken ct = default)
@@ -73,6 +105,20 @@ public class RestaurantAdminService
         var branches = await _db.Branches.AsNoTracking().ToDictionaryAsync(b => b.Id, b => b.Name, ct);
         var tables = await _db.Tables.AsNoTracking().Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine).OrderBy(t => t.Code).ToListAsync(ct);
         return tables.Select(t => new TableAdminDto(t.Id, t.Code, t.Name, t.BranchId, branches.GetValueOrDefault(t.BranchId, ""))).ToList();
+    }
+
+    /// <summary>
+    /// Gives a table a new QR key. Its printed QR codes stop working and every guest pass for it ends, so use it when
+    /// a QR code was photographed and misused. Returns the table's code, for the live feed.
+    /// </summary>
+    public async Task<string> NewTableQr(int id, CancellationToken ct = default)
+    {
+        var t = await _db.Tables.FirstOrDefaultAsync(x => x.Id == id && x.Kind == Domain.Ordering.OrderChannel.Dine, ct)
+            ?? throw new DomainException("Table not found.");
+        t.QrKey = DiningTable.NewQrKey();
+        t.EndGuestPasses(DateTime.UtcNow);
+        await _db.SaveChangesAsync(ct);
+        return t.Code;
     }
 
     private async Task<int> ResolveBranch(int branchId, CancellationToken ct)
@@ -188,7 +234,8 @@ public class RestaurantAdminService
     {
         var r = await _db.Restaurants.AsNoTracking().FirstAsync(x => x.Id == TenantId, ct);
         return new FbrSettingsDto(r.FeatureFbr, r.FbrEnabled,
-            string.IsNullOrWhiteSpace(r.BusinessName) ? r.Name : r.BusinessName, r.Ntn, r.Strn);
+            string.IsNullOrWhiteSpace(r.BusinessName) ? r.Name : r.BusinessName, r.Ntn, r.Strn,
+            r.FiscalSendAtSettle, r.FiscalAutoRetry, _caps?.ForcedPractice ?? false, _caps?.LocalAvailable ?? false);
     }
 
     public async Task SetFbrSettings(FbrSettingsInput i, CancellationToken ct = default)
@@ -206,6 +253,8 @@ public class RestaurantAdminService
         r.BusinessName = business;
         r.Ntn = ntn;
         r.Strn = strn;
+        if (i.SendAtSettle is bool send) r.FiscalSendAtSettle = send;
+        if (i.AutoRetry is bool auto) r.FiscalAutoRetry = auto;
         await _db.SaveChangesAsync(ct);
     }
 
@@ -279,7 +328,7 @@ public class RestaurantAdminService
             r.DiscountEnabled, r.DiscountIsPercent, r.DiscountValue,
             r.ReceiptEnabled, r.StockTrackingEnabled, r.Currency, r.TaxPercentCard,
             r.ServiceChargeTaxable, r.ServiceAfterDiscount, r.RoundTotals, r.CardRateForAllItems,
-            !r.NoCancelOnceCooking, !r.KeepStockOnCookedCancel, r.CashierCancelAnyStage);
+            !r.NoCancelOnceCooking, !r.KeepStockOnCookedCancel, r.CashierCancelAnyStage, r.OneTaxForAllItems);
     }
 
     /// <param name="callerIsOwner">The cancelling rules say what everyone but the owner may do, so only the owner
@@ -312,6 +361,7 @@ public class RestaurantAdminService
         if (i.ServiceAfterDiscount is bool sad) r.ServiceAfterDiscount = sad;
         if (i.RoundTotals is bool rt) r.RoundTotals = rt;
         if (i.CardRateForAllItems is bool cr) r.CardRateForAllItems = cr;
+        if (i.OneTaxForAllItems is bool one) r.OneTaxForAllItems = one;
 
         var noCancel = i.AllowCancelAfterCooking is bool allow ? !allow : r.NoCancelOnceCooking;
         var keepStock = i.RestockCookedCancel is bool restock ? !restock : r.KeepStockOnCookedCancel;

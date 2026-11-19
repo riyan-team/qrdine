@@ -39,7 +39,7 @@ public static class OrderEndpoints
             var tokenTable = user.FindFirst(AppClaims.TableCode)?.Value;
             if (!string.Equals(tokenTable, body.TableCode, StringComparison.OrdinalIgnoreCase))
                 throw new DomainException("This session is for a different table.");
-            return Results.Ok(await svc.Place(body, OrderSource.Qr));
+            return Results.Ok(await svc.Place(body, OrderSource.Qr, guestPassId: Access.PassIdOf(user)));
         }).RequireAuthorization(Policies.GuestOrStaff).RequireRateLimiting("orders");
 
         // A table's running orders: that table's guests (their phone got a pass when they scanned) or staff.
@@ -57,7 +57,12 @@ public static class OrderEndpoints
             var order = await svc.GetOrder(id);
             if (!Access.MayReadOrder(user, order)) throw new DomainException("Order not found.");
             if (user.FindFirst(AppClaims.TokenType)?.Value == AppClaims.TypeGuest)
-                order = order with { GuestCanCancel = await svc.GuestMayCancel(order) };
+            {
+                var placedBy = await svc.GuestPassOf(id);
+                var mine = Access.PassIdOf(user);
+                var ownOrder = placedBy is not null && mine is not null && string.Equals(placedBy, mine, StringComparison.Ordinal);
+                order = order with { GuestCanCancel = ownOrder && await svc.GuestMayCancel(order) };
+            }
             return Results.Ok(order);
         }).RequireAuthorization(Policies.GuestOrStaff);
 
@@ -93,6 +98,12 @@ public static class OrderEndpoints
                 if (order.Status is "Ready" or "Served" or "Paid" or "Cancelled")
                     return Results.Problem(detail: $"Order cannot be cancelled when it is {order.Status.ToLower()}.", statusCode: 400);
 
+                // Only the phone that placed an order can cancel it: someone else at (or who sat at) the table can't.
+                var placedBy = await svc.GuestPassOf(id);
+                var mine = Access.PassIdOf(user);
+                if (placedBy is null || mine is null || !string.Equals(placedBy, mine, StringComparison.Ordinal))
+                    return Results.Problem(detail: "This order was placed from another phone or by the staff. Please ask the staff to cancel it.", statusCode: 403);
+
                 return Results.Ok(await svc.Cancel(id, body?.Reason ?? "Cancelled by customer", who: Canceller.Guest));
             }
             return Results.Problem(detail: "This session can't cancel orders.", statusCode: 403);
@@ -107,8 +118,14 @@ public static class OrderEndpoints
                 var order = await svc.GetOrder(id);
                 if (!Access.MayReadOrder(user, order))
                     return Results.Problem(detail: "This order is not for your table.", statusCode: 403);
+                return Results.Ok(await svc.Reorder(id, source: OrderSource.Qr, guestPassId: Access.PassIdOf(user)));
             }
-            return Results.Ok(await svc.Reorder(id));
-        }).RequireAuthorization(Policies.GuestOrStaff);
+            if (type != AppClaims.TypeStaff)
+                return Results.Problem(detail: "This session can't place orders.", statusCode: 403);
+            // Staff ordering again for a table is taking an order: the same right as taking one.
+            if (!user.FindAll(AppClaims.Permission).Any(c => c.Value == Permissions.OrdersCreate))
+                return Results.Problem(detail: "You don't have permission to take orders.", statusCode: 403);
+            return Results.Ok(await svc.Reorder(id, source: OrderSource.Waiter, waiterName: user.FindFirst(ClaimTypes.Name)?.Value));
+        }).RequireAuthorization(Policies.GuestOrStaff).RequireRateLimiting("orders");
     }
 }

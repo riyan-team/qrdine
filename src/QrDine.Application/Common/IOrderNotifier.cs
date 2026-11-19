@@ -16,4 +16,8 @@ public interface IOrderNotifier
 
     /// <summary>A guest called for a waiter or the bill, or staff dealt with it.</summary>
     Task ServiceRequestChanged(string slug, Ordering.ServiceRequestDto request, CancellationToken ct = default);
+
+    /// <summary>The table's guest passes ended (bill settled, guests moved, new QR code): phones on the old passes
+    /// stop getting this table's live updates at once and are told to scan again.</summary>
+    Task TablePassesEnded(string slug, string tableCode, CancellationToken ct = default) => Task.CompletedTask;
 }

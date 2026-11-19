@@ -72,14 +72,16 @@ public class PlatformService
 
     public async Task<PlatformStatsDto> Stats(CancellationToken ct = default)
     {
-        var restaurants = await _db.Restaurants.AsNoTracking().ToListAsync(ct);
-        var invoices = await _db.Invoices.IgnoreQueryFilters().AsNoTracking()
-            .Select(i => new { i.Total }).ToListAsync(ct);
+        // Counted and summed by the database: every bill of every restaurant must never be loaded into the app.
+        var byStatus = await _db.Restaurants.AsNoTracking().GroupBy(r => r.Status)
+            .Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct);
+        var bills = await _db.Invoices.IgnoreQueryFilters().AsNoTracking().CountAsync(ct);
+        var sales = bills == 0 ? 0 : await _db.Invoices.IgnoreQueryFilters().AsNoTracking().SumAsync(i => (double)i.Total, ct);
         return new PlatformStatsDto(
-            restaurants.Count,
-            restaurants.Count(r => r.Status == RestaurantStatus.Active),
-            restaurants.Count(r => r.Status == RestaurantStatus.Suspended),
-            invoices.Sum(i => i.Total), invoices.Count);
+            byStatus.Sum(x => x.Count),
+            byStatus.Where(x => x.Key == RestaurantStatus.Active).Sum(x => x.Count),
+            byStatus.Where(x => x.Key == RestaurantStatus.Suspended).Sum(x => x.Count),
+            Math.Round((decimal)sales, 2), bills);
     }
 
     public async Task<IReadOnlyList<PlatformRestaurantDto>> ListRestaurants(CancellationToken ct = default)
@@ -87,19 +89,20 @@ public class PlatformService
         var restaurants = await _db.Restaurants.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct);
         var plans = (await _db.Plans.AsNoTracking().ToListAsync(ct)).ToDictionary(p => p.Id);
 
+        // One row per restaurant from the database, not every bill, staff member and table.
         var invAgg = (await _db.Invoices.IgnoreQueryFilters().AsNoTracking()
-            .Select(i => new { i.RestaurantId, i.Total }).ToListAsync(ct))
             .GroupBy(i => i.RestaurantId)
-            .ToDictionary(g => g.Key, g => (Sales: g.Sum(x => x.Total), Bills: g.Count()));
+            .Select(g => new { g.Key, Sales = g.Sum(x => (double)x.Total), Bills = g.Count() }).ToListAsync(ct))
+            .ToDictionary(x => x.Key, x => (Sales: Math.Round((decimal)x.Sales, 2), x.Bills));
 
-        var staffCounts = (await _db.Staff.IgnoreQueryFilters().AsNoTracking()
-            .Select(s => s.RestaurantId).ToListAsync(ct))
-            .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+        var staffCounts = await _db.Staff.IgnoreQueryFilters().AsNoTracking()
+            .GroupBy(s => s.RestaurantId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
-        var tableCounts = (await _db.Tables.IgnoreQueryFilters().AsNoTracking()
+        var tableCounts = await _db.Tables.IgnoreQueryFilters().AsNoTracking()
             .Where(t => t.Kind == Domain.Ordering.OrderChannel.Dine)
-            .Select(t => t.RestaurantId).ToListAsync(ct))
-            .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+            .GroupBy(t => t.RestaurantId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
         return restaurants.Select(r =>
         {

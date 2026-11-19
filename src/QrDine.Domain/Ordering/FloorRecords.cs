@@ -17,6 +17,24 @@ public class OrderVoid : Entity, ITenantOwned
     public DateTime VoidedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Money given back from a table's part payments before the bill was settled (a dish came off after the guest had
+/// already paid towards it). The part payments are reduced by this much, so the drawer and the bill agree, and
+/// this record keeps who gave it back and why for the owner.
+/// </summary>
+public class PaymentReturn : Entity, ITenantOwned
+{
+    public int RestaurantId { get; set; }
+    public int BranchId { get; set; }
+    public int TableSessionId { get; set; }
+    public string TableName { get; set; } = "";
+    public decimal Amount { get; set; }
+    public string Method { get; set; } = "Cash";
+    public string Reason { get; set; } = "";
+    public string GivenBy { get; set; } = "";
+    public DateTime GivenAt { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>A guest tapped "call waiter" or "ask for the bill" on their phone.</summary>
 public class ServiceRequest : Entity, ITenantOwned
 {

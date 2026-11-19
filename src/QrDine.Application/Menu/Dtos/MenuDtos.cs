@@ -21,4 +21,5 @@ public record VariantDto(int Id, string Name, decimal Price);
 public record ModifierGroupDto(int Id, string Name, int MinSelect, int MaxSelect, IReadOnlyList<ModifierOptionDto> Options);
 public record ModifierOptionDto(int Id, string Name, decimal Price);
 
-public record TableDto(string Code, string Name, string BranchName);
+/// <summary>A table for staff screens. QrKey is the secret part of its QR code (staff only: guests never list tables).</summary>
+public record TableDto(string Code, string Name, string BranchName, string QrKey = "", int Id = 0);

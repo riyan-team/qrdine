@@ -40,9 +40,10 @@ public static class AuthEndpoints
             return Results.Ok(new { token = await svc.ChangePassword(staffId, body) });
         }).RequireAuthorization(Policies.StaffAny).RequireRateLimiting("login");
 
-        // Guest scans a table → gets a short-lived token scoped to that table.
-        g.MapPost("/tables/{code}/session", async (string code, AuthService svc)
-            => Results.Ok(await svc.IssueGuestSession(code)))
+        // Guest scans a table → gets a short-lived token scoped to that table. The QR code carries the table's
+        // secret key (?k=…); the screen sends it in the body (or the query, for older screens).
+        g.MapPost("/tables/{code}/session", async (string code, string? k, GuestSessionRequest? body, AuthService svc)
+            => Results.Ok(await svc.IssueGuestSession(code, body?.Key ?? k)))
             .RequireRateLimiting("public");
     }
 }

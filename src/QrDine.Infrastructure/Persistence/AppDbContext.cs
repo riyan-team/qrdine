@@ -52,6 +52,18 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Files.StoredFile> StoredFiles => Set<Domain.Files.StoredFile>();
     public DbSet<Domain.Feedback.Feedback> Feedbacks => Set<Domain.Feedback.Feedback>();
     public DbSet<Domain.Loyalty.LoyaltyProgram> LoyaltyPrograms => Set<Domain.Loyalty.LoyaltyProgram>();
+    public async Task<bool> ClaimInvoiceForFiling(int invoiceId, DateTime untilUtc, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var n = await Invoices.Where(i => i.Id == invoiceId && i.FiscalStatus != Domain.Billing.FiscalStatus.Registered
+                && (i.FiscalClaimUntil == null || i.FiscalClaimUntil < now))
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.FiscalClaimUntil, untilUtc), ct);
+        return n == 1;
+    }
+
+    public Task ReleaseInvoiceClaim(int invoiceId, CancellationToken ct = default) =>
+        Invoices.Where(i => i.Id == invoiceId).ExecuteUpdateAsync(s => s.SetProperty(i => i.FiscalClaimUntil, (DateTime?)null), ct);
+
     public DbSet<Domain.Loyalty.LoyaltyMember> LoyaltyMembers => Set<Domain.Loyalty.LoyaltyMember>();
     public DbSet<Domain.Loyalty.LoyaltyReward> LoyaltyRewards => Set<Domain.Loyalty.LoyaltyReward>();
     public DbSet<Domain.Loyalty.LoyaltyTransaction> LoyaltyTransactions => Set<Domain.Loyalty.LoyaltyTransaction>();
@@ -65,6 +77,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Staffing.EmployeeEntry> EmployeeEntries => Set<Domain.Staffing.EmployeeEntry>();
     public DbSet<Domain.Staffing.AttendanceMark> AttendanceMarks => Set<Domain.Staffing.AttendanceMark>();
     public DbSet<Domain.Ordering.OrderVoid> OrderVoids => Set<Domain.Ordering.OrderVoid>();
+    public DbSet<Domain.Ordering.PaymentReturn> PaymentReturns => Set<Domain.Ordering.PaymentReturn>();
     public DbSet<Domain.Ordering.ServiceRequest> ServiceRequests => Set<Domain.Ordering.ServiceRequest>();
     public DbSet<Domain.Billing.DayClosing> DayClosings => Set<Domain.Billing.DayClosing>();
     public DbSet<Domain.Sync.SyncDevice> SyncDevices => Set<Domain.Sync.SyncDevice>();
@@ -176,6 +189,16 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.VoidedBy).HasMaxLength(60);
             e.HasIndex(x => new { x.RestaurantId, x.VoidedAt });
         });
+        b.Entity<Domain.Ordering.PaymentReturn>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.TableName).HasMaxLength(80);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.Method).HasMaxLength(40);
+            e.Property(x => x.Reason).HasMaxLength(200);
+            e.Property(x => x.GivenBy).HasMaxLength(60);
+            e.HasIndex(x => new { x.RestaurantId, x.GivenAt });
+        });
         b.Entity<Domain.Ordering.ServiceRequest>(e =>
         {
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
@@ -255,6 +278,7 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Phone).HasMaxLength(20);
             e.Property(x => x.Name).HasMaxLength(60);
             e.Property(x => x.Token).HasMaxLength(40);
+            e.Property(x => x.PhoneCode).HasMaxLength(6);
             e.Property(x => x.LifetimeSpend).HasPrecision(14, 2);
         });
 
@@ -314,6 +338,8 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Name).HasMaxLength(80);
             e.Property(x => x.Address).HasMaxLength(200);
             e.Property(x => x.FbrMode).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.FiscalAuthority).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.FiscalEnvironment).HasConversion<string>().HasMaxLength(10);
             e.Property(x => x.FbrToken).HasMaxLength(200);
             e.Property(x => x.FbrEndpointOverride).HasMaxLength(200);
             e.Property(x => x.FbrStaticIp).HasMaxLength(45);
@@ -323,6 +349,7 @@ public class AppDbContext : DbContext, IAppDbContext
         {
             e.HasIndex(x => new { x.RestaurantId, x.Code }).IsUnique();
             e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.QrKey).HasMaxLength(20).HasDefaultValue("");
         });
 
         b.Entity<TableSession>(e =>
@@ -378,6 +405,7 @@ public class AppDbContext : DbContext, IAppDbContext
             e.HasIndex(x => new { x.RestaurantId, x.TableSessionId });
             e.HasIndex(x => new { x.RestaurantId, x.CreatedAt });
             e.HasIndex(x => new { x.RestaurantId, x.TableCode });
+            e.Property(x => x.GuestPassId).HasMaxLength(32);
             // Map the aggregate's private _items collection.
             var nav = e.Metadata.FindNavigation(nameof(Order.Items))!;
             nav.SetPropertyAccessMode(PropertyAccessMode.Field);
@@ -423,6 +451,9 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Usin).HasMaxLength(50);
             e.Property(x => x.FiscalStatus).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.FiscalProvider).HasMaxLength(20);
+            e.Property(x => x.FiscalEnvironment).HasMaxLength(10);
+            // The tax office view and the automatic resend look up a restaurant's bills by their filing state.
+            e.HasIndex(x => new { x.RestaurantId, x.FiscalStatus });
             e.Property(x => x.FiscalNumber).HasMaxLength(60);
             e.Property(x => x.FiscalQrPayload).HasMaxLength(512);
             e.Property(x => x.FiscalError).HasMaxLength(1000);

@@ -206,7 +206,7 @@ public class TicketService
             table.Code = prefix + number;
             table.Name = $"{label} {number}";
             try { await _db.SaveChangesAsync(ct); return table; }
-            catch (DbUpdateException) when (attempt < 8) { number++; }
+            catch (DbUpdateException ex) when (attempt < 8 && Common.DbErrors.IsUniqueViolation(ex)) { number++; }
         }
     }
 

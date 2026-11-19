@@ -6,6 +6,11 @@ public record BillLineDto(string Name, int Qty, decimal UnitPrice, decimal LineT
 
 /// <summary>A live, unsettled bill preview for a table. Reflects the current
 /// tax/discount settings so the cashier screen shows exactly what will be charged.</summary>
+public record GiveBackRequest(decimal Amount, string? Reason);
+public record GiveBackPart(string Method, decimal Amount);
+/// <summary>How the money goes back (by the method each part came in), and what is still paid on the table.</summary>
+public record GiveBackResult(IReadOnlyList<GiveBackPart> Parts, decimal StillPaid);
+
 public record BillDto(
     string RestaurantName, string Currency, string TableCode, string TableName,
     IReadOnlyList<BillLineDto> Lines,
@@ -53,7 +58,22 @@ public record ReceptionDashboardDto(
 public record FiscalInvoiceDto(
     int Id, string Number, string Usin, string TableName, DateTime IssuedAt, string Currency,
     decimal Total, string PaymentMethod, string FiscalStatus, string? FiscalNumber,
-    string? FiscalError, int FiscalAttempts, DateTime? FiscalLastAttemptAt, long? SyncedByPosId);
+    string? FiscalError, int FiscalAttempts, DateTime? FiscalLastAttemptAt, long? SyncedByPosId,
+    string Office = "", string Environment = "", bool BeingSent = false, decimal Tax = 0);
+
+/// <summary>What one "send" press did. Left: bills still waiting or refused after it.</summary>
+public record FiscalBatchResult(int Sent, int Refused, int StillWaiting, int Skipped, int Left, string? Stopped);
+
+/// <summary>A branch's filing setup: Ready when nothing stops its bills going to the tax office.</summary>
+public record FiscalBranchCheck(int BranchId, string BranchName, string Office, string Environment, string Mode,
+    bool Ready, IReadOnlyList<string> Problems, IReadOnlyList<string> Warnings, bool ForcedPractice = false);
+
+/// <summary>A test bill sent to a branch's Test (or Practice) setup.</summary>
+public record FiscalTestResult(bool Accepted, string Office, string Environment, string? Number, string? Error,
+    decimal Total, decimal Tax);
+
+/// <summary>Ids: the bills picked on the Pending list; none means every waiting bill.</summary>
+public record FiscalRetryManyRequest(IReadOnlyList<int>? Ids);
 
 /// <summary>A settled, numbered invoice (also used for reprint).</summary>
 public record InvoiceDto(
@@ -67,11 +87,15 @@ public record InvoiceDto(
     string? FiscalError, bool ReceiptEnabled = true,
     string LogoUrl = "", string ReceiptHeader = "", string ReceiptFooter = "",
     string Channel = "Dine", string CustomerName = "", string CustomerPhone = "", string DeliveryAddress = "", string RiderName = "",
-    decimal FurtherTaxAmount = 0, decimal ServiceTaxAmount = 0, decimal RoundingAmount = 0)
+    decimal FurtherTaxAmount = 0, decimal ServiceTaxAmount = 0, decimal RoundingAmount = 0,
+    string FiscalEnvironment = "", string SellerNtn = "", string SellerStrn = "", long? PosId = null)
 {
+    /// <summary>Which tax office's name goes on the receipt (a practice number from older builds said "Simulated").</summary>
+    public string FiscalOffice => FiscalProvider is "PRA" ? "PRA" : "FBR";
+
     public static InvoiceDto From(Invoice inv, string restaurantName, string currency,
         string logoUrl = "", string receiptHeader = "", string receiptFooter = "",
-        bool receiptEnabled = true) => new(
+        bool receiptEnabled = true, string sellerNtn = "", string sellerStrn = "") => new(
         inv.Id, inv.FormattedNumber, restaurantName, currency, inv.TableCode, inv.TableName,
         inv.IssuedAt, inv.PaymentMethod,
         inv.Lines.Select(l => new BillLineDto(l.Name, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
@@ -81,5 +105,7 @@ public record InvoiceDto(
         inv.FiscalProvider, inv.FiscalStatus.ToString(), inv.FiscalNumber, inv.FiscalQrPayload,
         inv.FiscalError, receiptEnabled, logoUrl, receiptHeader, receiptFooter,
         inv.Channel.ToString(), inv.BuyerName, inv.BuyerPhone, inv.DeliveryAddress, inv.RiderName, inv.FurtherTaxAmount,
-        inv.ServiceTaxAmount, inv.RoundingAmount);
+        inv.ServiceTaxAmount, inv.RoundingAmount,
+        inv.FiscalEnvironment is "" && inv.FiscalProvider is "Simulated" ? "Practice" : inv.FiscalEnvironment,
+        sellerNtn, sellerStrn, inv.SyncedByPosId);
 }

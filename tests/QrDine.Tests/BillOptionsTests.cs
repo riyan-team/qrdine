@@ -210,6 +210,22 @@ public class BillOptionsTests : IDisposable
     }
 
     [Fact]
+    public async Task One_tax_for_all_items_puts_every_item_on_the_bills_rate()
+    {
+        await Configure(r => { r.TaxEnabled = true; r.TaxPercent = 10; r.TaxPercentCard = 5; });
+        await Dine((_tea, 2), (_water, 1));                                         // tea 150 (own 16%), water 40 (tax-free)
+        Assert.Equal(24, (await Billing.GetBill("T1")).TaxAmount);                  // each item's own rate
+
+        await Configure(r => r.OneTaxForAllItems = true);
+        Assert.Equal(19, (await Billing.GetBill("T1")).TaxAmount);                  // 10% of all 190, water included
+        Assert.Equal(9.5m, (await Billing.GetBill("T1", method: "Card")).TaxAmount); // the card rate on everything
+        var inv = await Billing.Settle("T1", new SettleRequest("Cash", 0, 209));
+        Assert.Equal(209, inv.Total);
+        var saved = await _db.Invoices.AsNoTracking().Include(i => i.Lines).FirstAsync(i => i.Id == inv.Id);
+        Assert.All(saved.Lines, l => Assert.Equal(10, l.TaxRate));                  // and that is what is filed
+    }
+
+    [Fact]
     public async Task The_discount_report_counts_the_service_that_came_off_with_the_discount()
     {
         await Configure(r => { r.ServiceChargePercent = 10; r.ServiceAfterDiscount = true; });

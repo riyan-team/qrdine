@@ -68,6 +68,8 @@ public static class DependencyInjection
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<ITokenService, JwtTokenService>();
+        // The live feed's member list (the minute-by-minute check that uses it is started next to SignalR in Program).
+        services.AddSingleton<Realtime.LiveConnections>();
 
         // Payments — pick the gateway by config (Mock for dev, JazzCash when creds set).
         services.Configure<Payments.PaymentOptions>(config.GetSection("Payments"));
@@ -81,27 +83,22 @@ public static class DependencyInjection
         // per-tenant at runtime (see FiscalSyncService). Config only chooses simulate
         // (dev/demo) vs the real HTTP transport.
         services.Configure<FiscalOptions>(config.GetSection("Fiscal"));
-        var simulate = config.GetValue("Fiscal:Simulate", true);
-        if (simulate)
-        {
-            services.AddScoped<IFiscalService, SimulatedFiscalService>();
-        }
-        else
-        {
-            // Real FBR transport. FBR's gateway has historically presented a certificate
-            // their spec has clients bypass-validate. That bypass is MITM-exposed, so it
-            // is gated behind Fiscal:AllowInvalidCertificate (default true only to preserve
-            // the documented spec behavior) — set it to false once the gateway serves a
-            // valid chain. Short timeout: at settle time this call is on the cashier's
-            // critical path, so an offline FBR must fail fast → invoice goes Pending.
-            var allowInvalidCert = config.GetValue("Fiscal:AllowInvalidCertificate", true);
-            var http = services.AddHttpClient<IFiscalService, FbrFiscalService>(c => c.Timeout = TimeSpan.FromSeconds(8));
-            if (allowInvalidCert)
-                http.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-                });
-        }
+        services.AddSingleton<IFiscalCapabilities, FiscalCapabilities>();
+        // One transport for every branch: Practice is answered in the app, Test and Live go to FBR or PRA.
+        // FBR's own servers have long shown certificates their spec tells clients to accept anyway; that exception
+        // (Fiscal:AllowInvalidCertificate, on by default) is for FBR's hosts and the PC's FBR software only, never
+        // for PRA or a branch's own test address. Short timeout: at settle this is on the cashier's critical path,
+        // so an unreachable office must fail fast and leave the bill waiting.
+        var allowInvalidCert = config.GetValue("Fiscal:AllowInvalidCertificate", true);
+        services.AddHttpClient<IFiscalService, FbrFiscalService>(c => c.Timeout = TimeSpan.FromSeconds(8))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (req, _, _, errors) =>
+                    errors == System.Net.Security.SslPolicyErrors.None
+                    || (allowInvalidCert && req.RequestUri?.Host is "esp.fbr.gov.pk" or "gw.fbr.gov.pk" or "localhost" or "127.0.0.1"),
+            });
+        // Every few minutes, bills that couldn't reach the tax office are sent again.
+        services.AddHostedService<FiscalAutoRetryService>();
 
         return services;
     }

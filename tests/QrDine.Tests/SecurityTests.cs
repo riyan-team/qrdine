@@ -251,6 +251,24 @@ public class SecurityTests : IDisposable
         guard.EnsureAllowed("staff:b");
     }
 
+    private sealed class FakeSource : IRequestSource { public string? Current { get; set; } }
+
+    [Fact]
+    public void A_guesser_elsewhere_cant_lock_the_owner_out_but_many_addresses_still_lock_it()
+    {
+        var from = new FakeSource { Current = "1.2.3.4" };
+        var guard = new LoginGuard(() => DateTime.UtcNow, from);
+        for (var i = 0; i < LoginGuard.MaxFailures; i++) guard.Failed("staff:owner");
+        Assert.Throws<DomainException>(() => guard.EnsureAllowed("staff:owner"));   // the guesser is resting
+        from.Current = "39.40.1.1";
+        guard.EnsureAllowed("staff:owner");                                         // the owner's own phone still signs in
+
+        // A guesser switching addresses: after 50 wrong passwords in all, the account rests everywhere.
+        for (var i = 0; i < LoginGuard.MaxFailuresAnywhere; i++) { from.Current = "10.0.0." + i; guard.Failed("staff:owner"); }
+        from.Current = "39.40.1.1";
+        Assert.Throws<DomainException>(() => guard.EnsureAllowed("staff:owner"));
+    }
+
     [Fact]
     public void Wrong_tries_spread_over_more_than_15_minutes_dont_add_up()
     {

@@ -1,11 +1,15 @@
 namespace QrDine.Application.Admin;
 
-// Branches (Fbr* fields are the branch's FBR POS registration; optional)
+// Branches. The tax office fields are the branch's POS registration with FBR or PRA (all optional).
+// FbrToken: null leaves the saved token as it is, "" removes it. The saved token is never sent back to a screen.
+// FiscalAuthority/FiscalEnvironment: null leaves them as they are (a screen that doesn't know them yet).
 public record BranchInput(string Name, string Address, bool IsActive,
-    string FbrMode = "Local", bool FbrSandbox = true, long? FbrPosId = null,
-    string? FbrToken = null, string? FbrEndpointOverride = null, string? FbrStaticIp = null);
+    string? FbrMode = null, bool FbrSandbox = true, long? FbrPosId = null,
+    string? FbrToken = null, string? FbrEndpointOverride = null, string? FbrStaticIp = null,
+    string? FiscalAuthority = null, string? FiscalEnvironment = null, bool KeepFiscal = false);
 public record BranchDto(int Id, string Name, string Address, bool IsActive, int Tables,
-    string FbrMode, bool FbrSandbox, long? FbrPosId, string? FbrToken, string? FbrEndpointOverride, string FbrStaticIp);
+    string FbrMode, bool FbrSandbox, long? FbrPosId, string? FbrToken, string? FbrEndpointOverride, string FbrStaticIp,
+    string FiscalAuthority = "FBR", string FiscalEnvironment = "Practice", bool HasFbrToken = false, string TokenEnds = "");
 
 // Tables
 public record TableInput(string Code, string Name, int BranchId);
@@ -28,8 +32,11 @@ public record ReceiptSettingsDto(string LogoUrl, string ReceiptHeader, string Re
 public record ReceiptSettingsInput(string ReceiptHeader, string ReceiptFooter, string? LogoUrl = null);
 
 // FBR restaurant-level settings (owner enable + seller identity)
-public record FbrSettingsDto(bool FeatureFbr, bool FbrEnabled, string BusinessName, string Ntn, string Strn);
-public record FbrSettingsInput(bool FbrEnabled, string BusinessName, string Ntn, string Strn);
+public record FbrSettingsDto(bool FeatureFbr, bool FbrEnabled, string BusinessName, string Ntn, string Strn,
+    bool SendAtSettle = true, bool AutoRetry = true, bool ForcedPractice = false, bool LocalAvailable = false);
+// SendAtSettle/AutoRetry: null leaves them as they are.
+public record FbrSettingsInput(bool FbrEnabled, string BusinessName, string Ntn, string Strn,
+    bool? SendAtSettle = null, bool? AutoRetry = null);
 
 // Front-of-house service settings (currently: how waiters get assigned to tables).
 public record ServiceSettingsDto(bool WaiterAutoAssign, bool GuestTakeaway, bool GuestDelivery, decimal DeliveryFee, string DeliveryNote,
@@ -47,7 +54,7 @@ public record BillingSettingsDto(
     bool ReceiptEnabled, bool StockTrackingEnabled, string Currency, decimal? TaxPercentCard = null,
     bool ServiceChargeTaxable = false, bool ServiceAfterDiscount = false, bool RoundTotals = false,
     bool CardRateForAllItems = false, bool AllowCancelAfterCooking = true, bool RestockCookedCancel = true,
-    bool CashierCancelAnyStage = false);
+    bool CashierCancelAnyStage = false, bool OneTaxForAllItems = false);
 // The new fields are optional (null = leave as it is), so a screen that doesn't know them yet can't change them.
 public record BillingSettingsInput(
     bool TaxEnabled, string TaxName, decimal TaxPercent, decimal ServiceChargePercent,
@@ -55,7 +62,7 @@ public record BillingSettingsInput(
     bool ReceiptEnabled, bool StockTrackingEnabled, decimal? TaxPercentCard = null,
     bool? ServiceChargeTaxable = null, bool? ServiceAfterDiscount = null, bool? RoundTotals = null,
     bool? CardRateForAllItems = null, bool? AllowCancelAfterCooking = null, bool? RestockCookedCancel = null,
-    bool? CashierCancelAnyStage = null);
+    bool? CashierCancelAnyStage = null, bool? OneTaxForAllItems = null);
 
 // Onboarding
 public record OnboardRequest(string RestaurantName, string? Slug, string OwnerDisplayName, string OwnerUsername, string OwnerPassword, int? PlanId = null);

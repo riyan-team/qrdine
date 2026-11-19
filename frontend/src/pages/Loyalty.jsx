@@ -431,7 +431,12 @@ function MemberModal({ id, onClose, onChanged }) {
   const [points, setPoints] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [phoneCode, setPhoneCode] = useState(null)
   useEffect(() => { loyalty.member(id).then(setD).catch(fail) }, [id])
+  // The member is at the counter with a new phone: a one-time code opens their points on it.
+  const newPhoneCode = async () => {
+    try { setPhoneCode(await loyalty.phoneCode(id)) } catch (e) { fail(e) }
+  }
   const adjust = async () => {
     if (busy) return
     if (!Number.isInteger(Number(points)) || Math.abs(Number(points)) > 100000) return toast.error('Enter whole points, up to 100,000 (use a minus to take off).')
@@ -467,6 +472,16 @@ function MemberModal({ id, onClose, onChanged }) {
                 <button className="primary" disabled={busy || !Number(points) || !note.trim()} onClick={adjust}>{busy ? 'Saving…' : 'Apply'}</button>
               </div>
               {!busy && (!Number(points) || !note.trim()) && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Enter the points and a short reason.</div>}
+            </div>
+            <div className="set-block" style={{ marginTop: 12 }}>
+              <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 13.5 }}>New phone</b>
+                <button className="ghost btn-sm" onClick={newPhoneCode}>Code for a new phone</button>
+              </div>
+              {phoneCode
+                ? <div style={{ marginTop: 8 }}>Read this code to {d.member.name} only, face to face: <b style={{ fontSize: 22, letterSpacing: 4 }}>{phoneCode.code}</b>
+                    <div className="muted" style={{ fontSize: 12 }}>It works once, for {phoneCode.minutes} minutes. Never send it to a number that asks for it.</div></div>
+                : <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Typing a mobile number alone never shows its points, so nobody can spend someone else's. Check it is really them, then give them this code.</div>}
             </div>
             <div className="lx-sub" style={{ marginTop: 14 }}>History</div>
             <div className="lx-history admin">

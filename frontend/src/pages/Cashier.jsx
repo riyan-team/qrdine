@@ -660,6 +660,8 @@ function BillModal({ code, onClose }) {
   const [tendered, setTendered] = useState('')
   const [ways, setWays] = useState(2)
   const [amount, setAmount] = useState('')
+  const [backAmt, setBackAmt] = useState('')
+  const [backWhy, setBackWhy] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [member, setMember] = useState(null)         // loyalty: who this bill earns points for
@@ -718,6 +720,21 @@ function BillModal({ code, onClose }) {
     return false
   }
 
+  // Money back from what was already paid: the newest payments come down first, and the drawer report shows it.
+  const giveBack = async () => {
+    const amt = Number(backAmt) || 0
+    if (amt <= 0 || !backWhy.trim()) return
+    if (!(await ui.confirm(`Give back ${money(amt)} from what this table paid? Hand the money to the guest now.`))) return
+    setBusy(true); setErr('')
+    try {
+      const res = await api.giveBack(code, amt, backWhy.trim())
+      toast.success(`Given back ${res.parts.map((p) => `${money(p.amount)} ${p.method}`).join(' + ')}`)
+      setBackAmt(''); setBackWhy('')
+      await load(currentDiscount())
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
+  }
+
   const remaining = bill?.remaining ?? 0
   // Parts are booked at the standard tax rate, so a split divides what is left at that rate.
   const splitLeft = bill?.splitRemaining ?? remaining
@@ -752,8 +769,18 @@ function BillModal({ code, onClose }) {
                 <div className="row between" style={{ fontSize: 14 }}><span>Paid so far</span><b>{money(bill.amountPaid)}</b></div>
                 <div className="row between" style={{ fontSize: 14 }}><span>Remaining</span><b style={{ color: 'var(--accent)' }}>{money(remaining)}</b></div>
                 <div style={{ height: 8, background: 'var(--surface2)', borderRadius: 6, overflow: 'hidden', marginTop: 6 }}>
-                  <div style={{ width: `${bill.total ? (bill.amountPaid / bill.total) * 100 : 0}%`, height: '100%', background: 'var(--accent2)' }} />
+                  <div style={{ width: `${bill.total ? Math.min(100, (bill.amountPaid / bill.total) * 100) : 0}%`, height: '100%', background: 'var(--accent2)' }} />
                 </div>
+                <details className="split-wrap" style={{ marginTop: 8 }} open={overpaid || undefined}>
+                  <summary className="muted">Give back</summary>
+                  <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                    <input type="number" min="0" step="any" inputMode="decimal" aria-label="Amount to give back" style={{ width: 110 }}
+                      placeholder={overpaid ? money(bill.amountPaid - bill.total) : 'Rs'} value={backAmt} onChange={(e) => setBackAmt(e.target.value)} />
+                    <input aria-label="Why" placeholder="Why (e.g. dish taken off)" maxLength={200} value={backWhy} onChange={(e) => setBackWhy(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+                    <button disabled={busy || !(Number(backAmt) > 0) || Number(backAmt) > bill.amountPaid + 0.01 || !backWhy.trim()} onClick={giveBack}>Give back</button>
+                  </div>
+                  {Number(backAmt) > bill.amountPaid + 0.01 && <div className="form-error" style={{ marginTop: 6 }}>Only {money(bill.amountPaid)} was paid.</div>}
+                </details>
               </div>
             )}
 
@@ -811,7 +838,7 @@ function BillModal({ code, onClose }) {
               </details>
             )}
 
-            {overpaid && <div className="form-error" style={{ marginTop: 8 }}>{money(bill.amountPaid)} is already paid, more than this bill now comes to. Lower the discount.</div>}
+            {overpaid && <div className="form-error" style={{ marginTop: 8 }}>{money(bill.amountPaid)} is already paid, more than this bill now comes to. Lower the discount, or give back {money(bill.amountPaid - bill.total)} above.</div>}
             {err && <div className="form-error" style={{ marginTop: 8 }}>{err}</div>}
             {/* On a phone this bar stays pinned at the bottom in one short row (the three small buttons show only their
                 icons), so the ways to pay above it stay in view; Settle names the way it will be recorded. */}

@@ -157,6 +157,14 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("FiscalAttempts")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("FiscalClaimUntil")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("FiscalEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("FiscalError")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -278,6 +286,8 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.HasIndex("SyncId")
                         .IsUnique();
+
+                    b.HasIndex("RestaurantId", "FiscalStatus");
 
                     b.HasIndex("RestaurantId", "Number")
                         .IsUnique();
@@ -976,6 +986,16 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("PhoneCode")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
+                    b.Property<int>("PhoneCodeTries")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PhoneCodeUntil")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer");
 
@@ -1577,6 +1597,10 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("EtaMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<string>("GuestPassId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime?>("LastChangedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -1773,6 +1797,68 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasIndex("RestaurantId", "VoidedAt");
 
                     b.ToTable("OrderVoids");
+                });
+
+            modelBuilder.Entity("QrDine.Domain.Ordering.PaymentReturn", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("GivenAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("GivenBy")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("RestaurantId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("TableSessionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
+
+                    b.HasIndex("RestaurantId", "GivenAt");
+
+                    b.ToTable("PaymentReturns");
                 });
 
             modelBuilder.Entity("QrDine.Domain.Ordering.ServiceRequest", b =>
@@ -2039,6 +2125,16 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("FiscalAuthority")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("FiscalEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -2136,6 +2232,12 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("FeatureWaiter")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("FiscalAutoRetry")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("FiscalSendAtSettle")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("GuestDelivery")
                         .HasColumnType("boolean");
 
@@ -2173,6 +2275,9 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(15)
                         .HasColumnType("character varying(15)");
+
+                    b.Property<bool>("OneTaxForAllItems")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Plan")
                         .IsRequired()
@@ -2691,6 +2796,9 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("GuestPassesFrom")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("Kind")
                         .HasColumnType("integer");
 
@@ -2700,6 +2808,13 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("QrKey")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("");
 
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
