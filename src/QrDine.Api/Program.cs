@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using QrDine.Api.Auth;
 using QrDine.Api.Endpoints;
 using QrDine.Api.Middleware;
+using QrDine.Api.Pc;
 using QrDine.Application;
 using QrDine.Application.Common;
 using QrDine.Infrastructure;
@@ -12,7 +13,22 @@ using QrDine.Infrastructure.Persistence;
 using QrDine.Infrastructure.Realtime;
 using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// The restaurant PC edition (DineIn.exe, its own SQLite database, a licence) or the online server.
+QrDine.Api.Pc.PcPaths? pcPaths = null;
+WebApplicationBuilder builder;
+if (QrDine.Api.Pc.PcEdition.IsOn(args))
+{
+    builder = QrDine.Api.Pc.PcEdition.CreateBuilder(args, out var paths);
+    pcPaths = paths;
+}
+else builder = WebApplication.CreateBuilder(args);
+using var pcInstance = pcPaths is null ? null : QrDine.Api.Pc.PcEdition.TakeSingleInstance(pcPaths);
+if (pcPaths is not null && pcInstance is null)
+{
+    // Already running on this PC: show it instead of starting a second copy on the same database.
+    QrDine.Api.Pc.PcEdition.OpenBrowser($"http://localhost:{pcPaths.Port}");
+    return;
+}
 
 // Render / most PaaS inject the port to listen on via $PORT.
 var listenPort = Environment.GetEnvironmentVariable("PORT");
@@ -55,6 +71,16 @@ builder.Services.AddSignalR();
 // Every minute, drops live connections whose sign-in or table pass has ended.
 builder.Services.AddHostedService<QrDine.Infrastructure.Realtime.LiveFeedGuard>();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database");
+if (pcPaths is not null)
+{
+    builder.Services.AddSingleton(pcPaths);
+    builder.Services.AddSingleton(new QrDine.Application.Pc.LicenceVerifier(QrDine.Api.Pc.PcLicence.SellerPublicKey));
+    builder.Services.AddSingleton(sp => new QrDine.Api.Pc.PcLicence(pcPaths,
+        sp.GetRequiredService<QrDine.Application.Pc.LicenceVerifier>(), QrDine.Infrastructure.Pc.MachineCode.ForThisComputer()));
+    builder.Services.AddSingleton(new QrDine.Infrastructure.Pc.PcBackupOptions(pcPaths.DatabaseFile, pcPaths.BackupDir, builder.Configuration["Pc:BackupFolder"]));
+    builder.Services.AddSingleton<QrDine.Infrastructure.Pc.PcBackupService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<QrDine.Infrastructure.Pc.PcBackupService>());
+}
 
 // CORS: the SPA is served from the API's own origin, so cross-origin isn't needed
 // in production. If Cors:Origins is set (comma-separated), allow exactly those;
@@ -180,7 +206,13 @@ using (var scope = app.Services.CreateScope())
     }
     else
     {
-        await db.Database.EnsureCreatedAsync();
+        // SQLite (the PC edition and local dev): made from the model the first time, then only added to after an
+        // update (new tables, columns, indexes), with a copy of the file taken first on the PC.
+        var dbLog = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Database");
+        var before = pcPaths is null ? null : Path.Combine(pcPaths.BackupDir, $"before-update-{DateTime.Now:yyyy-MM-dd-HHmm}.db");
+        await QrDine.Infrastructure.Pc.SqliteSchemaUpgrader.UpgradeAsync(db, dbLog, before);
+        // Readers never wait for a writer (the kitchen screen while the cashier settles).
+        if (pcPaths is not null) await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     }
 
     // Platform operator bootstrap. In production set PlatformAdmin__Username /
@@ -194,6 +226,9 @@ using (var scope = app.Services.CreateScope())
         padminPass = "super123";
     }
     await DbSeeder.SeedAsync(db, hasher, padminUser, padminPass);
+    if (pcPaths is not null)
+        await QrDine.Api.Pc.PcLicenceApplier.Apply(db, scope.ServiceProvider.GetRequiredService<QrDine.Api.Pc.PcLicence>(),
+            scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Licence"));
 }
 
 // Browser protections on every answer, the app's own files included (see SecurityHeadersMiddleware).
@@ -207,6 +242,7 @@ app.UseForwardedHeaders();                          // real client IP behind the
 app.UseSerilogRequestLogging();                     // one tidy log line per request
 app.UseCors();
 app.UseMiddleware<ExceptionHandlingMiddleware>();   // outermost: catches everything below
+if (pcPaths is not null) app.UseMiddleware<QrDine.Api.Pc.LicenceGateMiddleware>();   // PC edition: no licence, no new records
 app.UseAuthentication();                            // populate ctx.User before tenant check
 app.UseRateLimiter();                               // after sign-in is read, so each staff member and table counts apart
 app.UseMiddleware<TenantResolutionMiddleware>();    // resolve tenant + block cross-tenant tokens
@@ -223,6 +259,7 @@ app.MapMenuAdmin();
 app.MapAdminSettings();
 app.MapFiscal();
 app.MapSync();   // a restaurant's own PC; answers 404 unless Sync:Enabled=true
+if (pcPaths is not null) app.MapLicence();   // PC edition: this PC's code, its licence, entering a new one
 
 // These change orders, tables, bills, stock, khatas and points, so each restaurant's changes take turns.
 var floor = app.MapGroup("").AddEndpointFilter<FloorGateFilter>();
@@ -241,4 +278,5 @@ app.MapHealthChecks("/health");
 // SPA: everything that isn't an API/hub route serves the built React app.
 app.MapFallbackToFile("index.html");
 
+if (pcPaths is not null) app.Lifetime.ApplicationStarted.Register(() => QrDine.Api.Pc.PcEdition.Started(pcPaths, app.Configuration));
 app.Run();

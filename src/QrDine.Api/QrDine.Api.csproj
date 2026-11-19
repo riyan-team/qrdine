@@ -21,4 +21,30 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    The restaurant PC edition: one DineIn.exe with the web pages inside, no .NET install needed on the PC.
+    Built by deploy/pc/build-pc.sh:
+      dotnet publish src/QrDine.Api -c Release -r win-x64 -p:PcEdition=true -o <folder>
+  -->
+  <PropertyGroup Condition="'$(PcEdition)' == 'true'">
+    <DefineConstants>$(DefineConstants);PC_EDITION</DefineConstants>
+    <AssemblyName>DineIn</AssemblyName>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Product>Dine In</Product>
+    <Company>Dine In</Company>
+    <Description>Dine In restaurant system, PC edition</Description>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(PcEdition)' == 'true'">
+    <!-- The built web pages (frontend/dist) go inside the exe as wwwroot. -->
+    <Content Include="..\..\frontend\dist\**\*" LinkBase="wwwroot" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="Never" />
+    <Content Remove="appsettings.Development.json" />
+    <None Include="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
 </Project>
