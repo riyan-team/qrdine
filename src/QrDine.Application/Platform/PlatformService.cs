@@ -250,6 +250,9 @@ public class PlatformService
     public async Task DeleteRestaurant(int restaurantId, CancellationToken ct = default)
     {
         var r = await _db.Restaurants.FirstOrDefaultAsync(x => x.Id == restaurantId, ct) ?? throw new DomainException("Restaurant not found.");
+        await _db.SyncInbox.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.SyncChanges.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.SyncDevices.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.CustomerEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Customers.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.EmployeeEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);

@@ -204,6 +204,7 @@ app.MapMenu();
 app.MapMenuAdmin();
 app.MapAdminSettings();
 app.MapFiscal();
+app.MapSync();   // a restaurant's own PC; answers 404 unless Sync:Enabled=true
 
 // These change orders, tables, bills, stock, khatas and points, so each restaurant's changes take turns.
 var floor = app.MapGroup("").AddEndpointFilter<FloorGateFilter>();

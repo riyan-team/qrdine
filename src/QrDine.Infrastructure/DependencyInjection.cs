@@ -37,6 +37,12 @@ public static class DependencyInjection
         // Application depends on the abstraction; hand it the EF context.
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
+        // Sync with a restaurant's own PC: off unless Sync:Enabled=true (see SyncSettings).
+        services.AddSingleton(new SyncSettings(
+            config.GetValue("Sync:Enabled", false),
+            config.GetValue("Sync:SettleSeconds", 2)));
+        services.AddScoped<Application.Sync.ISyncStore, Sync.EfSyncStore>();
+
         // One tenant holder per request.
         services.AddScoped<CurrentTenant>();
         services.AddScoped<ICurrentTenant>(sp => sp.GetRequiredService<CurrentTenant>());

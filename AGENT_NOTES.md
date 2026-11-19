@@ -131,6 +131,60 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - **Local dev test accounts** (SQLite only, NOT on the server): owner/`owner123`,
   cashier/`cash123`, kitchen/`kit123`, waiter/`wait123`; dev platform `superadmin`/`super123`.
 
+## Sync with a restaurant's own PC (hybrid offline, phase 1)
+Goal: a restaurant's counter PC keeps a copy of **that restaurant's data only** and keeps working when
+the power or internet goes. Phase 1 is the server side only: no PC app exists yet, and nothing is applied
+from a PC. **It is all off until `Sync:Enabled=true`** (`Sync__Enabled=true` in `/etc/qrdine/qrdine.env`).
+While it is off, the sync routes aren't mapped at all: every sync address answers 404 to everyone, even with a bad
+body or a valid key, and no change lines are written. The switch is read once at start, so changing it needs a restart. Code: `Domain/Sync`,
+`Application/Sync/SyncService.cs`, `Infrastructure/Sync`, `Api/Endpoints/SyncEndpoints.cs`, tests in `SyncTests.cs`.
+
+**What every synced row gets** (migration `AddSyncFoundation`, additive only):
+- `SyncId` (uuid, unique). It is the row's id on every copy: a PC and the server can both make "order 105", so sync matches rows by this instead. On Postgres the column has the default `gen_random_uuid()`, so rows inserted by an older build or by hand still get one.
+- `LastChangedAt` (nullable). It is when the row last changed, used for "newest change wins". It is null for rows last saved before sync existed. It is named so because several tables already have their own `UpdatedAt`.
+- Both are EF shadow properties (`SyncModel.cs`), so the domain classes don't change. `SyncTracker` stamps them in `SaveChanges` whether the switch is on or off.
+- **Roots** are the restaurant-owned tables (`ITenantOwned`) plus `Restaurant`. **Children** travel with their root: order items and their modifiers, invoice lines, variants, modifier groups and options, recipe lines, and supplier entry lines. A changed child marks its root as changed.
+- **Never synced:** platform admins, plans, subscription payments, stored photo bytes, and the sync tables themselves.
+
+**Change log:** `SyncChanges` (Seq, RestaurantId, Type, SyncId, Op `Upsert`/`Delete`, ChangedAt). A line is written in the same save as the change. A failed save drops its lines, so the bill-number and ticket retry loops don't leave strays.
+- **Deletes are recorded as `Delete` lines (tombstones), not as a soft-delete column.** A soft-delete flag would have changed every delete path and every query in the app, which breaks the "no behaviour change" rule. A device that sees a `Delete` line removes its copy.
+
+**Device API** (key in the `X-Device-Key` header):
+
+| Route | What it does |
+|---|---|
+| `GET/POST /api/r/{slug}/admin/sync/devices`, `DELETE …/devices/{id}` | Owner only. Pairing (body `{name}`) returns the key once (`dk_…`, 32 random bytes); only its SHA-256 is stored. At most 5 active devices. Revoking stops the key at once. |
+| `GET /api/sync/hello` | The restaurant, the device, the server time, `head` (the newest change number) and the synced types. |
+| `GET /api/sync/snapshot?type=Order&after=0&limit=200` | A new device's first download, one type at a time, paged by id (`next`). Take `head` from hello **before** the snapshot, then pull from it. |
+| `GET /api/sync/pull?since=N&limit=200` | Changes after N, each with the row as it is now (children included). It returns `next` and `more`. Lines from the last `Sync:SettleSeconds` (default 2) wait for the next pull, so a save still in flight can't be skipped. |
+| `POST /api/sync/push` | `{changes:[{changeId, type, syncId, op, changedAt, data}]}`, up to 500 changes of 64 KB each. They are **stored in `SyncInbox` only and not applied yet** (that is phase 3). It is idempotent: a `changeId` sent again counts as `alreadyHad`. A 409 means the same batch was saving at that moment, so send it again. |
+
+- **Isolation:** the restaurant comes from the device row, never from the request. Every query also checks `RestaurantId`, and the tenant filter is on too, so a device can't reach another restaurant's rows even with another slug or sign-in. A suspended or unpaid restaurant's device gets 403, like its staff screens.
+- **Secrets never leave the server:** staff password hashes, FBR tokens, a loyalty member's phone pass and a rider's link key (`SyncRules.SecretFields`). How staff sign in on the PC while offline is phase 2.
+
+**Conflict rules** (`SyncRules.cs`, tested; applied by phase 3):
+- **Newest change wins** for settings-like rows: menu, prices, tables, staff, branches, roles, stock items, suppliers, customers, employees, attendance and loyalty set-up. A tie keeps what this side has.
+- **Owned by where it was made** for money and floor records: orders, seatings, bills, payments, voids, calls, day closings, khata lines, expenses, feedback and redemptions. The other side never overwrites them, so one bill can't be changed in two places.
+- **Ledger** for stock movements and loyalty points. The lines are written once and never edited. Stock on hand and points are rebuilt from the lines on each side, never copied (`ServerOnlyFields`), so +5 here and -2 there add up.
+- **Server only:** the plan, status, paid dates and feature switches. A PC can never set them.
+- **Bill numbers:** once a restaurant runs its counter from a PC, only that PC gives out bill numbers (`BillNumbersFrom`). This isn't switched on yet.
+- If the switch is ever turned off after a device paired, changes made while it was off aren't in the log. Such a device must download a fresh snapshot.
+
+**Deploy checklist** (the migration only adds columns, tables and indexes):
+1. **Quiet hour:** pick a time with no restaurant open. After the 03:30 Pakistan full backup works well. Tell the owner first.
+2. **Backup first:** run `qrdine-backup status` and check the last full is good. Then take a dump just before the deploy: `sudo -u postgres /usr/pgsql-18/bin/pg_dump -p 5433 -Fc qrdine > /var/backups/qrdine/pre-sync-$(date +%F-%H%M).dump`.
+3. **Keep the running build:** `cp -a /opt/qrdine/app /opt/qrdine/app.prev-b264329`.
+4. **Deploy** with the README command. **Leave `Sync__Enabled` out**, so sync stays off.
+5. **Check:**
+   - `/health` returns 200.
+   - The newest `__EFMigrationsHistory` row is `20261119120452_AddSyncFoundation`.
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5100/api/sync/hello` returns 404.
+   - `journalctl -u qrdine -n 50` is clean.
+   - One test bill on the demo or own restaurant settles.
+6. **Rollback, app only (normal case):** `systemctl stop qrdine && rm -rf /opt/qrdine/app && cp -a /opt/qrdine/app.prev-b264329 /opt/qrdine/app && systemctl start qrdine`. The old build runs on the new schema (tested: see the change log), and its new rows still get a `SyncId` from the database default. Leave the new columns and tables in place. If sync was ever on, every paired PC must take a fresh snapshot after a rollback, because the old build writes no change lines and doesn't update `LastChangedAt`.
+7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119120452_AddSyncFoundation 20261112161635_AddDeliveryTracking -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
+8. **Switching sync on** waits for the PC app (phase 2): set `Sync__Enabled=true`, restart, and pair from the owner's screen.
+
 ## Known quirks
 - SQLite/Npgsql return `DateTime` as `Unspecified`; JSON must emit UTC `Z` or clients
   ahead of UTC (PKT) mis-parse timers. Order timestamps are forced UTC in `OrderDto.From`.
@@ -138,6 +192,26 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-19**: **Sync foundation for running on a restaurant's own PC (phase 1, server side, off by default).** Branch `hybrid-sync-foundation`; not deployed. See "Sync with a restaurant's own PC" above for the API, the rules, the switch and the deploy checklist.
+  - Migration `AddSyncFoundation`, additive only:
+    - 38 tables get `SyncId` and `LastChangedAt`.
+    - New tables `SyncDevices`, `SyncChanges` and `SyncInbox`.
+    - No existing column, answer or rule changes.
+  - It differs from the first plan in three ways:
+    - Deletes are tombstone lines in the change log, not a soft-delete column.
+    - The column is `LastChangedAt`, because several tables already have an `UpdatedAt`.
+    - Push only stores changes; applying them waits for the PC app (phase 3).
+  - Tests: 30 new (25 in `SyncTests`, 5 over real HTTP in `SyncHttpTests`).
+    - The HTTP tests start the sync routes on a local port, so the test project now references the API and the ASP.NET framework.
+    - All 197 pass, and they also pass with sync forced on.
+  - Whole-day check on the throwaway copy at Hostworld, in four stages on one database:
+    1. Old build `b264329` on a fresh database: 545/545.
+    2. New build migrating that filled database: 38 tables got unique SyncIds, and the sync addresses answered 404. 542/544.
+    3. Old build again on the migrated database: 543/545. Its 49 new orders all got their own SyncId from the database default.
+    4. New build with sync on: 543/545, plus a 34-check sync smoke test on Postgres. The smoke test covered pairing, isolation between two restaurants, pull paging, snapshots without secrets, delete lines, 8 same-moment pushes stored once, and removing a device.
+    - The 2 failures in stages 2–4 are the check signing up "E2E Karachi Grill" again: the address gets a `-2`, `-3`, and the lookup finds the first one.
+    - Production stayed untouched, and the teardown left nothing behind.
+  - After that run, a restaurant's pushes take turns (`PushTurns`), so a batch sent twice at once no longer logs a database error.
 - **2026-11-13**: **On a phone, the bill shows the ways to pay before Settle.** The bill sheet's pinned bar (Back, Print bill, WhatsApp, then a full-width Settle) was two rows tall on a phone and covered "Paid by", so a cashier could settle without seeing that the bill would be recorded as Cash. On phones narrower than 460 px it also hung 4 px past the sheet and clipped Settle.
   - On a phone the bar is now one row: Back, Print and WhatsApp show as icons (their names stay as labels), and Settle takes the rest of the row.
   - Settle names the way it records: "Settle · JazzCash" (`.settle-way`).

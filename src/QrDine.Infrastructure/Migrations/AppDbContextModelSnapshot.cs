@@ -64,6 +64,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Note")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -76,11 +79,19 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<decimal>("TakenOut")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "BranchId", "Date")
                         .IsUnique();
@@ -181,6 +192,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("Number")
                         .HasColumnType("integer");
 
@@ -206,6 +220,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<decimal>("Subtotal")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<long?>("SyncedByPosId")
                         .HasColumnType("bigint");
@@ -244,6 +263,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Number")
                         .IsUnique();
@@ -286,6 +308,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -301,6 +326,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<decimal>("SaleValue")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<decimal>("TaxAmount")
                         .HasPrecision(12, 2)
@@ -321,6 +351,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("InvoiceLine");
                 });
@@ -343,6 +376,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Method")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -351,10 +387,18 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<int>("TableSessionId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "TableSessionId");
 
@@ -384,6 +428,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -406,7 +453,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Name");
 
@@ -444,6 +499,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int?>("InvoiceId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Note")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -462,12 +520,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "CustomerId", "Date");
 
@@ -505,6 +571,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("Date")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Note")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -523,7 +592,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Date");
 
@@ -546,11 +623,19 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
 
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("TableCode")
                         .IsRequired()
@@ -558,6 +643,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "CreatedAt");
 
@@ -627,6 +715,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Permission")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -640,7 +731,15 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Role", "Permission")
                         .IsUnique();
@@ -667,6 +766,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -678,12 +780,20 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Username")
                         .IsUnique();
@@ -699,6 +809,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("MenuItemId")
                         .HasColumnType("integer");
 
@@ -709,9 +822,17 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("StockItemId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MenuItemId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("RecipeLine");
                 });
@@ -723,6 +844,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<decimal>("LastCost")
                         .HasColumnType("numeric");
@@ -743,12 +867,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("Stock");
                 });
@@ -768,6 +900,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasPrecision(12, 3)
                         .HasColumnType("numeric(12,3)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Reason")
                         .HasColumnType("text");
 
@@ -777,12 +912,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("StockItemId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("StockMovements");
                 });
@@ -796,6 +939,9 @@ namespace QrDine.Infrastructure.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("LastChangedAt")
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime?>("LastVisitAt")
@@ -824,6 +970,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Token")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -833,6 +984,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Phone")
                         .IsUnique();
@@ -869,6 +1023,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(400)
                         .HasColumnType("character varying(400)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<decimal>("MinBillAmount")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -885,6 +1042,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Tagline")
                         .IsRequired()
                         .HasMaxLength(160)
@@ -899,6 +1061,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RestaurantId")
+                        .IsUnique();
+
+                    b.HasIndex("SyncId")
                         .IsUnique();
 
                     b.ToTable("LoyaltyPrograms");
@@ -924,6 +1089,9 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("MemberId")
                         .HasColumnType("integer");
@@ -960,12 +1128,20 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("TableCode")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "MemberId");
 
@@ -998,6 +1174,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("PointsCost")
                         .HasColumnType("integer");
 
@@ -1007,12 +1186,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("LoyaltyRewards");
                 });
@@ -1040,6 +1227,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int?>("InvoiceId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("MemberId")
                         .HasColumnType("integer");
 
@@ -1057,6 +1247,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<int?>("TableSessionId")
                         .HasColumnType("integer");
 
@@ -1066,6 +1261,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "TableSessionId");
 
@@ -1082,6 +1280,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1092,7 +1293,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("Categories");
                 });
@@ -1149,6 +1358,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1172,11 +1384,19 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<decimal?>("TaxRate")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("MenuItems");
                 });
@@ -1188,6 +1408,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("MenuItemId")
                         .HasColumnType("integer");
@@ -1203,9 +1426,17 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MenuItemId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("MenuItemVariant");
                 });
@@ -1217,6 +1448,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("MaxSelect")
                         .HasColumnType("integer");
@@ -1234,9 +1468,17 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MenuItemId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("ModifierGroup");
                 });
@@ -1248,6 +1490,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("ModifierGroupId")
                         .HasColumnType("integer");
@@ -1263,9 +1508,17 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ModifierGroupId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("ModifierOption");
                 });
@@ -1306,6 +1559,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("EtaMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
@@ -1314,6 +1570,11 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("TableCode")
                         .IsRequired()
@@ -1330,6 +1591,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "CreatedAt");
 
@@ -1349,6 +1613,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int>("MenuItemId")
                         .HasColumnType("integer");
@@ -1370,12 +1637,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("Qty")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("VariantName")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("OrderItem");
                 });
@@ -1388,6 +1663,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1399,9 +1677,17 @@ namespace QrDine.Infrastructure.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrderItemId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("OrderItemModifier");
                 });
@@ -1422,6 +1708,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("OrderId")
                         .HasColumnType("integer");
 
@@ -1435,6 +1724,11 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("TableName")
                         .IsRequired()
@@ -1454,6 +1748,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(60)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "VoidedAt");
 
@@ -1487,8 +1784,16 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("character varying(12)");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("TableCode")
                         .IsRequired()
@@ -1501,6 +1806,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("character varying(80)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "TableCode", "DoneAt");
 
@@ -1520,6 +1828,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1543,7 +1854,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Name");
 
@@ -1573,6 +1892,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime>("Date")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int?>("LinkedEntryId")
                         .HasColumnType("integer");
 
@@ -1597,12 +1919,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SupplierId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "SupplierId", "Date");
 
@@ -1616,6 +1946,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1632,6 +1965,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("SupplierEntryId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<decimal>("UnitCost")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -1639,6 +1977,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("SupplierEntryId");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("SupplierEntryLine");
                 });
@@ -1683,6 +2024,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -1691,7 +2035,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.ToTable("Branches");
                 });
@@ -1765,6 +2117,9 @@ namespace QrDine.Infrastructure.Migrations
 
                     b.Property<bool>("GuestTakeaway")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime?>("LastPaymentAt")
                         .HasColumnType("timestamp without time zone");
@@ -1840,6 +2195,11 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<bool>("TaxEnabled")
                         .HasColumnType("boolean");
 
@@ -1864,6 +2224,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
+                    b.HasIndex("SyncId")
+                        .IsUnique();
+
                     b.ToTable("Restaurants");
                 });
 
@@ -1881,6 +2244,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("EmployeeId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
@@ -1889,7 +2255,15 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("character varying(12)");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "EmployeeId", "Date")
                         .IsUnique();
@@ -1919,6 +2293,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime?>("JoinedOn")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<decimal>("MonthlySalary")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -1941,7 +2318,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Name");
 
@@ -1977,6 +2362,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int?>("ExpenseId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Month")
                         .IsRequired()
                         .HasMaxLength(7)
@@ -1995,12 +2383,20 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "EmployeeId", "Month");
 
@@ -2108,6 +2504,139 @@ namespace QrDine.Infrastructure.Migrations
                     b.ToTable("SubscriptionPayments");
                 });
 
+            modelBuilder.Entity("QrDine.Domain.Sync.SyncChange", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Op")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("RestaurantId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SyncId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "Id");
+
+                    b.ToTable("SyncChanges");
+                });
+
+            modelBuilder.Entity("QrDine.Domain.Sync.SyncDevice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("RestaurantId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique();
+
+                    b.HasIndex("RestaurantId");
+
+                    b.ToTable("SyncDevices");
+                });
+
+            modelBuilder.Entity("QrDine.Domain.Sync.SyncInboxEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("ChangeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ClientChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Op")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("RestaurantId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<Guid>("SyncId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RestaurantId", "ChangeId")
+                        .IsUnique();
+
+                    b.HasIndex("RestaurantId", "Status", "Id");
+
+                    b.ToTable("SyncInbox");
+                });
+
             modelBuilder.Entity("QrDine.Domain.Tables.DiningTable", b =>
                 {
                     b.Property<int>("Id")
@@ -2126,6 +2655,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2133,7 +2665,15 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Code")
                         .IsUnique();
@@ -2198,6 +2738,9 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<bool>("IsOpen")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastChangedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int?>("LoyaltyMemberId")
                         .HasColumnType("integer");
 
@@ -2232,6 +2775,11 @@ namespace QrDine.Infrastructure.Migrations
                     b.Property<DateTime?>("RiderSeenAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<Guid>("SyncId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("TableCode")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2241,6 +2789,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SyncId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "DiningTableId")
                         .IsUnique()

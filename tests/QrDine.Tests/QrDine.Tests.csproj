@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The sync HTTP tests start the real sync routes on a local port. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\QrDine.Api\QrDine.Api.csproj" />
     <ProjectReference Include="..\..\src\QrDine.Domain\QrDine.Domain.csproj" />
     <ProjectReference Include="..\..\src\QrDine.Application\QrDine.Application.csproj" />
     <ProjectReference Include="..\..\src\QrDine.Infrastructure\QrDine.Infrastructure.csproj" />

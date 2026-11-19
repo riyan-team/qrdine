@@ -8,6 +8,7 @@ using QrDine.Domain.Menu;
 using QrDine.Domain.Ordering;
 using QrDine.Domain.Restaurants;
 using QrDine.Domain.Tables;
+using QrDine.Infrastructure.Sync;
 
 namespace QrDine.Infrastructure.Persistence;
 
@@ -20,10 +21,12 @@ namespace QrDine.Infrastructure.Persistence;
 public class AppDbContext : DbContext, IAppDbContext
 {
     private readonly ICurrentTenant _tenant;
+    private readonly SyncSettings _sync;
 
-    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant tenant) : base(options)
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentTenant tenant, SyncSettings? sync = null) : base(options)
     {
         _tenant = tenant;
+        _sync = sync ?? SyncSettings.Off;
     }
 
     // Read at query time (not construction), so middleware can resolve the tenant
@@ -64,6 +67,9 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Ordering.OrderVoid> OrderVoids => Set<Domain.Ordering.OrderVoid>();
     public DbSet<Domain.Ordering.ServiceRequest> ServiceRequests => Set<Domain.Ordering.ServiceRequest>();
     public DbSet<Domain.Billing.DayClosing> DayClosings => Set<Domain.Billing.DayClosing>();
+    public DbSet<Domain.Sync.SyncDevice> SyncDevices => Set<Domain.Sync.SyncDevice>();
+    public DbSet<Domain.Sync.SyncChange> SyncChanges => Set<Domain.Sync.SyncChange>();
+    public DbSet<Domain.Sync.SyncInboxEntry> SyncInbox => Set<Domain.Sync.SyncInboxEntry>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -473,6 +479,37 @@ public class AppDbContext : DbContext, IAppDbContext
         });
 
         b.Entity<RecipeLine>(e => e.Property(x => x.QtyPerServing).HasPrecision(12, 3));
+
+        // ---- Sync with a restaurant's own PC (see Infrastructure/Sync) ----
+        b.Entity<Domain.Sync.SyncDevice>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Ignore(x => x.IsActive);
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.KeyHash).HasMaxLength(64);
+            e.Property(x => x.CreatedBy).HasMaxLength(60);
+            e.HasIndex(x => x.KeyHash).IsUnique();
+            e.HasIndex(x => x.RestaurantId);
+        });
+        b.Entity<Domain.Sync.SyncChange>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.EntityType).HasMaxLength(60);
+            e.Property(x => x.Op).HasMaxLength(10);
+            e.HasIndex(x => new { x.RestaurantId, x.Id });
+        });
+        b.Entity<Domain.Sync.SyncInboxEntry>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.EntityType).HasMaxLength(60);
+            e.Property(x => x.Op).HasMaxLength(10);
+            e.Property(x => x.Status).HasMaxLength(12);
+            e.HasIndex(x => new { x.RestaurantId, x.ChangeId }).IsUnique();
+            e.HasIndex(x => new { x.RestaurantId, x.Status, x.Id });
+        });
+
+        // Last: a SyncId and LastChangedAt on every synced table.
+        SyncModel.Configure(b, Database.IsNpgsql());
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
@@ -484,5 +521,20 @@ public class AppDbContext : DbContext, IAppDbContext
                     entry.Entity.RestaurantId = rid;
 
         return base.SaveChangesAsync(ct);
+    }
+
+    // Every save, sync or async, passes through these two. The tenant stamp above runs first.
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        var lines = SyncTracker.Prepare(this, _sync.Enabled, DateTime.UtcNow);
+        try { return base.SaveChanges(acceptAllChangesOnSuccess); }
+        catch { SyncTracker.Forget(this, lines); throw; }
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
+    {
+        var lines = SyncTracker.Prepare(this, _sync.Enabled, DateTime.UtcNow);
+        try { return await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct); }
+        catch { SyncTracker.Forget(this, lines); throw; }
     }
 }

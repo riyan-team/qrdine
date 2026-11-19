@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<DayCloseService>();
         services.AddScoped<Feedback.FeedbackService>();
         services.AddScoped<Loyalty.LoyaltyService>();
+        services.AddScoped<Sync.SyncService>();
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
         return services;
     }

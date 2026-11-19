@@ -50,6 +50,9 @@ public interface IAppDbContext
     DbSet<QrDine.Domain.Ordering.OrderVoid> OrderVoids { get; }
     DbSet<QrDine.Domain.Ordering.ServiceRequest> ServiceRequests { get; }
     DbSet<QrDine.Domain.Billing.DayClosing> DayClosings { get; }
+    DbSet<QrDine.Domain.Sync.SyncDevice> SyncDevices { get; }
+    DbSet<QrDine.Domain.Sync.SyncChange> SyncChanges { get; }
+    DbSet<QrDine.Domain.Sync.SyncInboxEntry> SyncInbox { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
