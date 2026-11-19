@@ -128,6 +128,12 @@ public class AuthService
     {
         var table = await _db.Tables.FirstOrDefaultAsync(t => t.Code == tableCode && t.Kind == Domain.Ordering.OrderChannel.Dine, ct);
         if (table is null || !table.KeyMatches(key)) throw new DomainException(BadTableQr);
+        // A pass only says the second it was made, and passes from the very second the last bill was settled count
+        // as ended. A guest who scans in that same second waits for the next one (under a second), so the pass
+        // they get works, instead of every order from it being turned away.
+        var now = DateTimeOffset.UtcNow;
+        if (!table.PassStillGood(now.ToUnixTimeSeconds()))
+            await Task.Delay(Math.Min(1000, 1005 - now.Millisecond), ct);
         var token = _tokens.CreateGuestToken(TenantId, Slug, table.Code);
         return new GuestSessionResponse(token, table.Code);
     }

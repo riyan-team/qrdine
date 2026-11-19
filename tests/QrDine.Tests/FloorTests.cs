@@ -203,6 +203,18 @@ public class FloorTests : IDisposable
         Assert.NotNull(await auth.IssueGuestSession("T1", "  " + t1.QrKey.ToUpperInvariant() + " "));
     }
 
+    [Fact]
+    public async Task A_guest_who_scans_the_moment_the_bill_is_settled_still_gets_a_pass_that_works()
+    {
+        var auth = new AuthService(_db, _tenant, new NoTokens(), new NoHasher(), new PermissionService(_db));
+        var t1 = await _db.Tables.FirstAsync(t => t.Code == "T1");
+        t1.EndGuestPasses(DateTime.UtcNow);   // the last guests' bill was just settled
+        await _db.SaveChangesAsync();
+        await auth.IssueGuestSession("T1", t1.QrKey);
+        // The pass is made after the call's wait, so its second is after the settle's second.
+        Assert.True(t1.PassStillGood(DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+    }
+
     // ---- takeaway and delivery from the guest's own phone (the restaurant's order QR) ----
 
     private Task<TicketPlaced> GuestOrder(string channel, string? name = "Sara", string? phone = "0300 1234567",
