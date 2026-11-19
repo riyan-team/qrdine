@@ -14,6 +14,9 @@
 .au-brand svg { height: 38px; width: auto; }
 .au-top-link { font-size: 14px; font-weight: 500; color: rgba(251, 243, 228, .78); padding: 8px 14px; border-radius: 99px; box-shadow: inset 0 0 0 1px rgba(251, 243, 228, .22); transition: background .2s, color .2s; }
 .au-top-link:hover { background: rgba(251, 243, 228, .1); color: #fff; }
+.au-top-link { display: inline-flex; align-items: center; min-height: 36px; }
+/* A lighter hint, so an example name never looks like something already typed in. */
+.au-field input::placeholder, .su-big::placeholder, .au-card .pw-wrap input::placeholder { color: #b4aba1; opacity: 1; }
 
 .au-grid { position: relative; z-index: 1; flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .85fr); align-items: center; gap: clamp(10px, 3vw, 48px); padding: 0 clamp(18px, 5vw, 72px) 24px; max-width: 1400px; width: 100%; margin: 0 auto; }
 .au-pitch { position: relative; min-width: 0; }

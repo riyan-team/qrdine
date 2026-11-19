@@ -83,6 +83,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .field:last-child { margin-bottom: 0; }
 .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
 .field > input, .field > select, .field > textarea { width: 100%; }
+/* Required fields, one rule for every label style in the app: give the input `required` and its
+   label gets a red *. `.req` marks a label by hand where there's no single input (chip groups). */
+.field:has(:required) > .field-label::after,
+.fld:has(:required) > span:first-child::after,
+.au-field:has(:required) > span:first-child::after,
+.gm-field:has(:required) > span:first-child::after,
+.bl-row:has(:required) > .bl-label::after,
+.req::after { content: " *"; color: var(--red, #d13a4e); font-weight: 700; }
+.opt { font-weight: 400; color: var(--muted); }
 /* Invalid: a subtle red border + faint tint, never a full red block. */
 .field input.invalid, .field select.invalid, .field textarea.invalid,
 input.invalid, select.invalid, textarea.invalid {
@@ -786,6 +795,9 @@ a.lp-contact-row:hover { border-color: var(--accent); transform: translateX(3px)
 .set-block { background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 .fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .fld input, .fld select { min-width: 110px; }
+/* The label text is small; what the owner types stays at reading size (16px on phones, so iOS doesn't zoom). */
+.fld input, .fld select, .fld textarea { font-size: 14px; }
+@media (max-width: 760px) { .fld input, .fld select, .fld textarea { font-size: 16px; } }
 .switch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--ink); }
 .switch { position: relative; width: 42px; height: 24px; border-radius: 999px; background: #cfc7cc; flex: none; transition: background .18s ease; }
 .switch.on { background: var(--accent2); }
@@ -832,8 +844,9 @@ a.lp-contact-row:hover { border-color: var(--accent); transform: translateX(3px)
 
 /* Password field with a show/hide eye toggle */
 .pw-wrap { position: relative; display: block; }
-.pw-wrap input { width: 100%; padding-right: 40px; }
-.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--muted); padding: 6px; cursor: pointer; display: inline-flex; align-items: center; box-shadow: none; }
+.pw-wrap input { width: 100%; padding-right: 44px; }
+/* 36 x 36 at least, so the eye is easy to tap on a phone */
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--muted); padding: 6px; min-width: 36px; min-height: 36px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; box-shadow: none; }
 .pw-eye:hover { color: var(--ink); background: transparent; box-shadow: none; }
 
 /* Settings tabbed navigation */

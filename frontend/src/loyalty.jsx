@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, loyalty, memberStore, money } from './api'
 import { toast, ui } from './ui.jsx'
+import { friendlyError } from './errors.js'
 import { StarIcon, CloseIcon, CheckIcon, PhoneIcon, UserIcon } from './icons.jsx'
 
 // Guest side of Loyalty & Reviews (the table's QR page). Everything here is additive: when the
@@ -239,6 +240,7 @@ function JoinView({ loy }) {
   const [err, setErr] = useState('')
   const submit = async (e) => {
     e.preventDefault()
+    if (busy) return
     setErr('')
     if (phone.replace(/\D/g, '').length < 10) { setErr('Enter your mobile number, e.g. 0300 1234567.'); return }
     setBusy(true)
@@ -248,7 +250,7 @@ function JoinView({ loy }) {
         burst()
         toast.success(m.welcomeBonusAwarded > 0 ? `Welcome! ${pts(m.welcomeBonusAwarded)} added` : 'Welcome to rewards!')
       } else toast.success(`Welcome back, ${m.name}!`)
-    } catch (ex) { setErr(ex.message || 'Could not join right now.') }
+    } catch (ex) { setErr(friendlyError(ex)) }
     setBusy(false)
   }
   const sample = info.perAmount > 0 ? Math.round(info.perAmount * 20) : 2000
@@ -265,16 +267,16 @@ function JoinView({ loy }) {
         <div className="lx-hero-note">A {money(sample)} bill earns {Math.floor(sample / info.perAmount) * info.earnPoints} points.</div>
       </div>
 
-      <form onSubmit={submit} className="lx-join">
+      <form onSubmit={submit} className="lx-join" noValidate>
         <label className="field">
-          <span className="field-label">Your name</span>
+          <span className="field-label">Your name <span className="opt">(optional)</span></span>
           <div className="lx-input"><UserIcon size={16} /><input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ayesha" autoComplete="name" /></div>
         </label>
         <label className="field">
           <span className="field-label">Mobile number</span>
-          <div className="lx-input"><PhoneIcon size={16} /><input value={phone} inputMode="tel" maxLength={20} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" autoComplete="tel" /></div>
+          <div className="lx-input"><PhoneIcon size={16} /><input required aria-invalid={!!err} aria-describedby={err ? 'lx-join-err' : undefined} value={phone} type="tel" inputMode="tel" maxLength={20} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" autoComplete="tel" /></div>
         </label>
-        {err && <div className="field-error">{err}</div>}
+        {err && <div className="field-error" id="lx-join-err" role="alert">{err}</div>}
         <button className="primary lx-cta" disabled={busy}>{busy ? 'Joining…' : info.welcomeBonus > 0 ? `Join & get ${pts(info.welcomeBonus)}` : 'Join rewards'}</button>
         <div className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 8 }}>
           Already a member? Enter the same number to see your points. Rewards are confirmed by our staff.
@@ -315,12 +317,12 @@ function MemberView({ loy, slug, code }) {
       await loy.refresh()
       toast.success('Your code is ready. Show it to our staff.')
       document.querySelector('.lx-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    } catch (ex) { toast.error(ex.message || 'Could not request this reward.') }
+    } catch (ex) { toast.error(friendlyError(ex)) }
     setBusyId(null)
   }
   const cancel = async (red) => {
     if (!(await ui.confirm({ message: 'Cancel this reward request? Your points stay with you.' }))) return
-    try { await loyalty.cancel(slug, red.id); await loy.refresh() } catch (ex) { toast.error(ex.message) }
+    try { await loyalty.cancel(slug, red.id); await loy.refresh() } catch (ex) { toast.error(friendlyError(ex)) }
   }
 
   return (
@@ -467,7 +469,7 @@ export function RateUs({ slug, code, loy, onRated, compact }) {
   }, [])
 
   const submit = async () => {
-    if (!rating) return
+    if (!rating || busy) return
     setBusy(true)
     try {
       const res = await api.submitFeedback(slug, { rating, comment: comment.trim(), tableCode: code, memberToken: memberStore.get(slug) || null })
@@ -476,7 +478,7 @@ export function RateUs({ slug, code, loy, onRated, compact }) {
       window.dispatchEvent(new Event('qrdine:rated'))
       onRated?.()
       if (res?.bonus > 0) { toast.success(`Thanks! ${pts(res.bonus)} added to your rewards ⭐`); loy?.refresh() }
-    } catch { toast.error('Could not send your rating. Please try again.') }
+    } catch (e) { toast.error(friendlyError(e)) }
     setBusy(false)
   }
 

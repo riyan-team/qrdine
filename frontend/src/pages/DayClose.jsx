@@ -31,6 +31,8 @@ export default function DayClose() {
   const diff = (Number(counted) || 0) - expected
 
   const save = async () => {
+    if (busy) return
+    if ([opening, counted, takenOut].some((v) => v !== '' && !(Number(v) >= 0))) return toast.error("Cash amounts can't be negative.")
     setBusy(true)
     try {
       const res = await api.closeDay({ date, openingCash: openingNum, countedCash: Number(counted) || 0, takenOut: Number(takenOut) || 0, note: note.trim() || null, branchId: null })
@@ -78,8 +80,8 @@ export default function DayClose() {
           <div className="bo-card">
             <div className="bo-card-head"><h2>What should be in the drawer</h2></div>
             <div className="dc-sum">
-              <div><span>Opening cash</span>
-                <input type="number" min="0" inputMode="numeric" style={{ width: 120, textAlign: 'right', padding: '5px 8px' }} value={opening} onChange={(e) => setOpening(e.target.value)} />
+              <div><label htmlFor="dc-opening">Opening cash</label>
+                <input id="dc-opening" type="number" min="0" step="any" inputMode="decimal" style={{ width: 120, textAlign: 'right', padding: '5px 8px' }} value={opening} onChange={(e) => setOpening(e.target.value)} />
               </div>
               <div><span>Cash sales</span><span>{money(data.cashSales)}</span></div>
               <div><span>Cash received on khata</span><span>{money(data.khataReceipts)}</span></div>
@@ -91,9 +93,9 @@ export default function DayClose() {
           <div className="bo-card">
             <div className="bo-card-head"><h2>What you counted</h2></div>
             <div className="bo-form">
-              <div className="field"><label className="field-label">Cash in the drawer (Rs)</label><input autoFocus={!data.closed} type="number" min="0" inputMode="numeric" value={counted} onChange={(e) => setCounted(e.target.value)} /></div>
-              <div className="field"><label className="field-label">Taken out by owner (Rs)</label><input type="number" min="0" inputMode="numeric" placeholder="0" value={takenOut} onChange={(e) => setTakenOut(e.target.value)} /></div>
-              <div className="field is-full"><label className="field-label">Note (optional)</label><input value={note} onChange={(e) => setNote(e.target.value)} /></div>
+              <div className="field"><label className="field-label" htmlFor="dc-counted">Cash in the drawer (Rs)</label><input id="dc-counted" required autoFocus={!data.closed} type="number" min="0" step="any" inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} /></div>
+              <div className="field"><label className="field-label" htmlFor="dc-taken">Taken out by owner (Rs) <span className="opt">(optional)</span></label><input id="dc-taken" type="number" min="0" step="any" inputMode="decimal" placeholder="0" value={takenOut} onChange={(e) => setTakenOut(e.target.value)} /></div>
+              <div className="field is-full"><label className="field-label" htmlFor="dc-note">Note <span className="opt">(optional)</span></label><input id="dc-note" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} /></div>
             </div>
             {hasCount && (
               <div className={`dc-diff${Math.abs(diff) < 1 ? '' : diff < 0 ? ' is-short' : ' is-over'}`}>
@@ -103,7 +105,8 @@ export default function DayClose() {
             {data.closed && <div className="bo-small" style={{ marginBottom: 10 }}><CheckIcon size={14} /> Closed by {data.closed.closedBy} at {new Date(data.closed.closedAt).toLocaleTimeString('en-PK', { timeStyle: 'short' })}. Saving again replaces this count.</div>}
             <div className="row" style={{ gap: 8 }}>
               <button onClick={print}><PrintIcon size={15} /> Print</button>
-              <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy || !hasCount} onClick={save}>{busy ? 'Saving…' : data.closed ? 'Save new count' : 'Close the day'}</button>
+              {!hasCount && !busy && <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>Count the drawer first.</span>}
+              <button className="primary" style={{ marginLeft: hasCount ? 'auto' : 0 }} disabled={busy || !hasCount} onClick={save}>{busy ? 'Saving…' : data.closed ? 'Save new count' : 'Close the day'}</button>
             </div>
           </div>
         </div>

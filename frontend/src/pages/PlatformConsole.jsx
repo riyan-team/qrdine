@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { platform, money } from '../api'
 import { platformAuth } from '../auth'
 import { ui } from '../ui.jsx'
+import { friendlyError } from '../errors.js'
 import { BankIcon, CheckIcon, WarnIcon, CashIcon, ReceiptIcon, TrashIcon, CloseIcon } from '../icons.jsx'
 
 const FEATURES = [['ordering', 'Order'], ['kitchen', 'Kitchen'], ['waiter', 'Waiter'], ['billing', 'Billing'], ['inventory', 'Inventory'], ['reports', 'Reports']]
@@ -23,33 +24,37 @@ export default function PlatformConsole() {
   }
   useEffect(() => { if (!platformAuth.token) { nav('/platform/login'); return } load() }, [])
 
-  const changePlan = async (r, planId) => { await platform.setPlan(r.id, Number(planId)); load() }
+  // These used to fail silently (an unhandled promise); now the operator sees why.
+  const changePlan = async (r, planId) => { try { await platform.setPlan(r.id, Number(planId)) } catch (e) { ui.alert(friendlyError(e)) } load() }
   const toggle = async (r) => {
     const next = r.status === 'Active' ? 'Suspended' : 'Active'
     if (next === 'Suspended' && !await ui.confirm({ title: 'Lock restaurant', message: `Lock ${r.name}? Their app will stop working until unlocked.`, confirmText: 'Lock', danger: true })) return
-    await platform.setStatus(r.id, next); load()
+    try { await platform.setStatus(r.id, next) } catch (e) { ui.alert(friendlyError(e)) }
+    load()
   }
   const toggleFbr = async (r) => {
     if (r.featureFbr && !await ui.confirm({ title: 'Turn off FBR', message: `Turn OFF FBR for ${r.name}? Their invoice sync will stop.`, confirmText: 'Turn off', danger: true })) return
-    await platform.setFbr(r.id, !r.featureFbr); load()
+    try { await platform.setFbr(r.id, !r.featureFbr) } catch (e) { ui.alert(friendlyError(e)) }
+    load()
   }
-  const delPlan = async (p) => { if (await ui.confirm({ title: 'Delete plan', message: `Delete plan "${p.name}"?`, confirmText: 'Delete', danger: true })) { try { await platform.deletePlan(p.id); load() } catch (e) { ui.alert(e.message) } } }
+  const delPlan = async (p) => { if (await ui.confirm({ title: 'Delete plan', message: `Delete plan "${p.name}"?`, confirmText: 'Delete', danger: true })) { try { await platform.deletePlan(p.id); load() } catch (e) { ui.alert(friendlyError(e)) } } }
   const delRestaurant = async (r) => {
     const typed = await ui.prompt({
       title: `Delete ${r.name}`,
       message: `This permanently deletes ${r.name} and ALL its data — menu, tables, staff, orders, invoices, payments. This cannot be undone.\n\nType the restaurant name to confirm:`,
-      placeholder: r.name, confirmText: 'Delete forever', danger: true, required: true,
+      label: 'Restaurant name', placeholder: r.name, confirmText: 'Delete forever', danger: true, required: true,
+      validate: (v) => (v.trim().toLowerCase() === r.name.toLowerCase() ? '' : "The name doesn't match. Type it exactly as shown."),
     })
     if (typed == null) return
     if (typed.trim().toLowerCase() !== r.name.toLowerCase()) { ui.alert("The name didn't match — nothing was deleted."); return }
-    try { await platform.deleteRestaurant(r.id); load() } catch (e) { ui.alert(e.message) }
+    try { await platform.deleteRestaurant(r.id); load() } catch (e) { ui.alert(friendlyError(e)) }
   }
   const resetPassword = async (r) => {
     if (!await ui.confirm({ title: `Reset ${r.name}'s password?`, message: "The owner's current password stops working straight away. You'll see the new one once.", confirmText: 'Reset password', danger: true })) return
     try {
       const res = await platform.resetOwnerPassword(r.id)
       await ui.alert(`Sign-in: ${res.username}\nNew password: ${res.password}\n\nGive this to the owner now. It won't be shown again.`)
-    } catch (e) { ui.alert(e.message) }
+    } catch (e) { ui.alert(friendlyError(e)) }
   }
   const logout = () => { platformAuth.clear(); nav('/platform/login') }
   const admin = platformAuth.get()
@@ -157,11 +162,21 @@ function PlanEditor({ plan, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }))
 
+  const problem = () => {
+    if (!String(f.name || '').trim()) return 'Enter the plan name.'
+    if (f.pricePkr === '' || !(Number(f.pricePkr) >= 0)) return "The monthly price can't be negative."
+    if (!(Number(f.setupFeePkr || 0) >= 0)) return "The setup fee can't be negative."
+    if (!Number.isInteger(Number(f.sortOrder || 0))) return 'Order must be a whole number.'
+    return ''
+  }
   const save = async () => {
+    if (busy) return
+    const why = problem()
+    if (why) return setErr(why)
     setBusy(true); setErr('')
     const payload = { ...f, pricePkr: Number(f.pricePkr), setupFeePkr: Number(f.setupFeePkr) || 0, sortOrder: Number(f.sortOrder) }
     try { if (plan) await platform.updatePlan(plan.id, payload); else await platform.createPlan(payload); onSaved() }
-    catch (e) { setErr(e.message) }
+    catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
 
@@ -169,12 +184,14 @@ function PlanEditor({ plan, onClose, onSaved }) {
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal">
         <div className="row between"><div className="big">{plan ? 'Edit plan' : 'New plan'}</div><button className="ghost" onClick={onClose}><CloseIcon size={16} /></button></div>
-        <input placeholder="Plan name" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ width: '100%', margin: '10px 0' }} />
-        <input placeholder="Description" value={f.description} onChange={(e) => set('description', e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
+        <label className="field" style={{ margin: '10px 0' }}><span className="field-label">Plan name</span>
+          <input required maxLength={60} value={f.name} onChange={(e) => set('name', e.target.value)} style={{ width: '100%' }} /></label>
+        <label className="field" style={{ marginBottom: 10 }}><span className="field-label">Description <span className="opt">(optional)</span></span>
+          <input maxLength={200} value={f.description || ''} onChange={(e) => set('description', e.target.value)} style={{ width: '100%' }} /></label>
         <div className="row" style={{ gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }}>Monthly (Rs/mo)</label><input type="number" value={f.pricePkr} onChange={(e) => set('pricePkr', e.target.value)} style={{ width: '100%' }} /></div>
-          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }}>Setup fee (one-time)</label><input type="number" value={f.setupFeePkr} onChange={(e) => set('setupFeePkr', e.target.value)} style={{ width: '100%' }} /></div>
-          <div style={{ width: 80 }}><label className="muted" style={{ fontSize: 12 }}>Order</label><input type="number" value={f.sortOrder} onChange={(e) => set('sortOrder', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }} htmlFor="plan-price">Monthly (Rs/mo)</label><input id="plan-price" required type="number" min="0" step="any" inputMode="decimal" value={f.pricePkr} onChange={(e) => set('pricePkr', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ flex: 1 }}><label className="muted" style={{ fontSize: 12 }} htmlFor="plan-setup">Setup fee (one-time)</label><input id="plan-setup" type="number" min="0" step="any" inputMode="decimal" value={f.setupFeePkr} onChange={(e) => set('setupFeePkr', e.target.value)} style={{ width: '100%' }} /></div>
+          <div style={{ width: 80 }}><label className="muted" style={{ fontSize: 12 }} htmlFor="plan-order">Order</label><input id="plan-order" type="number" step="1" inputMode="numeric" value={f.sortOrder} onChange={(e) => set('sortOrder', e.target.value)} style={{ width: '100%' }} /></div>
         </div>
         <div className="cat-title" style={{ fontSize: 13 }}>Included features</div>
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -190,10 +207,11 @@ function PlanEditor({ plan, onClose, onSaved }) {
         <label className="row" style={{ gap: 8, cursor: 'pointer', margin: '10px 0' }}>
           <input type="checkbox" checked={f.isActive} onChange={(e) => set('isActive', e.target.checked)} /> Show on sign-up
         </label>
-        {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
+        {err && <div role="alert" style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
         <div className="row" style={{ gap: 8 }}>
           <button onClick={onClose}>Cancel</button>
-          <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !f.name.trim()} onClick={save}>Save plan</button>
+          {!f.name.trim() && !busy && <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>Enter the plan name first.</span>}
+          <button className="green" style={{ marginLeft: f.name.trim() ? 'auto' : 0 }} disabled={busy || !f.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save plan'}</button>
         </div>
       </div>
     </div>
@@ -226,11 +244,14 @@ function PaymentModal({ r, onClose, onSaved }) {
   const amt = amount === '' ? suggested : Number(amount)
 
   const save = async () => {
+    if (busy) return
+    if (kind === 'Monthly' && !(Number.isInteger(Number(months)) && Number(months) >= 1 && Number(months) <= 36)) return setErr('Months must be a whole number from 1 to 36.')
+    if (!(amt > 0)) return setErr('Enter the amount received.')
     setBusy(true); setErr('')
     try {
       await platform.recordPayment(r.id, { kind, months: kind === 'Monthly' ? Number(months) || 1 : 0, amountPkr: amt, note })
       onSaved()
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
 
@@ -243,29 +264,30 @@ function PaymentModal({ r, onClose, onSaved }) {
         </div>
 
         <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          <select value={kind} onChange={(e) => { setKind(e.target.value); setAmount('') }}>
+          <select aria-label="Payment for" value={kind} onChange={(e) => { setKind(e.target.value); setAmount('') }}>
             <option value="Setup" disabled={r.setupFeePaid}>One-time setup fee{r.setupFeePaid ? ' (paid)' : ''}</option>
             <option value="Monthly">Monthly subscription</option>
           </select>
           {kind === 'Monthly' && (
             <label className="row" style={{ gap: 6 }}>
               <span className="muted" style={{ fontSize: 13 }}>Months</span>
-              <input type="number" min="1" value={months} onChange={(e) => { setMonths(e.target.value); setAmount('') }} style={{ width: 70 }} />
+              <input required type="number" min="1" max="36" step="1" inputMode="numeric" value={months} onChange={(e) => { setMonths(e.target.value); setAmount('') }} style={{ width: 70 }} />
             </label>
           )}
         </div>
         <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
           <label className="row" style={{ gap: 6 }}>
             <span className="muted" style={{ fontSize: 13 }}>Amount Rs</span>
-            <input type="number" value={amt} onChange={(e) => setAmount(e.target.value)} style={{ width: 120 }} />
+            <input required type="number" min="0" step="any" inputMode="decimal" value={amt} onChange={(e) => setAmount(e.target.value)} style={{ width: 120 }} />
           </label>
-          <input placeholder="Note (bank ref, JazzCash id…)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+          <input aria-label="Note (optional)" maxLength={200} placeholder="Note: bank ref, JazzCash id… (optional)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
         </div>
         {kind === 'Monthly' && <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Extends the paid-through date by {Number(months) || 1} {(Number(months) || 1) === 1 ? 'month' : 'months'} and unlocks the restaurant.</div>}
-        {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
+        {err && <div role="alert" style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
         <div className="row" style={{ gap: 8 }}>
           <button onClick={onClose}>Cancel</button>
-          <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || amt <= 0} onClick={save}>{busy ? 'Saving…' : `Record ${money(amt)}`}</button>
+          {!(amt > 0) && !busy && <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>Enter the amount first.</span>}
+          <button className="green" style={{ marginLeft: amt > 0 ? 'auto' : 0 }} disabled={busy || !(amt > 0)} onClick={save}>{busy ? 'Saving…' : `Record ${money(amt)}`}</button>
         </div>
 
         {hist.length > 0 && (

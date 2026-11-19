@@ -7,6 +7,7 @@ import { friendlyError } from '../errors'
 import { PasswordInput } from '../forms.jsx'
 import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon, LocateIcon } from '../icons.jsx'
 import MapView, { myLocation } from '../MapView.jsx'
+import { usernameProblem } from '../phone.js'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -32,6 +33,15 @@ const PERM_FEATURE = {
   'orders.discount': 'billing', 'customers.manage': 'billing', 'payroll.manage': 'reports',
 }
 const permInPlan = (perm) => { const f = PERM_FEATURE[perm]; return !f || auth.hasFeature(f) }
+
+// 0 to 100, as the server allows. Blank is fine unless the box must be filled.
+const isPercent = (v, required) => {
+  if (v === '' || v == null) return !required
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 && n <= 100
+}
+// A whole number above 0, or blank (for optional ids like an FBR POS ID).
+const isPosIdOrBlank = (v) => v === '' || v == null || (/^\d+$/.test(String(v).trim()) && Number(v) > 0)
 
 // Owner/manager settings, grouped into tabs so related settings sit together
 // instead of one long, confusing list.
@@ -95,11 +105,14 @@ function AccountSettings() {
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="row between"><b>Your account</b><span className="muted" style={{ fontSize: 13 }}>{staff?.displayName} · {roleLabel(staff?.role)}</span></div>
       <p className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>Change your own password.</p>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <PasswordInput placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
-        <PasswordInput placeholder="New password (6+)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
-        <button className="primary" disabled={busy || !cur || nw.length < 6} onClick={save}>{msg || 'Update password'}</button>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>Current password</span>
+          <PasswordInput required autoComplete="current-password" maxLength={200} value={cur} onChange={(e) => setCur(e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>New password</span>
+          <PasswordInput required autoComplete="new-password" maxLength={200} placeholder="6 or more characters" value={nw} onChange={(e) => setNw(e.target.value)} /></label>
+        <button className="primary" disabled={busy || !cur || nw.length < 6} onClick={save}>{busy ? 'Saving…' : msg || 'Update password'}</button>
       </div>
+      {!busy && !msg && (!cur || nw.length < 6) && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{!cur ? 'Enter your current password first.' : 'The new password needs 6 or more characters.'}</div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
@@ -118,7 +131,24 @@ function BillingSettings() {
   const set = (k, v) => setS((x) => ({ ...x, [k]: v }))
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 1500) }
 
+  // The same limits the server holds. A wrong number is stopped here with a reason, never changed quietly.
+  const problem = () => {
+    if (s.taxEnabled) {
+      if ((s.taxName || '').trim().length > 40) return 'Tax name must be 40 characters or fewer.'
+      if (!isPercent(s.taxPercent, true)) return 'Tax % must be between 0 and 100.'
+      if (!isPercent(s.taxPercentCard, false)) return 'Card tax % must be between 0 and 100.'
+    }
+    if (!isPercent(s.serviceChargePercent, false)) return 'Service charge % must be between 0 and 100.'
+    if (s.discountEnabled) {
+      const d = Number(s.discountValue || 0)
+      if (!Number.isFinite(d) || d < 0) return "Discount can't be negative."
+      if (s.discountIsPercent && d > 100) return 'Discount % must be between 0 and 100.'
+    }
+    return ''
+  }
   const save = async () => {
+    const why = problem()
+    if (why) { setErr(why); return }
     setErr(''); setBusy(true)
     try {
       await api.setBillingSettings({
@@ -145,16 +175,21 @@ function BillingSettings() {
           <Toggle label="Charge Tax / GST" checked={s.taxEnabled} onChange={(v) => set('taxEnabled', v)} />
           {s.taxEnabled && (
             <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              <label className="fld"><span>Tax name</span>
-                <input value={s.taxName || ''} placeholder="GST" onChange={(e) => set('taxName', e.target.value)} /></label>
+              <label className="fld"><span>Tax name <span className="opt">(optional)</span></span>
+                <input value={s.taxName || ''} placeholder="GST" maxLength={40} onChange={(e) => set('taxName', e.target.value)} /></label>
               <label className="fld"><span>Rate %</span>
-                <input type="number" min="0" max="100" step="0.01" value={s.taxPercent} onChange={(e) => set('taxPercent', e.target.value)} /></label>
-              <label className="fld"><span>Card rate %</span>
-                <input type="number" min="0" max="100" step="0.01" placeholder="Same" value={s.taxPercentCard ?? ''} onChange={(e) => set('taxPercentCard', e.target.value)} /></label>
-              <label className="fld"><span>Service %</span>
-                <input type="number" min="0" max="100" step="0.01" value={s.serviceChargePercent} onChange={(e) => set('serviceChargePercent', e.target.value)} /></label>
+                <input type="number" required min="0" max="100" step="0.01" inputMode="decimal" value={s.taxPercent} onChange={(e) => set('taxPercent', e.target.value)} /></label>
+              <label className="fld"><span>Card rate % <span className="opt">(optional)</span></span>
+                <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Same" value={s.taxPercentCard ?? ''} onChange={(e) => set('taxPercentCard', e.target.value)} /></label>
             </div>
           )}
+        </div>
+
+        {/* Service charge: its own setting, so it can be on while tax is off */}
+        <div className="set-block">
+          <label className="fld"><span>Service charge % (dine-in)</span>
+            <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="0" value={s.serviceChargePercent ?? ''} onChange={(e) => set('serviceChargePercent', e.target.value)} style={{ maxWidth: 160 }} /></label>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Added to dine-in bills only. 0 means no service charge.</div>
         </div>
 
         {/* Discount */}
@@ -168,7 +203,7 @@ function BillingSettings() {
                   <option value="fixed">Fixed ({s.currency || 'Rs'})</option>
                 </select></label>
               <label className="fld"><span>{s.discountIsPercent ? 'Percent %' : `Amount (${s.currency || 'Rs'})`}</span>
-                <input type="number" min="0" step="0.01" value={s.discountValue} onChange={(e) => set('discountValue', e.target.value)} /></label>
+                <input type="number" required min="0" max={s.discountIsPercent ? 100 : undefined} step="0.01" inputMode="decimal" value={s.discountValue} onChange={(e) => set('discountValue', e.target.value)} /></label>
             </div>
           )}
         </div>
@@ -260,13 +295,13 @@ function ReceiptSettings() {
 
         <div className="brand-fields">
           <label className="fld">
-            <span className="muted" style={{ fontSize: 13 }}>Header: address, phone, tagline</span>
-            <textarea rows={2} placeholder={`${s.restaurantName || 'Your restaurant'}\nMain Boulevard, Lahore · 042-000000`}
+            <span className="muted" style={{ fontSize: 13 }}>Header: address, phone, tagline <span className="opt">(optional)</span></span>
+            <textarea rows={2} maxLength={500} placeholder={`${s.restaurantName || 'Your restaurant'}\nMain Boulevard, Lahore · 042-000000`}
               value={s.receiptHeader || ''} onChange={(e) => set('receiptHeader', e.target.value)} />
           </label>
           <label className="fld">
-            <span className="muted" style={{ fontSize: 13 }}>Footer: thank-you or policy note</span>
-            <textarea rows={2} placeholder="Thank you, please come again!"
+            <span className="muted" style={{ fontSize: 13 }}>Footer: thank-you or policy note <span className="opt">(optional)</span></span>
+            <textarea rows={2} maxLength={500} placeholder="Thank you, please come again!"
               value={s.receiptFooter || ''} onChange={(e) => set('receiptFooter', e.target.value)} />
           </label>
           <div className="row" style={{ gap: 8 }}>
@@ -286,9 +321,10 @@ function ServiceSettings() {
   useEffect(() => { api.getServiceSettings().then(setS).catch(() => {}) }, [])
   if (!s) return null
   const save = async (val) => {
-    setS({ waiterAutoAssign: val })
+    const before = s
+    setS({ ...s, waiterAutoAssign: val })
     try { await api.setServiceSettings({ waiterAutoAssign: val }); setMsg('Saved'); setTimeout(() => setMsg(''), 1200) }
-    catch (e) { ui.alert(e.message) }
+    catch (e) { setS(before); toast.error(friendlyError(e)) }   // put the choice back: it wasn't saved
   }
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -313,18 +349,24 @@ function PickupSettings() {
   const [fee, setFee] = useState('')
   const [note, setNote] = useState('')
   const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [feeErr, setFeeErr] = useState('')
   useEffect(() => {
     api.getServiceSettings().then((x) => { setS(x); setFee(String(x.deliveryFee ?? 0)); setNote(x.deliveryNote || '') }).catch(() => {})
   }, [])
   if (!s) return null
   const save = async (changes) => {
+    const before = s
     setS((x) => ({ ...x, ...changes }))
+    setBusy(true)
     try { await api.setServiceSettings(changes); setMsg('Saved'); setTimeout(() => setMsg(''), 1200) }
-    catch (e) { ui.alert(e.message) }
+    catch (e) { setS(before); toast.error(friendlyError(e)) }   // the boxes go back to what is really saved
+    setBusy(false)
   }
   const saveDelivery = () => {
     const n = Number(fee)
-    if (!Number.isFinite(n) || n < 0) return ui.alert('Enter the delivery charge in rupees (0 for free delivery).')
+    if (fee.trim() === '' || !Number.isFinite(n) || n < 0 || n > 100000) { setFeeErr('Enter the delivery charge in rupees, 0 to 100,000 (0 means free delivery).'); return }
+    setFeeErr('')
     save({ deliveryFee: n, deliveryNote: note.trim() })
   }
   return (
@@ -337,22 +379,25 @@ function PickupSettings() {
         Print it from <Link to="/owner">Table QR codes</Link>.
       </p>
       <label className="row" style={{ gap: 8, marginBottom: 8, cursor: 'pointer' }}>
-        <input type="checkbox" disabled={!s.pickupInPlan} checked={s.guestTakeaway} onChange={(e) => save({ guestTakeaway: e.target.checked })} />
+        <input type="checkbox" disabled={!s.pickupInPlan || busy} checked={s.guestTakeaway} onChange={(e) => save({ guestTakeaway: e.target.checked })} />
         <span><b>Takeaway:</b> customers order ahead and collect it ready.</span>
       </label>
       <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
-        <input type="checkbox" disabled={!s.pickupInPlan} checked={s.guestDelivery} onChange={(e) => save({ guestDelivery: e.target.checked })} />
+        <input type="checkbox" disabled={!s.pickupInPlan || busy} checked={s.guestDelivery} onChange={(e) => save({ guestDelivery: e.target.checked })} />
         <span><b>Delivery:</b> customers give their address; you send a rider.</span>
       </label>
       {s.guestDelivery && (
         <div className="row" style={{ gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ flex: '0 0 150px' }}><span className="muted" style={{ fontSize: 12.5 }}>Delivery charge (Rs)</span>
-            <input type="number" min="0" step="10" value={fee} onChange={(e) => setFee(e.target.value)} /></label>
-          <label style={{ flex: '1 1 240px' }}><span className="muted" style={{ fontSize: 12.5 }}>Note for customers</span>
+          <label className="fld" style={{ flex: '0 0 150px' }}><span style={{ fontSize: 12.5 }}>Delivery charge (Rs)</span>
+            <input type="number" required min="0" max="100000" step="10" inputMode="numeric" value={fee}
+              className={feeErr ? 'invalid' : undefined} aria-invalid={feeErr ? true : undefined}
+              onChange={(e) => { setFee(e.target.value); setFeeErr('') }} /></label>
+          <label className="fld" style={{ flex: '1 1 240px' }}><span style={{ fontSize: 12.5 }}>Note for customers <span className="opt">(optional)</span></span>
             <input value={note} maxLength={120} onChange={(e) => setNote(e.target.value)} placeholder="Within 5 km · about 45 minutes" /></label>
-          <button className="primary" onClick={saveDelivery}>Save</button>
+          <button className="primary" disabled={busy} onClick={saveDelivery}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       )}
+      {feeErr && <div className="field-error" role="alert">{feeErr}</div>}
       {s.pickupInPlan && <ShopLocation s={s} save={save} />}
     </div>
   )
@@ -370,10 +415,12 @@ function ShopLocation({ s, save }) {
     try { setAt(await myLocation()) } catch (e) { ui.alert(e.message) }
     setBusy(false)
   }
-  const saveAll = () => {
+  const saveAll = async () => {
     const r = Number(km)
-    if (!Number.isFinite(r) || r < 0 || r > 100) return ui.alert('The delivery area is in km, from 0 (no limit) to 100.')
-    save({ ...(at ? { latitude: +at.lat.toFixed(6), longitude: +at.lng.toFixed(6) } : {}), deliveryRadiusKm: r })
+    if (km.trim() === '' || !Number.isFinite(r) || r < 0 || r > 100) return ui.alert('The delivery area is in km, from 0 (no limit) to 100.')
+    setBusy(true)
+    await save({ ...(at ? { latitude: +at.lat.toFixed(6), longitude: +at.lng.toFixed(6) } : {}), deliveryRadiusKm: r })
+    setBusy(false)
   }
   return (
     <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
@@ -387,9 +434,9 @@ function ShopLocation({ s, save }) {
       <MapView height={240} center={[30.3753, 69.3451]} area={at && Number(km) > 0 ? { ...at, km: Number(km) } : null}
         pick={{ ...(at || { lat: NaN, lng: NaN }), kind: 'shop', label: 'Your restaurant', onMove: (p) => setAt({ lat: p.lat, lng: p.lng }) }} />
       <div className="row" style={{ gap: 10, marginTop: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ flex: '0 0 190px' }}><span className="muted" style={{ fontSize: 12.5 }}>Deliver within (km, 0 = no limit)</span>
-          <input type="number" min="0" max="100" step="0.5" value={km} onChange={(e) => setKm(e.target.value)} /></label>
-        <button className="primary" disabled={!dirty && Number(km) === Number(s.deliveryRadiusKm || 0)} onClick={saveAll}>Save location</button>
+        <label className="fld" style={{ flex: '0 0 190px' }}><span style={{ fontSize: 12.5 }}>Deliver within (km, 0 = no limit)</span>
+          <input type="number" required min="0" max="100" step="0.5" inputMode="decimal" value={km} onChange={(e) => setKm(e.target.value)} /></label>
+        <button className="primary" disabled={busy || (!dirty && Number(km) === Number(s.deliveryRadiusKm || 0))} onClick={saveAll}>{busy ? 'Saving…' : 'Save location'}</button>
         {at && <span className="muted" style={{ fontSize: 12.5 }}>{at.lat.toFixed(5)}, {at.lng.toFixed(5)}</span>}
       </div>
     </div>
@@ -402,17 +449,21 @@ function FbrSettings() {
   const [s, setS] = useState(null)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
   const load = () => api.getFbrSettings().then(setS).catch((e) => setErr(e.message))
   useEffect(() => { load() }, [])
   if (!s) return null
 
   const set = (k, v) => setS((x) => ({ ...x, [k]: v }))
   const save = async () => {
-    setErr(''); setMsg('')
+    if (!/^[0-9 -]*$/.test(s.ntn || '')) return setErr('NTN can only have numbers and dashes.')
+    if (!/^[0-9 -]*$/.test(s.strn || '')) return setErr('STRN can only have numbers and dashes.')
+    setErr(''); setMsg(''); setBusy(true)
     try {
-      await api.setFbrSettings({ fbrEnabled: s.fbrEnabled, businessName: s.businessName, ntn: s.ntn, strn: s.strn })
+      await api.setFbrSettings({ fbrEnabled: s.fbrEnabled, businessName: (s.businessName || '').trim(), ntn: (s.ntn || '').trim(), strn: (s.strn || '').trim() })
       setMsg('Saved.'); setTimeout(() => setMsg(''), 1500)
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
 
   return (
@@ -430,12 +481,16 @@ function FbrSettings() {
         <input type="checkbox" disabled={!s.featureFbr} checked={s.fbrEnabled} onChange={(e) => set('fbrEnabled', e.target.checked)} />
         <span>Sync invoices with FBR</span>
       </label>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <input placeholder="Registered business name" value={s.businessName || ''} onChange={(e) => set('businessName', e.target.value)} style={{ flex: 2, minWidth: 180 }} />
-        <input placeholder="NTN" value={s.ntn || ''} onChange={(e) => set('ntn', e.target.value)} style={{ flex: 1, minWidth: 110 }} />
-        <input placeholder="STRN" value={s.strn || ''} onChange={(e) => set('strn', e.target.value)} style={{ flex: 1, minWidth: 110 }} />
-        <button className="primary" disabled={!s.featureFbr} onClick={save}>{msg || 'Save'}</button>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ flex: 2, minWidth: 180 }}><span>Registered business name <span className="opt">(optional)</span></span>
+          <input maxLength={150} value={s.businessName || ''} onChange={(e) => set('businessName', e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 110 }}><span>NTN <span className="opt">(optional)</span></span>
+          <input maxLength={15} inputMode="numeric" placeholder="1234567-8" value={s.ntn || ''} onChange={(e) => set('ntn', e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 110 }}><span>STRN <span className="opt">(optional)</span></span>
+          <input maxLength={20} inputMode="numeric" value={s.strn || ''} onChange={(e) => set('strn', e.target.value)} /></label>
+        <button className="primary" disabled={!s.featureFbr || busy} onClick={save}>{busy ? 'Saving…' : msg || 'Save'}</button>
       </div>
+      {!s.featureFbr && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Save is off because FBR isn't in your plan.</div>}
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
@@ -454,10 +509,13 @@ function Branches() {
   }
   useEffect(() => { load() }, [])
 
+  const [busy, setBusy] = useState(false)
   const add = async () => {
-    setErr('')
+    if (busy) return
+    setErr(''); setBusy(true)
     try { await api.addBranch({ name: f.name.trim(), address: f.address.trim(), isActive: true }); setF({ name: '', address: '' }); load() }
-    catch (e) { setErr(e.message) }
+    catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
   const del = async (b) => { if (await ui.confirm({ title: 'Delete branch', message: `Delete branch "${b.name}"?`, confirmText: 'Delete', danger: true })) { try { await api.deleteBranch(b.id); load() } catch (e) { ui.alert(e.message) } } }
 
@@ -486,10 +544,12 @@ function Branches() {
         </div>
       ))}
       <div className="cat-title" style={{ fontSize: 13, margin: '10px 0 6px' }}>Add branch</div>
-      <div className="row" style={{ gap: 8 }}>
-        <input placeholder="Branch name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={{ flex: 1 }} />
-        <input placeholder="Address" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} style={{ flex: 1 }} />
-        <button className="primary" disabled={!f.name.trim()} onClick={add}><PlusIcon /> Add</button>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Branch name</span>
+          <input required maxLength={80} placeholder="e.g. Gulberg" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Address <span className="opt">(optional)</span></span>
+          <input maxLength={200} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
+        <button className="primary" disabled={busy || !f.name.trim()} onClick={add}><PlusIcon /> {busy ? 'Adding…' : 'Add'}</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -510,10 +570,12 @@ function BranchEdit({ b, onDone, onCancel }) {
   }
   return (
     <div className="edit-panel">
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <input autoFocus placeholder="Branch name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-        <input placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-        <button className="primary" disabled={busy || !name.trim()} onClick={save}>Save</button>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Branch name</span>
+          <input autoFocus required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Address <span className="opt">(optional)</span></span>
+          <input maxLength={200} value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+        <button className="primary" disabled={busy || !name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         <button disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
@@ -531,16 +593,19 @@ function BranchFbr({ b, onSaved }) {
     fbrStaticIp: b.fbrStaticIp || '', fbrEndpointOverride: b.fbrEndpointOverride || '',
   })
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
-    setErr('')
+    if (!isPosIdOrBlank(f.fbrPosId)) return setErr('POS ID must be a whole number above 0.')
+    setErr(''); setBusy(true)
     try {
       await api.updateBranch(b.id, {
-        ...f, fbrPosId: f.fbrPosId ? Number(f.fbrPosId) : null,
-        fbrToken: f.fbrToken || null, fbrEndpointOverride: f.fbrEndpointOverride || null,
+        ...f, fbrPosId: String(f.fbrPosId).trim() ? Number(f.fbrPosId) : null,
+        fbrToken: f.fbrToken.trim() || null, fbrStaticIp: f.fbrStaticIp.trim(), fbrEndpointOverride: f.fbrEndpointOverride.trim() || null,
       })
       onSaved()
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
 
   return (
@@ -558,10 +623,13 @@ function BranchFbr({ b, onSaved }) {
           <span style={{ fontSize: 13 }}>Sandbox (test)</span>
         </label>
       </div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <input placeholder="POSID (from FBR)" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 150 }} />
-        {f.fbrMode === 'Cloud' && <input placeholder="Bearer token" value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1, minWidth: 160 }} />}
-        {f.fbrMode === 'Cloud' && <input placeholder="Registered static IP" value={f.fbrStaticIp} onChange={(e) => set('fbrStaticIp', e.target.value)} style={{ width: 150 }} />}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'flex-end' }}>
+        <label className="fld" style={{ width: 150 }}><span>POS ID (from FBR)</span>
+          <input type="number" min="1" step="1" inputMode="numeric" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} /></label>
+        {f.fbrMode === 'Cloud' && <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>Bearer token</span>
+          <input maxLength={200} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} /></label>}
+        {f.fbrMode === 'Cloud' && <label className="fld" style={{ width: 150 }}><span>Registered static IP</span>
+          <input maxLength={45} inputMode="decimal" placeholder="203.0.113.10" value={f.fbrStaticIp} onChange={(e) => set('fbrStaticIp', e.target.value)} /></label>}
       </div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
         {f.fbrMode === 'Local'
@@ -569,7 +637,7 @@ function BranchFbr({ b, onSaved }) {
           : 'Cloud mode posts to FBR’s gateway with the token above; the static IP must be the one registered with FBR.'}
       </div>
       <div className="row" style={{ gap: 8 }}>
-        <button className="primary" onClick={save}>Save FBR settings</button>
+        <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save FBR settings'}</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -647,13 +715,19 @@ function Tables() {
   }
   useEffect(() => { load() }, [])
 
+  const [busy, setBusy] = useState(false)
   const add = async () => {
-    setErr('')
+    if (busy) return
+    // The code goes into the table's QR link, so no spaces or symbols.
+    if (!/^[A-Za-z0-9_-]+$/.test(code.trim())) return setErr('Table code can only have letters, numbers, dashes and underscores. No spaces.')
+    setErr(''); setBusy(true)
     try { await api.addTable(code.trim(), name.trim(), Number(branchId)); setCode(''); setName(''); load() }
-    catch (e) { setErr(e.message) }
+    catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
   const rename = async (t) => {
-    const name = await ui.prompt({ title: `Rename ${t.code}`, defaultValue: t.name, confirmText: 'Rename', required: true })
+    const name = await ui.prompt({ title: `Rename ${t.code}`, label: 'Table name', defaultValue: t.name, confirmText: 'Rename',
+      required: true, requiredMessage: 'Enter a table name.', maxLength: 60 })
     if (name && name !== t.name) { try { await api.updateTable(t.id, t.code, name, t.branchId); load() } catch (e) { toast.error(friendlyError(e)) } }
   }
   const moveBranch = async (t, bid) => { try { await api.updateTable(t.id, t.code, t.name, Number(bid)); load() } catch (e) { toast.error(friendlyError(e)) } }
@@ -682,15 +756,18 @@ function Tables() {
         ))}
         {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No tables yet.</div>}
       </div>
-      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <input placeholder="Code (T7)" value={code} onChange={(e) => setCode(e.target.value)} style={{ width: 90 }} />
-        <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 100 }} />
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ width: 110 }}><span>Code</span>
+          <input required maxLength={20} placeholder="T7" autoCapitalize="characters" spellCheck="false" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 120 }}><span>Name</span>
+          <input required maxLength={60} placeholder="Table 7" value={name} onChange={(e) => setName(e.target.value)} /></label>
         {branches.length > 1 && (
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          <label className="fld"><span>Branch</span>
+            <select required value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select></label>
         )}
-        <button className="primary" disabled={!code.trim() || !name.trim()} onClick={add}><PlusIcon /> Add</button>
+        <button className="primary" disabled={busy || !code.trim() || !name.trim()} onClick={add}><PlusIcon /> {busy ? 'Adding…' : 'Add'}</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
@@ -710,18 +787,26 @@ function Staff() {
   useEffect(() => { load() }, [])
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }))
 
+  const [busy, setBusy] = useState(false)
   const add = async () => {
-    setErr('')
+    if (busy) return
+    const why = usernameProblem(f.username) || (f.password.length < 6 ? 'Password must be at least 6 characters.' : '')
+      || (isPosIdOrBlank(f.fbrPosId) ? '' : 'POS ID must be a whole number above 0.')
+    if (why) return setErr(why)
+    setErr(''); setBusy(true)
     try {
       await api.addStaff({
         username: f.username.trim(), displayName: f.displayName.trim(), role: f.role, password: f.password,
-        fbrPosId: f.fbrPosId ? Number(f.fbrPosId) : null, fbrToken: f.fbrToken || null,
+        fbrPosId: String(f.fbrPosId).trim() ? Number(f.fbrPosId) : null, fbrToken: f.fbrToken.trim() || null,
       })
       setF({ username: '', displayName: '', role: 'Cashier', password: '', fbrPosId: '', fbrToken: '' }); load()
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
   const resetPw = async (s) => {
-    const pw = await ui.prompt({ title: `New password for ${s.username}`, placeholder: 'New password (6+ characters)', confirmText: 'Update', required: true })
+    const pw = await ui.prompt({ title: `New password for ${s.username}`, label: 'New password', type: 'password', placeholder: '6 or more characters',
+      confirmText: 'Update', required: true, requiredMessage: 'Enter a new password.', maxLength: 200,
+      validate: (v) => (v.length < 6 ? 'Password must be at least 6 characters.' : '') })
     if (pw) {
       try { await api.resetStaffPassword(s.id, pw); toast.success('Password updated.') }
       catch (e) { toast.error(friendlyError(e)) }
@@ -756,21 +841,30 @@ function Staff() {
         {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No staff yet.</div>}
       </div>
       <div className="cat-title" style={{ fontSize: 13, margin: '6px 0' }}>Add staff</div>
-      <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-        <input placeholder="Their name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1 }} />
-        <input placeholder="Mobile number or username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1 }} autoCapitalize="none" spellCheck="false" />
+      <div className="row" style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Their name</span>
+          <input required maxLength={60} value={f.displayName} onChange={(e) => set('displayName', e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 140 }}><span>Mobile number or username</span>
+          <input required maxLength={60} placeholder="03xx xxxxxxx" value={f.username} onChange={(e) => set('username', e.target.value)} autoCapitalize="none" spellCheck="false" /></label>
       </div>
-      <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
-        <PasswordInput placeholder="Password (6+ characters)" value={f.password} onChange={(e) => set('password', e.target.value)} style={{ flex: 1 }} />
+      <div className="row" style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+        <label className="fld"><span>Role</span>
+          <select required value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select></label>
+        <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>Password</span>
+          <PasswordInput required maxLength={200} autoComplete="new-password" placeholder="6 or more characters" value={f.password} onChange={(e) => set('password', e.target.value)} /></label>
       </div>
       {fbrOn && (
-        <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-          <input placeholder="FBR POSID (optional)" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 150 }} />
-          <input placeholder="FBR token (cloud, optional)" value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1 }} />
+        <div className="row" style={{ gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+          <label className="fld" style={{ width: 150 }}><span>FBR POS ID <span className="opt">(optional)</span></span>
+            <input type="number" min="1" step="1" inputMode="numeric" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} /></label>
+          <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>FBR token <span className="opt">(cloud, optional)</span></span>
+            <input maxLength={200} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} /></label>
         </div>
       )}
-      <div className="row"><button className="primary" style={{ marginLeft: 'auto' }} disabled={!f.username.trim() || !f.displayName.trim() || !f.password} onClick={add}><PlusIcon /> Add member</button></div>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        {!busy && (!f.username.trim() || !f.displayName.trim() || !f.password) && <span className="muted" style={{ fontSize: 12 }}>Fill in the name, username and password to add them.</span>}
+        <button className="primary" style={{ marginLeft: 'auto' }} disabled={busy || !f.username.trim() || !f.displayName.trim() || !f.password} onClick={add}><PlusIcon /> {busy ? 'Adding…' : 'Add member'}</button>
+      </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
     </div>
   )
@@ -784,11 +878,13 @@ function StaffEdit({ s, fbrOn, onDone, onCancel }) {
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
+    const why = usernameProblem(f.username) || (isPosIdOrBlank(f.fbrPosId) ? '' : 'POS ID must be a whole number above 0.')
+    if (why) return setErr(why)
     setErr(''); setBusy(true)
     try {
       await api.updateStaff(s.id, {
         username: f.username.trim(), displayName: f.displayName.trim(), role: f.role,
-        fbrPosId: f.fbrPosId ? Number(f.fbrPosId) : null,
+        fbrPosId: String(f.fbrPosId).trim() ? Number(f.fbrPosId) : null,
         ...(f.fbrToken !== '' ? { fbrToken: f.fbrToken } : {}),   // blank = keep token
       })
       onDone()
@@ -796,19 +892,24 @@ function StaffEdit({ s, fbrOn, onDone, onCancel }) {
   }
   return (
     <div className="edit-panel">
-      <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <input autoFocus placeholder="Their name" value={f.displayName} onChange={(e) => set('displayName', e.target.value)} style={{ flex: 1, minWidth: 130 }} />
-        <input placeholder="Mobile number or username" value={f.username} onChange={(e) => set('username', e.target.value)} style={{ flex: 1, minWidth: 130 }} autoCapitalize="none" spellCheck="false" />
-        <select value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
+      <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label className="fld" style={{ flex: 1, minWidth: 130 }}><span>Their name</span>
+          <input autoFocus required maxLength={60} value={f.displayName} onChange={(e) => set('displayName', e.target.value)} /></label>
+        <label className="fld" style={{ flex: 1, minWidth: 130 }}><span>Mobile number or username</span>
+          <input required maxLength={60} value={f.username} onChange={(e) => set('username', e.target.value)} autoCapitalize="none" spellCheck="false" /></label>
+        <label className="fld"><span>Role</span>
+          <select required value={f.role} onChange={(e) => set('role', e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</select></label>
       </div>
       {fbrOn && (
         <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <input placeholder="FBR POSID" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} style={{ width: 130 }} />
-          <input placeholder={s.hasFbrToken ? 'Token set. Type to change' : 'FBR token (cloud)'} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} style={{ flex: 1, minWidth: 150 }} />
+          <label className="fld" style={{ width: 130 }}><span>FBR POS ID <span className="opt">(optional)</span></span>
+            <input type="number" min="1" step="1" inputMode="numeric" value={f.fbrPosId} onChange={(e) => set('fbrPosId', e.target.value)} /></label>
+          <label className="fld" style={{ flex: 1, minWidth: 150 }}><span>FBR token <span className="opt">(optional)</span></span>
+            <input maxLength={200} placeholder={s.hasFbrToken ? 'Token set. Type to change' : 'Cloud mode only'} value={f.fbrToken} onChange={(e) => set('fbrToken', e.target.value)} /></label>
         </div>
       )}
       <div className="row" style={{ gap: 8 }}>
-        <button className="primary" disabled={busy || !f.username.trim() || !f.displayName.trim()} onClick={save}>Save changes</button>
+        <button className="primary" disabled={busy || !f.username.trim() || !f.displayName.trim()} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>
         <button disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}

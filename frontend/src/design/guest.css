@@ -146,6 +146,7 @@
 .gm-step { display: inline-flex; align-items: center; background: var(--accent); color: #fff; border-radius: 99px; box-shadow: 0 4px 12px rgba(132, 17, 58, .35); }
 .gm-step button { width: 33px; height: 33px; padding: 0; border: 0; background: transparent; color: #fff; font-size: 20px; line-height: 1; border-radius: 50%; box-shadow: none; }
 .gm-step button:hover { background: rgba(255,255,255,.14); box-shadow: none; }
+.gm-step button:disabled { opacity: .4; cursor: not-allowed; background: transparent; }
 .gm-step b { min-width: 16px; text-align: center; font-size: 14.5px; }
 .gm-step-n { display: inline-block; animation: gm-flip .32s var(--ease); }
 @keyframes gm-flip { from { transform: rotateX(-90deg); opacity: 0; } }

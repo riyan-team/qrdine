@@ -1,9 +1,10 @@
 namespace QrDine.Application.Menu.Dtos;
 
 public record RestaurantDto(string Slug, string Name, string Currency, FeaturesDto Features, string LogoUrl = "", PickupDto? Pickup = null);
-/// <summary>What the restaurant's takeaway/delivery QR offers a guest.</summary>
+/// <summary>What the restaurant's takeaway/delivery QR offers a guest. TaxOnBill: tax is added when the bill
+/// is made, so the cart shows a subtotal, not the final total.</summary>
 public record PickupDto(bool Takeaway, bool Delivery, decimal DeliveryFee, string DeliveryNote,
-    double? ShopLat = null, double? ShopLng = null, decimal RadiusKm = 0);
+    double? ShopLat = null, double? ShopLng = null, decimal RadiusKm = 0, bool TaxOnBill = false);
 public record FeaturesDto(bool Ordering, bool Kitchen, bool Waiter, bool Billing);
 
 public record MenuDto(RestaurantDto Restaurant, IReadOnlyList<MenuCategoryDto> Menu);

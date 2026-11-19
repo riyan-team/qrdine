@@ -28,16 +28,25 @@ export default function Inventory() {
     api.getBillingSettings().then((s) => setRecipesOn(!!s.stockTrackingEnabled)).catch(() => {})
   }, [])
 
+  const [busy, setBusy] = useState(false)
   const add = async () => {
-    setErr('')
+    if (busy) return
+    const q = Number(ns.quantity || 0), low = Number(ns.lowThreshold || 0)
+    if (!ns.unit.trim()) return setErr('Enter the unit, like kg or pcs.')
+    if (!Number.isFinite(q) || q < 0) return setErr("Quantity can't be negative.")
+    if (!Number.isFinite(low) || low < 0) return setErr("The low-stock alert can't be negative.")
+    setErr(''); setBusy(true)
     try {
-      await api.addStock({ name: ns.name.trim(), unit: ns.unit.trim(), quantity: Number(ns.quantity) || 0, lowThreshold: Number(ns.lowThreshold) || 0 })
+      await api.addStock({ name: ns.name.trim(), unit: ns.unit.trim(), quantity: q, lowThreshold: low })
       setNs({ name: '', unit: 'kg', quantity: '', lowThreshold: '' }); load()
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
-  const restock = async (s) => { const q = await ui.prompt({ title: `Add stock: ${s.name}`, placeholder: s.unit, confirmText: 'Add', required: true }); if (q && Number(q) > 0) { try { await api.restock(s.id, Number(q), 'Manual restock'); load() } catch (e) { toast.error(friendlyError(e)) } } }
-  const adjust = async (s) => { const q = await ui.prompt({ title: `Set count: ${s.name}`, defaultValue: String(s.quantity), placeholder: s.unit, confirmText: 'Set' }); if (q != null && Number(q) >= 0) { try { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } catch (e) { toast.error(friendlyError(e)) } } }
-  const editThreshold = async (s) => { const q = await ui.prompt({ title: `Low-stock alert: ${s.name}`, defaultValue: String(s.lowThreshold), placeholder: s.unit, confirmText: 'Save' }); if (q != null) { try { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) || 0 }); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  // Every amount box asks for a number and says what's wrong, instead of doing nothing.
+  const amount = (s, extra) => ({ type: 'number', inputMode: 'decimal', label: `Amount (${s.unit})`, required: true, requiredMessage: 'Enter an amount.', ...extra })
+  const restock = async (s) => { const q = await ui.prompt({ title: `Add stock: ${s.name}`, placeholder: s.unit, confirmText: 'Add', ...amount(s, { validate: (v) => (Number(v) > 0 ? '' : 'Enter how much came in.') }) }); if (q) { try { await api.restock(s.id, Number(q), 'Manual restock'); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  const adjust = async (s) => { const q = await ui.prompt({ title: `Set count: ${s.name}`, defaultValue: String(s.quantity), placeholder: s.unit, confirmText: 'Set', ...amount(s, { label: `Counted (${s.unit})`, min: 0 }) }); if (q != null) { try { await api.adjustStock(s.id, Number(q), 'Stock count'); load() } catch (e) { toast.error(friendlyError(e)) } } }
+  const editThreshold = async (s) => { const q = await ui.prompt({ title: `Low-stock alert: ${s.name}`, message: 'Warn me when stock falls to this amount. 0 turns the alert off.', defaultValue: String(s.lowThreshold), placeholder: s.unit, confirmText: 'Save', ...amount(s, { label: `Alert at (${s.unit})`, min: 0 }) }); if (q != null) { try { await api.updateStock(s.id, { name: s.name, unit: s.unit, quantity: s.quantity, lowThreshold: Number(q) }); load() } catch (e) { toast.error(friendlyError(e)) } } }
   const del = async (s) => { if (await ui.confirm({ title: 'Delete stock item', message: `Delete ${s.name}?`, confirmText: 'Delete', danger: true })) { try { await api.deleteStock(s.id); load() } catch (e) { toast.error(friendlyError(e)) } } }
 
   const lowCount = stock.filter((s) => s.isLow).length
@@ -84,14 +93,18 @@ export default function Inventory() {
             {stock.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No stock items yet.</div>}
           </div>
           <div className="cat-title" style={{ fontSize: 13, margin: '6px 0' }}>Add stock item</div>
-          <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-            <input placeholder="Name" value={ns.name} onChange={(e) => setNs({ ...ns, name: e.target.value })} style={{ flex: 2 }} />
-            <input placeholder="Unit" value={ns.unit} onChange={(e) => setNs({ ...ns, unit: e.target.value })} style={{ width: 70 }} />
+          <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
+            <label className="fld" style={{ flex: 2 }}><span>Name</span>
+              <input required maxLength={80} placeholder="e.g. Chicken" value={ns.name} onChange={(e) => setNs({ ...ns, name: e.target.value })} /></label>
+            <label className="fld" style={{ width: 80 }}><span>Unit</span>
+              <input required maxLength={20} value={ns.unit} onChange={(e) => setNs({ ...ns, unit: e.target.value })} style={{ minWidth: 0 }} /></label>
           </div>
-          <div className="row" style={{ gap: 8 }}>
-            <input type="number" placeholder="Qty" value={ns.quantity} onChange={(e) => setNs({ ...ns, quantity: e.target.value })} style={{ flex: 1 }} />
-            <input type="number" placeholder="Low at" value={ns.lowThreshold} onChange={(e) => setNs({ ...ns, lowThreshold: e.target.value })} style={{ flex: 1 }} />
-            <button className="primary" disabled={!ns.name.trim()} onClick={add}>Add</button>
+          <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+            <label className="fld" style={{ flex: 1 }}><span>In stock now <span className="opt">(optional)</span></span>
+              <input type="number" min="0" step="any" inputMode="decimal" placeholder="0" value={ns.quantity} onChange={(e) => setNs({ ...ns, quantity: e.target.value })} style={{ minWidth: 0 }} /></label>
+            <label className="fld" style={{ flex: 1 }}><span>Warn when at <span className="opt">(optional)</span></span>
+              <input type="number" min="0" step="any" inputMode="decimal" placeholder="0" value={ns.lowThreshold} onChange={(e) => setNs({ ...ns, lowThreshold: e.target.value })} style={{ minWidth: 0 }} /></label>
+            <button className="primary" disabled={busy || !ns.name.trim()} onClick={add}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
           {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{err}</div>}
         </div>
@@ -140,22 +153,26 @@ function WasteForm({ item, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const save = async () => {
+    if (busy) return
     setBusy(true); setErr('')
     try { await api.wasteStock(item.id, Number(qty), reason.trim()); onSaved() }
     catch (e) { setErr(friendlyError(e)); setBusy(false) }
   }
+  const missing = !(Number(qty) > 0) ? 'Enter how much was wasted.' : !reason.trim() ? 'Pick or type a reason.' : ''
   return (
     <Modal title={`Record waste: ${item.name}`} sub={`${item.quantity} ${item.unit} in stock. This shows on your stock report.`} onClose={onClose} footer={<>
       <button onClick={onClose}>Cancel</button>
-      <button className="primary push" disabled={busy || !(Number(qty) > 0) || !reason.trim()} onClick={save}>{busy ? 'Saving…' : 'Record'}</button>
+      {missing && !busy && <span className="muted" style={{ fontSize: 12 }}>{missing}</span>}
+      <button className="primary push" disabled={busy || !!missing} onClick={save}>{busy ? 'Saving…' : 'Record'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field is-full"><label className="field-label">How much ({item.unit})</label><input autoFocus type="number" min="0" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="waste-qty">How much ({item.unit})</label><input id="waste-qty" autoFocus required type="number" min="0" step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
       </div>
-      <div className="bo-chips" style={{ margin: '12px 0 8px' }}>
-        {WASTE_REASONS.map((r) => <button key={r} className={`bo-chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
+      <div className="field-label req" id="waste-reason-label" style={{ marginTop: 12 }}>Reason</div>
+      <div className="bo-chips" role="group" aria-labelledby="waste-reason-label" style={{ margin: '4px 0 8px' }}>
+        {WASTE_REASONS.map((r) => <button key={r} aria-pressed={reason === r} className={`bo-chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
       </div>
-      <input style={{ width: '100%' }} placeholder="Or type a reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <input style={{ width: '100%' }} aria-labelledby="waste-reason-label" maxLength={200} placeholder="Or type a reason" value={reason} onChange={(e) => setReason(e.target.value)} />
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
   )
@@ -171,10 +188,13 @@ function RecipeEditor({ item, stock, onClose }) {
   const add = () => setLines([...lines, { stockItemId: stock[0]?.id || 0, qtyPerServing: 1 }])
   const setLine = (i, k, v) => setLines(lines.map((l, n) => n === i ? { ...l, [k]: v } : l))
   const del = (i) => setLines(lines.filter((_, n) => n !== i))
+  const [err, setErr] = useState('')
   const save = async () => {
-    setBusy(true)
+    if (busy) return
+    if (lines.some((l) => !(Number(l.qtyPerServing) > 0))) return setErr('Each ingredient needs an amount above 0, or remove that line.')
+    setErr(''); setBusy(true)
     try { await api.setRecipe(item.id, lines.filter((l) => l.stockItemId && Number(l.qtyPerServing) > 0).map((l) => ({ stockItemId: Number(l.stockItemId), qtyPerServing: Number(l.qtyPerServing) }))); onClose() }
-    catch (e) { ui.alert(e.message) }
+    catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
 
@@ -186,18 +206,20 @@ function RecipeEditor({ item, stock, onClose }) {
         <div style={{ margin: '10px 0' }}>
           {lines.map((l, i) => (
             <div key={i} className="row" style={{ gap: 8, marginBottom: 6 }}>
-              <select value={l.stockItemId} onChange={(e) => setLine(i, 'stockItemId', e.target.value)} style={{ flex: 2 }}>
+              <select aria-label={`Ingredient ${i + 1}`} value={l.stockItemId} onChange={(e) => setLine(i, 'stockItemId', e.target.value)} style={{ flex: 2 }}>
                 {stock.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>)}
               </select>
-              <input type="number" value={l.qtyPerServing} onChange={(e) => setLine(i, 'qtyPerServing', e.target.value)} style={{ width: 90 }} />
-              <button className="ghost" onClick={() => del(i)}><CloseIcon size={15} /></button>
+              <input aria-label={`Amount per serving, ingredient ${i + 1}`} required type="number" min="0" step="any" inputMode="decimal" value={l.qtyPerServing} onChange={(e) => setLine(i, 'qtyPerServing', e.target.value)} style={{ width: 90 }} />
+              <button className="ghost" aria-label={`Remove ingredient ${i + 1}`} onClick={() => del(i)}><CloseIcon size={15} /></button>
             </div>
           ))}
+          {lines.length > 0 && <div className="muted" style={{ fontSize: 12 }}>The amount is per serving, in the ingredient's unit.</div>}
         </div>
         <button className="ghost" onClick={add} disabled={stock.length === 0}>+ ingredient</button>
+        {err && <div role="alert" style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{err}</div>}
         <div className="row" style={{ gap: 8, marginTop: 12 }}>
           <button onClick={onClose}>Cancel</button>
-          <button className="green" style={{ marginLeft: 'auto' }} disabled={busy} onClick={save}>Save recipe</button>
+          <button className="green" style={{ marginLeft: 'auto' }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save recipe'}</button>
         </div>
       </div>
     </div>

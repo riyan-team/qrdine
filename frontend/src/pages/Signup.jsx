@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getPlans, onboard } from '../api'
 import { auth } from '../auth'
+import { friendlyError } from '../errors.js'
 import DineInLogo from '../DineInLogo.jsx'
 import { Phone3D, PhoneScreen } from '../Diorama.jsx'
 import { ArrowLeftIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../icons.jsx'
@@ -104,7 +105,7 @@ export default function Signup() {
       setTimeout(() => nav('/admin/dashboard?welcome=1', { replace: true }), 600)
     } catch (err) {
       clearInterval(ticking)
-      const message = err.message || 'Could not create your restaurant. Please try again.'
+      const message = friendlyError(err)
       setDir('back')
       setStep(/mobile/i.test(message) ? STEPS.indexOf('you') : STEPS.indexOf('plan'))
       setError(message)
@@ -134,10 +135,11 @@ export default function Signup() {
             <form key={name} className={`su-card su-${dir}`} onSubmit={next} noValidate>
               {name === 'name' && (
                 <>
-                  <h1>What's your restaurant called?</h1>
+                  <h1><label htmlFor="su-restaurant">What's your restaurant called?</label></h1>
                   <p>This is what your guests will see at the top of the menu.</p>
-                  <input ref={input} className="su-big" value={f.restaurantName} onChange={set('restaurantName')}
-                    placeholder="Karachi Biryani House" maxLength={120} autoComplete="organization" />
+                  <input ref={input} id="su-restaurant" required className="su-big" value={f.restaurantName} onChange={set('restaurantName')}
+                    aria-invalid={!!error} aria-describedby={error ? 'su-error' : undefined}
+                    placeholder="e.g. Karachi Biryani House" maxLength={120} autoComplete="organization" />
                 </>
               )}
 
@@ -145,21 +147,23 @@ export default function Signup() {
                 <>
                   <h1>Good to meet you. Who's running {f.restaurantName.trim() || 'it'}?</h1>
                   <p>Your mobile number is how you'll sign in. We don't send anything to it.</p>
-                  <label className="au-field"><span>Your name</span>
-                    <input ref={input} value={f.ownerDisplayName} onChange={set('ownerDisplayName')} placeholder="Ahmed Raza" maxLength={60} autoComplete="name" />
+                  <label className="au-field" htmlFor="su-owner"><span>Your name</span>
+                    <input ref={input} id="su-owner" required value={f.ownerDisplayName} onChange={set('ownerDisplayName')} placeholder="e.g. Ahmed Raza" maxLength={60} autoComplete="name" />
                   </label>
-                  <label className="au-field"><span>Mobile number</span>
-                    <input value={f.mobile} onChange={set('mobile')} placeholder="0300 1234567" inputMode="tel" autoComplete="tel" />
+                  <label className="au-field" htmlFor="su-mobile"><span>Mobile number</span>
+                    <input id="su-mobile" required type="tel" value={f.mobile} onChange={set('mobile')} placeholder="e.g. 0300 1234567" inputMode="tel" maxLength={20} autoComplete="tel"
+                      aria-invalid={!!error} aria-describedby={error ? 'su-error' : undefined} />
                   </label>
                 </>
               )}
 
               {name === 'password' && (
                 <>
-                  <h1>Choose a password</h1>
-                  <p>At least 6 characters. You can change it any time in Settings.</p>
+                  <h1><label htmlFor="su-password">Choose a password</label></h1>
+                  <p id="su-pw-hint">At least 6 characters. You can change it any time in Settings.</p>
                   <div className="pw-wrap su-pw">
-                    <input ref={input} className="su-big" type={show ? 'text' : 'password'} value={f.password} onChange={set('password')}
+                    <input ref={input} id="su-password" required minLength={6} maxLength={200} className="su-big" type={show ? 'text' : 'password'} value={f.password} onChange={set('password')}
+                      aria-invalid={!!error} aria-describedby={error ? 'su-error su-pw-hint' : 'su-pw-hint'}
                       autoComplete="new-password" placeholder="Your password" />
                     <button type="button" className="pw-eye" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} tabIndex={-1}>
                       {show ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
@@ -206,7 +210,7 @@ export default function Signup() {
                 </div>
               )}
 
-              {error && <div className="au-error" role="alert">
+              {error && <div className="au-error" id="su-error" role="alert">
                 {error}{/already has an account/i.test(error) && <> <Link to="/login">Sign in</Link></>}
               </div>}
 

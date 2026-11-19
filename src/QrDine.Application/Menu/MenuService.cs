@@ -49,7 +49,7 @@ public class MenuService
         var dto = new RestaurantDto(r.Slug, r.Name, r.Currency,
             new FeaturesDto(r.FeatureOrdering, r.FeatureKitchen, r.FeatureWaiter, r.FeatureBilling), r.LogoUrl,
             new PickupDto(r.GuestTakeaway && PickupInPlan(r), r.GuestDelivery && PickupInPlan(r), r.DeliveryFee, r.DeliveryNote ?? "",
-                r.Latitude, r.Longitude, r.DeliveryRadiusKm));
+                r.Latitude, r.Longitude, r.DeliveryRadiusKm, r.TaxEnabled));
         return new MenuDto(dto, menu);
     }
 

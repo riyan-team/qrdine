@@ -104,6 +104,7 @@ function ExpenseForm({ expense, categories, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const save = async () => {
+    if (busy) return
     setBusy(true); setErr('')
     try {
       const body = { ...f, amount: Number(f.amount), branchId: expense.branchId ?? null }
@@ -114,19 +115,21 @@ function ExpenseForm({ expense, categories, onClose, onSaved }) {
   return (
     <Modal title={isNew ? 'Add expense' : 'Edit expense'} onClose={onClose} footer={<>
       <button onClick={onClose}>Cancel</button>
+      {!(Number(f.amount) > 0) && !busy && <span className="muted" style={{ fontSize: 12 }}>Enter the amount first.</span>}
       <button className="primary push" disabled={busy || !(Number(f.amount) > 0)} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
-      <div className="bo-chips" style={{ marginBottom: 12 }}>
-        {categories.map((c) => <button key={c} className={`bo-chip${f.category === c ? ' on' : ''}`} onClick={() => setF({ ...f, category: c })}>{c}</button>)}
+      <div className="field-label req" id="exp-cat-label">Category</div>
+      <div className="bo-chips" role="group" aria-labelledby="exp-cat-label" style={{ marginBottom: 12 }}>
+        {categories.map((c) => <button key={c} aria-pressed={f.category === c} className={`bo-chip${f.category === c ? ' on' : ''}`} onClick={() => setF({ ...f, category: c })}>{c}</button>)}
       </div>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Amount (Rs)</label><input autoFocus type="number" min="0" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
-        <div className="field"><label className="field-label">Date</label><input type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
-        <div className="field"><label className="field-label">Paid by</label>
-          <select value={f.paymentMethod} onChange={set('paymentMethod')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+        <div className="field"><label className="field-label" htmlFor="exp-amount">Amount (Rs)</label><input id="exp-amount" autoFocus required type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
+        <div className="field"><label className="field-label" htmlFor="exp-date">Date</label><input id="exp-date" required type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
+        <div className="field"><label className="field-label" htmlFor="exp-method">Paid by</label>
+          <select id="exp-method" value={f.paymentMethod} onChange={set('paymentMethod')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
         </div>
-        <div className="field"><label className="field-label">Paid to (optional)</label><input value={f.paidTo} onChange={set('paidTo')} /></div>
-        <div className="field is-full"><label className="field-label">Note (optional)</label><input value={f.note} onChange={set('note')} /></div>
+        <div className="field"><label className="field-label" htmlFor="exp-to">Paid to <span className="opt">(optional)</span></label><input id="exp-to" maxLength={120} value={f.paidTo} onChange={set('paidTo')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="exp-note">Note <span className="opt">(optional)</span></label><input id="exp-note" maxLength={300} value={f.note} onChange={set('note')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>

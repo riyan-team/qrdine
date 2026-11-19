@@ -236,6 +236,11 @@
 .no-step { display: inline-flex; align-items: center; gap: 2px; }
 .no-step button { width: 28px; height: 28px; padding: 0; border-radius: 8px; }
 .no-step b { min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; }
+/* Phone and tablet: a finger needs at least 36 x 36 px to hit the qty steppers and the remove cross. */
+@media (max-width: 1024px) {
+  .no-step button { width: 36px; height: 36px; }
+  .ts-line .ts-x { min-width: 36px; min-height: 36px; padding: 6px; display: inline-flex; align-items: center; justify-content: center; margin: -6px -4px -6px 0; }
+}
 .no-sum { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0; font-weight: 700; }
 .no-sum b { font-family: var(--display); font-size: 22px; font-weight: 600; }
 .qm-cats { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 4px; scrollbar-width: none; }

@@ -5,7 +5,8 @@ import { useHub } from '../useHub'
 import { loadUntilOk } from '../useStaffOrders'
 import { auth, isTicketCode, ticketLabel } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
-import { useCart, plusOrCustomize, cartToItems, needsCustomizing } from '../ordering.jsx'
+import { useCart, plusOrCustomize, cartToItems, needsCustomizing, MAX_QTY } from '../ordering.jsx'
+import { isPhone, PHONE_MESSAGE } from '../phone.js'
 import { ArrowLeftIcon, BagIcon, BellIcon, BikeIcon, CheckIcon, CloseIcon, ClockIcon, LocateIcon, PinIcon, SearchIcon, TruckIcon } from '../icons.jsx'
 import MapView, { kmBetween, myLocation } from '../MapView.jsx'
 import { DishPicture, FoodArt, foodKind, foodTone } from '../foodArt.jsx'
@@ -602,7 +603,7 @@ function AddControl({ it, cart, onPlus, small }) {
       <div className={'gm-step' + (small ? ' small' : '')} onClick={(e) => e.stopPropagation()}>
         <button onClick={stop(() => cart.changeQty(`${it.id}`, -1))} aria-label={`One less ${it.name}`}>−</button>
         <b key={qty} className="gm-step-n">{qty}</b>
-        <button onClick={stop((e) => onPlus(it, e))} aria-label={`One more ${it.name}`}>+</button>
+        <button disabled={qty >= MAX_QTY} title={qty >= MAX_QTY ? `Up to ${MAX_QTY} at a time` : undefined} onClick={stop((e) => onPlus(it, e))} aria-label={`One more ${it.name}`}>+</button>
       </div>
     )
   }
@@ -795,6 +796,7 @@ function CartSheet({ open, cart, note, setNote, placing, place, where, mode, pk,
     const how = { channel, name: details.name || '', phone: details.phone || '', address: details.address || '', lat: pin?.lat, lng: pin?.lng }
     if (!how.name.trim()) return setErr('Please enter your name.')
     if (digits(how.phone).length < 10) return setErr('Please enter your mobile number, so the restaurant can call you.')
+    if (!isPhone(how.phone)) return setErr(PHONE_MESSAGE)
     if (delivery && how.address.trim().length < 6) return setErr('Please enter the delivery address.')
     if (delivery && tooFar) return setErr(`That pin is ${km.toFixed(1)} km away. Delivery is within ${radius} km.`)
     return place(how)
@@ -830,7 +832,7 @@ function CartSheet({ open, cart, note, setNote, placing, place, where, mode, pk,
               <div className="gm-step">
                 <button onClick={() => cart.changeQty(x.sig, -1)} aria-label={`One less ${x.name}`}>−</button>
                 <b key={x.qty} className="gm-step-n">{x.qty}</b>
-                <button onClick={() => cart.changeQty(x.sig, +1)} aria-label={`One more ${x.name}`}>+</button>
+                <button disabled={x.qty >= MAX_QTY} title={x.qty >= MAX_QTY ? `Up to ${MAX_QTY} at a time` : undefined} onClick={() => cart.changeQty(x.sig, +1)} aria-label={`One more ${x.name}`}>+</button>
               </div>
             </div>
           ))}
@@ -872,12 +874,12 @@ function CartSheet({ open, cart, note, setNote, placing, place, where, mode, pk,
             )}
             {delivery && pk?.deliveryNote && <p className="gm-ways-note"><TruckIcon size={14} /> {pk.deliveryNote}</p>}
             <label className="gm-field"><span>Your name</span>
-              <input value={details.name || ''} onChange={set('name')} maxLength={60} autoComplete="name" placeholder="Name" /></label>
+              <input required value={details.name || ''} onChange={set('name')} maxLength={60} autoComplete="name" placeholder="Name" /></label>
             <label className="gm-field"><span>Mobile number</span>
-              <input value={details.phone || ''} onChange={set('phone')} maxLength={16} inputMode="tel" autoComplete="tel" placeholder="03xx xxxxxxx" /></label>
+              <input required type="tel" value={details.phone || ''} onChange={set('phone')} maxLength={16} inputMode="tel" autoComplete="tel" placeholder="03xx xxxxxxx" /></label>
             {delivery && (
               <label className="gm-field"><span>Delivery address</span>
-                <textarea value={details.address || ''} onChange={set('address')} maxLength={300} rows={2} autoComplete="street-address" placeholder="House, street, area, landmark" /></label>
+                <textarea required value={details.address || ''} onChange={set('address')} maxLength={300} rows={2} autoComplete="street-address" placeholder="House, street, area, landmark" /></label>
             )}
             {delivery && (
               <div className="gm-pin">
@@ -905,9 +907,10 @@ function CartSheet({ open, cart, note, setNote, placing, place, where, mode, pk,
       </div>
       <div className="gm-cart-foot">
         {fee > 0 && <div className="gm-subline"><span>Food {money(cart.total)}</span><span>Delivery {money(fee)}</span></div>}
-        <div className="gm-total"><span>Total</span><b>{money(cart.total + fee)}</b></div>
+        {/* With tax on, the bill adds it later, so this is not yet the final total. The sum itself is unchanged. */}
+        <div className="gm-total"><span>{pickup && pk?.taxOnBill ? 'Subtotal' : 'Total'}</span><b>{money(cart.total + fee)}</b></div>
         <small className="gm-total-note">{pickup
-          ? (delivery ? 'Pay the rider on delivery: cash, JazzCash or Easypaisa.' : 'Pay when you collect your order.')
+          ? (pk?.taxOnBill ? 'Tax is added on the bill. ' : '') + (delivery ? 'Pay the rider on delivery: cash, JazzCash or Easypaisa.' : 'Pay when you collect your order.')
           : mode === 'ticket' ? 'This is added to the same order.' : 'You pay at the end. Any tax or service charge shows on your bill.'}</small>
         <button className="gm-cta send" disabled={placing} onClick={send}>
           {placing ? <><span className="spinner" /> Sending to the restaurant</>

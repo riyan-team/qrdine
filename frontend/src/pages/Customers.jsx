@@ -7,6 +7,7 @@ import {
   DataTable, Empty, Figure, Loading, Modal, PAY_METHODS, PageHead, Problem, fmtDate, printPage, todayPk, useData, waLink,
 } from '../backoffice.jsx'
 import { ChatIcon, EditIcon, PlusIcon, PrintIcon, TrashIcon } from '../icons.jsx'
+import { phoneProblem } from '../phone.js'
 
 // Offices and regulars who eat now and pay at the end of the month. A bill reaches this page by
 // choosing "Khata" when settling at Reception; money coming back is recorded here.
@@ -65,6 +66,9 @@ function CustomerForm({ customer, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const save = async () => {
+    if (busy) return
+    const why = phoneProblem(f.phone) || (Number(f.creditLimit || 0) < 0 ? "The khata limit can't be negative." : '')
+    if (why) return setErr(why)
     setBusy(true); setErr('')
     const body = { ...f, openingBalance: Number(f.openingBalance) || 0, creditLimit: Number(f.creditLimit) || 0 }
     try {
@@ -78,12 +82,12 @@ function CustomerForm({ customer, onClose, onSaved }) {
       <button className="primary push" disabled={busy || !f.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Name</label><input autoFocus value={f.name} onChange={set('name')} /></div>
-        <div className="field"><label className="field-label">Mobile</label><input inputMode="tel" value={f.phone} onChange={set('phone')} /></div>
-        <div className="field is-full"><label className="field-label">Address</label><input value={f.address} onChange={set('address')} /></div>
-        <div className="field"><label className="field-label">Already owes (Rs)</label><input type="number" value={f.openingBalance} onChange={set('openingBalance')} /></div>
-        <div className="field"><label className="field-label">Khata limit (Rs)</label><input type="number" min="0" placeholder="No limit" value={f.creditLimit} onChange={set('creditLimit')} /></div>
-        <div className="field is-full"><label className="field-label">Notes</label><input value={f.notes} onChange={set('notes')} /></div>
+        <div className="field"><label className="field-label" htmlFor="cu-name">Name</label><input id="cu-name" autoFocus required maxLength={120} value={f.name} onChange={set('name')} /></div>
+        <div className="field"><label className="field-label" htmlFor="cu-phone">Mobile <span className="opt">(optional)</span></label><input id="cu-phone" inputMode="tel" autoComplete="tel" maxLength={30} placeholder="03xx xxxxxxx" value={f.phone} onChange={set('phone')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="cu-address">Address <span className="opt">(optional)</span></label><input id="cu-address" maxLength={300} value={f.address} onChange={set('address')} /></div>
+        <div className="field"><label className="field-label" htmlFor="cu-open">Already owes (Rs) <span className="opt">(optional)</span></label><input id="cu-open" type="number" step="any" inputMode="decimal" value={f.openingBalance} onChange={set('openingBalance')} /></div>
+        <div className="field"><label className="field-label" htmlFor="cu-limit">Khata limit (Rs) <span className="opt">(optional)</span></label><input id="cu-limit" type="number" min="0" step="any" inputMode="decimal" placeholder="No limit" value={f.creditLimit} onChange={set('creditLimit')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="cu-notes">Notes <span className="opt">(optional)</span></label><input id="cu-notes" maxLength={500} value={f.notes} onChange={set('notes')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
@@ -150,6 +154,7 @@ function PaymentForm({ customer, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const save = async () => {
+    if (busy) return
     setBusy(true); setErr('')
     try { await api.addCustomerPayment(customer.id, { ...f, amount: Number(f.amount) }); toast.success('Payment recorded'); onSaved() }
     catch (e) { setErr(friendlyError(e)); setBusy(false) }
@@ -160,12 +165,12 @@ function PaymentForm({ customer, onClose, onSaved }) {
       <button className="primary push" disabled={busy || !(Number(f.amount) > 0)} onClick={save}>{busy ? 'Saving…' : 'Record payment'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Amount (Rs)</label><input autoFocus type="number" min="0" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
-        <div className="field"><label className="field-label">Date</label><input type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
-        <div className="field is-full"><label className="field-label">Paid by</label>
-          <select value={f.method} onChange={set('method')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+        <div className="field"><label className="field-label" htmlFor="cp-amount">Amount (Rs)</label><input id="cp-amount" autoFocus required type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
+        <div className="field"><label className="field-label" htmlFor="cp-date">Date</label><input id="cp-date" required type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="cp-method">Paid by</label>
+          <select id="cp-method" value={f.method} onChange={set('method')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
         </div>
-        <div className="field is-full"><label className="field-label">Note (optional)</label><input value={f.note} onChange={set('note')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="cp-note">Note <span className="opt">(optional)</span></label><input id="cp-note" maxLength={300} value={f.note} onChange={set('note')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>

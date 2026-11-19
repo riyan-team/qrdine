@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, money } from './api'
 import { auth } from './auth'
 import { ui } from './ui.jsx'
+import { friendlyError } from './errors.js'
 import { CheckIcon, KitchenIcon, BellIcon, CloseIcon } from './icons.jsx'
 
 // Shared ordering primitives used by BOTH the guest QR menu (Menu.jsx) and the
@@ -23,13 +24,15 @@ export function useCart(storageKey) {
     try { sessionStorage.setItem(storageKey, JSON.stringify(cart)) } catch { /* private mode: cart just won't survive a reload */ }
   }, [cart, storageKey])
 
+  // The server takes 1 to 50 of a dish per line, so the cart stops at 50 too.
   const addToCart = (line) => setCart((c) => {
     const existing = c[line.sig]
-    return { ...c, [line.sig]: { ...line, qty: (existing?.qty || 0) + line.qty } }
+    return { ...c, [line.sig]: { ...line, qty: Math.min(MAX_QTY, (existing?.qty || 0) + line.qty) } }
   })
   const changeQty = (sig, delta) => setCart((c) => {
     const line = c[sig]; if (!line) return c
-    const qty = line.qty + delta
+    const qty = Math.min(MAX_QTY, line.qty + delta)
+    if (qty === line.qty) return c
     const n = { ...c }
     if (qty <= 0) delete n[sig]; else n[sig] = { ...line, qty }
     return n
@@ -41,6 +44,9 @@ export function useCart(storageKey) {
   const count = list.reduce((s, x) => s + x.qty, 0)
   return { list, total, count, addToCart, changeQty, clear }
 }
+
+/** Most of one dish on one order line; matches the server rule. */
+export const MAX_QTY = 50
 
 // Turn a customizable item click into a plain add, or open the customizer.
 export function plusOrCustomize(it, addToCart, setCustomizing) {
@@ -117,9 +123,9 @@ export function CartLines({ list, changeQty }) {
             {x.modifierNames.length > 0 && <span className="muted" style={{ fontSize: 12 }}> · {x.modifierNames.join(', ')}</span>}
           </div>
           <div className="qty">
-            <button onClick={() => changeQty(x.sig, -1)}>−</button>
+            <button aria-label={`One less ${x.name}`} onClick={() => changeQty(x.sig, -1)}>−</button>
             <b>{x.qty}</b>
-            <button className="primary" onClick={() => changeQty(x.sig, +1)}>+</button>
+            <button className="primary" aria-label={`One more ${x.name}`} disabled={x.qty >= MAX_QTY} title={x.qty >= MAX_QTY ? `Up to ${MAX_QTY} at a time` : undefined} onClick={() => changeQty(x.sig, +1)}>+</button>
           </div>
         </div>
       ))}
@@ -137,16 +143,22 @@ export const Spinner = ({ dark }) => <span className={dark ? 'spinner dark' : 's
 export function OrderActions({ o, size = 'sm', onError }) {
   const [busy, setBusy] = useState(false)
   const can = (p) => auth.can(p)
-  const style = size === 'lg' ? { flex: 1 } : { fontSize: 12.5, padding: '5px 11px' }
+  // minHeight keeps the small button an easy tap on a phone or tablet
+  const style = size === 'lg' ? { flex: 1 } : { fontSize: 12.5, padding: '5px 11px', minHeight: 36 }
   const cls = size === 'lg' ? '' : 'ghost'
 
   const run = async (fn) => {
+    if (busy) return
     setBusy(true)
-    try { await fn() } catch (e) { onError ? onError(e) : ui.alert(e.message) }
+    try { await fn() } catch (e) { onError ? onError(e) : ui.alert(friendlyError(e)) }
     setBusy(false)
   }
   const cook = () => run(async () => {
-    const m = await ui.prompt({ title: 'Start cooking', message: 'Minutes to prepare?', defaultValue: '15' })
+    const m = await ui.prompt({
+      title: 'Start cooking', label: 'Minutes to prepare', defaultValue: '15',
+      type: 'number', inputMode: 'numeric', integer: true, min: 1, max: 180, required: true,
+      requiredMessage: 'Enter the minutes, from 1 to 180.',
+    })
     if (m !== null) await api.cook(o.id, Number(m) || 15)
   })
 
