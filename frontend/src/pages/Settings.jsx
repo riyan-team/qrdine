@@ -878,12 +878,15 @@ function StaffEdit({ s, fbrOn, onDone, onCancel }) {
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const save = async () => {
-    const why = usernameProblem(f.username) || (isPosIdOrBlank(f.fbrPosId) ? '' : 'POS ID must be a whole number above 0.')
+    // The username is only checked, and only sent, when it was changed: an owner who signed up before the rule
+    // (with a space, say) can still edit their name and role without having to rename their sign-in.
+    const renamed = f.username.trim() !== s.username
+    const why = (renamed ? usernameProblem(f.username) : '') || (isPosIdOrBlank(f.fbrPosId) ? '' : 'POS ID must be a whole number above 0.')
     if (why) return setErr(why)
     setErr(''); setBusy(true)
     try {
       await api.updateStaff(s.id, {
-        username: f.username.trim(), displayName: f.displayName.trim(), role: f.role,
+        username: renamed ? f.username.trim() : null, displayName: f.displayName.trim(), role: f.role,
         fbrPosId: String(f.fbrPosId).trim() ? Number(f.fbrPosId) : null,
         ...(f.fbrToken !== '' ? { fbrToken: f.fbrToken } : {}),   // blank = keep token
       })
