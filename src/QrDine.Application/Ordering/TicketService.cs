@@ -119,6 +119,9 @@ public class TicketService
         var address = (req.Address ?? "").Trim();
         if (channel == OrderChannel.Delivery && (phone.Length == 0 || address.Length == 0))
             throw new DomainException("A delivery needs the customer's phone number and address.");
+        // The rider has to be able to call this number, so a typo is caught here, not at the door.
+        if (phone.Length > 0 && !Phone.IsValid(req.CustomerPhone))
+            throw new DomainException(Phone.Message);
         var charge = Math.Max(0, req.DeliveryCharge ?? 0);
 
         var branchId = await ResolveBranch(req.BranchId, ct);
@@ -161,6 +164,17 @@ public class TicketService
     {
         var session = await _db.Sessions.Where(s => s.TableCode == code && s.IsOpen && s.Channel != OrderChannel.Dine)
             .FirstOrDefaultAsync(ct) ?? throw new DomainException("That ticket is already closed.");
+        // Null leaves a field as it is. Clearing the phone or address of a delivery isn't allowed:
+        // the rider needs both, the same as when the delivery was taken.
+        if (session.Channel == OrderChannel.Delivery)
+        {
+            if (input.CustomerPhone is not null && input.CustomerPhone.Trim().Length == 0)
+                throw new DomainException("A delivery needs the customer's phone number.");
+            if (input.Address is not null && input.Address.Trim().Length == 0)
+                throw new DomainException("A delivery needs the customer's address.");
+        }
+        if (!string.IsNullOrWhiteSpace(input.CustomerPhone) && !Phone.IsValid(input.CustomerPhone))
+            throw new DomainException(Phone.Message);
         if (input.CustomerName is not null) session.CustomerName = input.CustomerName.Trim();
         if (input.CustomerPhone is not null) session.CustomerPhone = LoginName.Normalize(input.CustomerPhone);
         if (input.Address is not null) session.DeliveryAddress = input.Address.Trim();

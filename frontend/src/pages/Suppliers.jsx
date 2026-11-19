@@ -7,6 +7,7 @@ import {
   DataTable, Empty, Figure, Loading, Modal, PAY_METHODS, PageHead, Problem, fmtDate, printPage, todayPk, useData, waLink,
 } from '../backoffice.jsx'
 import { ChatIcon, CloseIcon, EditIcon, PlusIcon, PrintIcon, TrashIcon } from '../icons.jsx'
+import { phoneProblem } from '../phone.js'
 
 // The supplier khata: every bill, payment and return, with a running balance, so "how much do we
 // owe the chicken wala" has one answer. What's owed is always worked out from the entries.
@@ -59,6 +60,9 @@ function SupplierForm({ supplier, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const save = async () => {
+    if (busy) return
+    const why = phoneProblem(f.phone)
+    if (why) return setErr(why)
     setBusy(true); setErr('')
     const body = { ...f, openingBalance: Number(f.openingBalance) || 0 }
     try {
@@ -72,10 +76,10 @@ function SupplierForm({ supplier, onClose, onSaved }) {
       <button className="primary push" disabled={busy || !f.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field is-full"><label className="field-label">Name</label><input autoFocus value={f.name} onChange={set('name')} /></div>
-        <div className="field"><label className="field-label">Mobile</label><input inputMode="tel" value={f.phone} onChange={set('phone')} /></div>
-        <div className="field"><label className="field-label">You already owe (Rs)</label><input type="number" value={f.openingBalance} onChange={set('openingBalance')} /></div>
-        <div className="field is-full"><label className="field-label">Notes</label><input value={f.notes} onChange={set('notes')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="sup-name">Name</label><input id="sup-name" autoFocus required maxLength={120} value={f.name} onChange={set('name')} /></div>
+        <div className="field"><label className="field-label" htmlFor="sup-phone">Mobile <span className="opt">(optional)</span></label><input id="sup-phone" inputMode="tel" autoComplete="tel" maxLength={30} placeholder="03xx xxxxxxx" value={f.phone} onChange={set('phone')} /></div>
+        <div className="field"><label className="field-label" htmlFor="sup-open">You already owe (Rs) <span className="opt">(optional)</span></label><input id="sup-open" type="number" inputMode="decimal" step="any" value={f.openingBalance} onChange={set('openingBalance')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="sup-notes">Notes <span className="opt">(optional)</span></label><input id="sup-notes" maxLength={500} value={f.notes} onChange={set('notes')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
@@ -160,7 +164,21 @@ function BillForm({ kind, supplier, onClose, onSaved }) {
   const lineTotal = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unitCost) || 0), 0)
   const total = lines.length ? lineTotal : Number(f.amount) || 0
 
+  // A line without a quantity used to be dropped quietly; say so instead.
+  const problem = () => {
+    for (const l of lines) {
+      if (!l.stockItemId && !String(l.name || '').trim()) return 'Say what was bought on each line, or remove it.'
+      if (!(Number(l.qty) > 0)) return 'Each line needs a quantity above 0.'
+      if (!(Number(l.unitCost || 0) >= 0)) return "A rate can't be negative."
+    }
+    if (!isReturn && Number(f.paidNow || 0) < 0) return "The amount paid can't be negative."
+    if (!isReturn && Number(f.paidNow || 0) > total) return "You can't pay more than the bill now. Record the extra as a payment."
+    return ''
+  }
   const save = async () => {
+    if (busy) return
+    const why = problem()
+    if (why) return setErr(why)
     setBusy(true); setErr('')
     const body = {
       date: f.date, reference: f.reference, note: f.note,
@@ -181,26 +199,27 @@ function BillForm({ kind, supplier, onClose, onSaved }) {
     <Modal wide title={isReturn ? `Return to ${supplier.name}` : `Bill from ${supplier.name}`} onClose={onClose} footer={<>
       <span className="ts-total">{money(total)}</span>
       <button className="push" onClick={onClose}>Cancel</button>
+      {total <= 0 && !busy && <span className="muted" style={{ fontSize: 12 }}>Add an item or the total first.</span>}
       <button className="primary" disabled={busy || total <= 0} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Date</label><input type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
-        <div className="field"><label className="field-label">Bill number (optional)</label><input value={f.reference} onChange={set('reference')} /></div>
+        <div className="field"><label className="field-label" htmlFor="bill-date">Date</label><input id="bill-date" required type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
+        <div className="field"><label className="field-label" htmlFor="bill-ref">{isReturn ? 'Reference' : 'Bill number'} <span className="opt">(optional)</span></label><input id="bill-ref" maxLength={60} value={f.reference} onChange={set('reference')} /></div>
       </div>
 
       <div className="bl-row">
-        <span className="bl-label">{isReturn ? 'What went back' : 'What came in'}</span>
+        <span className="bl-label">{isReturn ? 'What went back' : 'What came in'} {lines.length === 0 && <span className="opt">(or just the total below)</span>}</span>
         {lines.map((l, i) => (
           <div className="row" key={i} style={{ gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
             {canStock && stock.length > 0 ? (
-              <select style={{ flex: '2 1 150px' }} value={l.stockItemId} onChange={(e) => setLine(i, 'stockItemId', e.target.value)}>
+              <select aria-label={`Stock item, line ${i + 1}`} style={{ flex: '2 1 150px' }} value={l.stockItemId} onChange={(e) => setLine(i, 'stockItemId', e.target.value)}>
                 <option value="">Not a stock item</option>
                 {stock.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.unit})</option>)}
               </select>
             ) : null}
-            {!l.stockItemId && <input style={{ flex: '2 1 130px' }} placeholder="Item" value={l.name} onChange={(e) => setLine(i, 'name', e.target.value)} />}
-            <input style={{ flex: '1 1 70px' }} type="number" min="0" inputMode="decimal" placeholder="Qty" value={l.qty} onChange={(e) => setLine(i, 'qty', e.target.value)} />
-            <input style={{ flex: '1 1 90px' }} type="number" min="0" inputMode="decimal" placeholder="Rate (Rs)" value={l.unitCost} onChange={(e) => setLine(i, 'unitCost', e.target.value)} />
+            {!l.stockItemId && <input aria-label={`Item, line ${i + 1}`} required maxLength={120} style={{ flex: '2 1 130px' }} placeholder="Item" value={l.name} onChange={(e) => setLine(i, 'name', e.target.value)} />}
+            <input aria-label={`Quantity, line ${i + 1}`} required style={{ flex: '1 1 70px' }} type="number" min="0" step="any" inputMode="decimal" placeholder="Qty" value={l.qty} onChange={(e) => setLine(i, 'qty', e.target.value)} />
+            <input aria-label={`Rate in rupees, line ${i + 1}`} style={{ flex: '1 1 90px' }} type="number" min="0" step="any" inputMode="decimal" placeholder="Rate (Rs)" value={l.unitCost} onChange={(e) => setLine(i, 'unitCost', e.target.value)} />
             <button className="ghost" aria-label="Remove line" onClick={() => setLines(lines.filter((_, n) => n !== i))}><CloseIcon size={15} /></button>
           </div>
         ))}
@@ -209,20 +228,20 @@ function BillForm({ kind, supplier, onClose, onSaved }) {
 
       {lines.length === 0 && (
         <div className="bl-row">
-          <label className="bl-label">Or just the total (Rs)</label>
-          <input type="number" min="0" inputMode="decimal" style={{ width: '100%' }} value={f.amount} onChange={set('amount')} />
+          <label className="bl-label" htmlFor="bill-amount">Or just the total (Rs)</label>
+          <input id="bill-amount" type="number" min="0" step="any" inputMode="decimal" style={{ width: '100%' }} value={f.amount} onChange={set('amount')} />
         </div>
       )}
 
       {!isReturn && (
         <div className="bo-form bl-row">
-          <div className="field"><label className="field-label">Paid now (Rs)</label><input type="number" min="0" inputMode="decimal" placeholder="0, all on khata" value={f.paidNow} onChange={set('paidNow')} /></div>
-          <div className="field"><label className="field-label">Paid by</label>
-            <select value={f.paidMethod} onChange={set('paidMethod')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+          <div className="field"><label className="field-label" htmlFor="bill-paid">Paid now (Rs) <span className="opt">(optional)</span></label><input id="bill-paid" type="number" min="0" step="any" inputMode="decimal" placeholder="0, all on khata" value={f.paidNow} onChange={set('paidNow')} /></div>
+          <div className="field"><label className="field-label" htmlFor="bill-method">Paid by</label>
+            <select id="bill-method" value={f.paidMethod} onChange={set('paidMethod')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
           </div>
         </div>
       )}
-      <div className="bl-row"><input style={{ width: '100%' }} placeholder="Note (optional)" value={f.note} onChange={set('note')} /></div>
+      <div className="bl-row"><label className="bl-label" htmlFor="bill-note">Note <span className="opt">(optional)</span></label><input id="bill-note" maxLength={300} style={{ width: '100%' }} value={f.note} onChange={set('note')} /></div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
   )
@@ -234,6 +253,7 @@ function PayForm({ supplier, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const save = async () => {
+    if (busy) return
     setBusy(true); setErr('')
     try { await api.addSupplierPayment(supplier.id, { ...f, amount: Number(f.amount) }); toast.success('Payment recorded'); onSaved() }
     catch (e) { setErr(friendlyError(e)); setBusy(false) }
@@ -244,12 +264,12 @@ function PayForm({ supplier, onClose, onSaved }) {
       <button className="primary push" disabled={busy || !(Number(f.amount) > 0)} onClick={save}>{busy ? 'Saving…' : 'Record payment'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Amount (Rs)</label><input autoFocus type="number" min="0" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
-        <div className="field"><label className="field-label">Date</label><input type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
-        <div className="field is-full"><label className="field-label">Paid by</label>
-          <select value={f.method} onChange={set('method')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+        <div className="field"><label className="field-label" htmlFor="sp-amount">Amount (Rs)</label><input id="sp-amount" autoFocus required type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
+        <div className="field"><label className="field-label" htmlFor="sp-date">Date</label><input id="sp-date" required type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="sp-method">Paid by</label>
+          <select id="sp-method" value={f.method} onChange={set('method')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
         </div>
-        <div className="field is-full"><label className="field-label">Note (optional)</label><input value={f.note} onChange={set('note')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="sp-note">Note <span className="opt">(optional)</span></label><input id="sp-note" maxLength={300} value={f.note} onChange={set('note')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>

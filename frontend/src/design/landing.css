@@ -16,6 +16,13 @@
 .ln-nav nav a:hover { color: #fff; }
 .ln-signin { font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: 99px; box-shadow: inset 0 0 0 1px rgba(251, 243, 228, .3); color: var(--on-dark) !important; transition: background .2s; }
 .ln-signin:hover { background: rgba(251, 243, 228, .12); }
+/* Tap targets of at least 36 px on phone and tablet (the links were about 20 px tall). */
+.ln-signin { display: inline-flex; align-items: center; min-height: 36px; }
+.ln-foot a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 6px; }
+@media (max-width: 1024px) {
+  .ln-nav nav { gap: 8px; }
+  .ln-nav nav a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 6px; }
+}
 
 /* hero */
 .ln-hero {

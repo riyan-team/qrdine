@@ -9,7 +9,10 @@ const emit = (dialog) => listeners.forEach((l) => l(dialog))
 const norm = (o) => (typeof o === 'string' ? { message: o } : (o || {}))
 
 export const ui = {
-  // Resolves to the entered string, or null if cancelled.
+  // Resolves to the entered string, or null if cancelled. Options beyond title/message/placeholder:
+  //   label, required, requiredMessage, maxLength, type ('number' | 'password' | …), inputMode,
+  //   min, max, integer (whole numbers only), validate(value) => error text or null.
+  // A wrong answer shows a short message under the box and keeps the dialog open.
   prompt: (opts) => new Promise((resolve) => emit({ kind: 'prompt', ...norm(opts), resolve })),
   // Resolves to true / false.
   confirm: (opts) => new Promise((resolve) => emit({ kind: 'confirm', ...norm(opts), resolve })),
@@ -88,10 +91,11 @@ export function ToastHost() {
 export function DialogHost() {
   const [d, setD] = useState(null)
   const [val, setVal] = useState('')
+  const [err, setErr] = useState('')
   const inputRef = useRef(null)
 
   useEffect(() => {
-    const l = (dialog) => { setD(dialog); setVal(dialog.defaultValue ?? '') }
+    const l = (dialog) => { setD(dialog); setVal(dialog.defaultValue ?? ''); setErr('') }
     listeners.add(l)
     return () => listeners.delete(l)
   }, [])
@@ -102,12 +106,30 @@ export function DialogHost() {
 
   const done = (result) => { d.resolve(result); setD(null) }
   const onCancel = () => done(d.kind === 'confirm' ? false : null)
+  const problem = (v) => {
+    if (!v) return d.required ? (d.requiredMessage || 'Please fill this in.') : ''
+    if (d.type === 'number') {
+      const n = Number(v)
+      if (!Number.isFinite(n)) return 'Enter a number.'
+      if (d.integer && !Number.isInteger(n)) return 'Enter a whole number.'
+      if (d.min != null && n < d.min) return `Enter ${d.min} or more.`
+      if (d.max != null && n > d.max) return `Enter ${d.max} or less.`
+    }
+    if (d.maxLength && v.length > d.maxLength) return `Keep it to ${d.maxLength} characters.`
+    return d.validate ? (d.validate(v) || '') : ''
+  }
   const onOk = () => {
-    if (d.kind === 'prompt') { const v = val.trim(); if (d.required && !v) return; done(v || null) }
+    if (d.kind === 'prompt') {
+      const v = val.trim()
+      const why = problem(v)
+      if (why) { setErr(why); inputRef.current?.focus(); return }
+      done(v || null)
+    }
     else if (d.kind === 'confirm') done(true)
     else done(undefined)
   }
   const onKey = (e) => { if (e.key === 'Enter') { e.preventDefault(); onOk() } if (e.key === 'Escape') onCancel() }
+  const label = d.label || d.title || 'Your answer'
 
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target.classList.contains('overlay')) onCancel() }}>
@@ -116,8 +138,17 @@ export function DialogHost() {
         {d.message && <div style={{ fontSize: 14, color: 'var(--ink)', marginBottom: d.kind === 'prompt' ? 10 : 16, whiteSpace: 'pre-wrap' }}>{d.message}</div>}
 
         {d.kind === 'prompt' && (
-          <input ref={inputRef} value={val} placeholder={d.placeholder || ''}
-            onChange={(e) => setVal(e.target.value)} style={{ width: '100%', marginBottom: 4 }} />
+          <div className="field" style={{ marginBottom: 4 }}>
+            {d.label && <label className={`field-label${d.required ? ' req' : ''}`} htmlFor="ui-prompt-input">{d.label}</label>}
+            <input id="ui-prompt-input" ref={inputRef} value={val} placeholder={d.placeholder || ''}
+              type={d.type || 'text'} inputMode={d.inputMode} maxLength={d.maxLength}
+              min={d.min} max={d.max} step={d.integer ? 1 : undefined}
+              aria-label={d.label ? undefined : label} aria-required={d.required ? true : undefined}
+              aria-invalid={err ? true : undefined} aria-describedby={err ? 'ui-prompt-err' : undefined}
+              className={err ? 'invalid' : undefined}
+              onChange={(e) => { setVal(e.target.value); if (err) setErr('') }} style={{ width: '100%' }} />
+            {err && <div id="ui-prompt-err" className="field-error" role="alert">{err}</div>}
+          </div>
         )}
 
         <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>

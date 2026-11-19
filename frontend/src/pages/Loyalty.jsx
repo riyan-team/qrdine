@@ -17,6 +17,8 @@ const TABS = [
   { id: 'requests', label: 'Reward requests' },
 ]
 const fail = (e) => toast.error(friendlyError(e))
+// A whole number from min to max. The server reads these as whole numbers, so 2.5 points would be refused there.
+const wholeIn = (v, min, max) => { const n = Number(v === '' || v == null ? 0 : v); return Number.isInteger(n) && n >= min && n <= max }
 const fmtDate = (d) => (d ? new Date(d).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—')
 
 export default function Loyalty() {
@@ -163,7 +165,19 @@ function ProgramForm({ program, onSaved }) {
   const earn = num(f.earnPoints), per = num(f.perAmount)
   const example = per > 0 ? Math.floor(2000 / per) * earn : 0
 
+  const problem = () => {
+    if (!String(f.name || '').trim()) return 'Give the programme a name.'
+    if (!wholeIn(f.earnPoints, 0, 1000)) return 'Points earned must be a whole number from 0 to 1,000.'
+    if (!(per > 0) || per > 1000000) return 'The amount per point must be more than 0.'
+    if (!(num(f.minBillAmount) >= 0)) return "The minimum bill can't be negative."
+    if (!wholeIn(f.welcomeBonus, 0, 100000)) return 'The welcome bonus must be a whole number from 0 to 100,000.'
+    if (!wholeIn(f.feedbackBonus, 0, 100000)) return 'The rating bonus must be a whole number from 0 to 100,000.'
+    return ''
+  }
   const save = async () => {
+    if (busy) return
+    const why = problem()
+    if (why) return toast.error(why)
     setBusy(true)
     try {
       const p = await loyalty.saveProgram({
@@ -183,28 +197,28 @@ function ProgramForm({ program, onSaved }) {
           <b>Programme</b>
           <div style={{ margin: '12px 0' }}><Toggle label="Show rewards on the table QR menu" checked={f.enabled} onChange={set('enabled')} /></div>
           <label className="field"><span className="field-label">Programme name</span>
-            <input value={f.name} maxLength={60} onChange={set('name')} placeholder="e.g. Karachi Grill Rewards" /></label>
-          <label className="field"><span className="field-label">Tagline (shown to guests)</span>
+            <input required value={f.name} maxLength={60} onChange={set('name')} placeholder="e.g. Karachi Grill Rewards" /></label>
+          <label className="field"><span className="field-label">Tagline (shown to guests) <span className="opt">(optional)</span></span>
             <input value={f.tagline} maxLength={160} onChange={set('tagline')} placeholder="Earn points on every visit and treat yourself." /></label>
         </div>
 
         <div className="card">
           <b>Earning</b>
           <div className="lx-rule">
-            <input type="number" min="0" value={f.earnPoints} onChange={set('earnPoints')} aria-label="Points earned" />
+            <input type="number" required min="0" max="1000" step="1" inputMode="numeric" value={f.earnPoints} onChange={set('earnPoints')} aria-label="Points earned" />
             <span>point{earn === 1 ? '' : 's'} for every</span>
             <span className="lx-rs">Rs</span>
-            <input type="number" min="1" value={f.perAmount} onChange={set('perAmount')} aria-label="Amount per point" />
+            <input type="number" required min="1" step="any" inputMode="decimal" value={f.perAmount} onChange={set('perAmount')} aria-label="Amount per point" />
             <span>spent</span>
           </div>
           <div className="lx-example">A {money(2000)} bill earns <b>{example.toLocaleString('en-PK')} points</b>.</div>
           <div className="grid g2" style={{ gap: 12, marginTop: 12 }}>
-            <label className="field"><span className="field-label">Minimum bill to earn (Rs)</span>
-              <input type="number" min="0" value={f.minBillAmount} onChange={set('minBillAmount')} /></label>
-            <label className="field"><span className="field-label">Welcome bonus (points)</span>
-              <input type="number" min="0" value={f.welcomeBonus} onChange={set('welcomeBonus')} /></label>
-            <label className="field"><span className="field-label">Rating bonus (points, once a day)</span>
-              <input type="number" min="0" value={f.feedbackBonus} onChange={set('feedbackBonus')} /></label>
+            <label className="field"><span className="field-label">Minimum bill to earn (Rs) <span className="opt">(optional)</span></span>
+              <input type="number" min="0" step="any" inputMode="decimal" value={f.minBillAmount} onChange={set('minBillAmount')} /></label>
+            <label className="field"><span className="field-label">Welcome bonus (points) <span className="opt">(optional)</span></span>
+              <input type="number" min="0" max="100000" step="1" inputMode="numeric" value={f.welcomeBonus} onChange={set('welcomeBonus')} /></label>
+            <label className="field"><span className="field-label">Rating bonus (points, once a day) <span className="opt">(optional)</span></span>
+              <input type="number" min="0" max="100000" step="1" inputMode="numeric" value={f.feedbackBonus} onChange={set('feedbackBonus')} /></label>
           </div>
           <div className="field-hint">Points are added when the bill is settled at reception, for the member linked to that table.</div>
         </div>
@@ -215,15 +229,15 @@ function ProgramForm({ program, onSaved }) {
             Guests see a <b>Review us on Google</b> button after their meal. In Google Business Profile, open <i>Ask for reviews</i> and copy the link
             (or use <code>https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID</code>).
           </p>
-          <label className="field"><span className="field-label">Google review link</span>
+          <label className="field"><span className="field-label">Google review link <span className="opt">(optional)</span></span>
             <div className="row" style={{ gap: 6 }}>
-              <input style={{ flex: 1 }} value={f.googleReviewUrl} onChange={set('googleReviewUrl')} placeholder="https://g.page/r/…/review" />
+              <input style={{ flex: 1 }} type="url" inputMode="url" maxLength={400} value={f.googleReviewUrl} onChange={set('googleReviewUrl')} placeholder="https://g.page/r/…/review" />
               {f.googleReviewUrl && <a className="lx-btn lx-btn-ghost" href={f.googleReviewUrl} target="_blank" rel="noopener noreferrer">Test</a>}
             </div>
           </label>
-          <label className="field"><span className="field-label">Google Maps page (to read reviews)</span>
+          <label className="field"><span className="field-label">Google Maps page (to read reviews) <span className="opt">(optional)</span></span>
             <div className="row" style={{ gap: 6 }}>
-              <input style={{ flex: 1 }} value={f.googleMapsUrl} onChange={set('googleMapsUrl')} placeholder="https://maps.app.goo.gl/…" />
+              <input style={{ flex: 1 }} type="url" inputMode="url" maxLength={400} value={f.googleMapsUrl} onChange={set('googleMapsUrl')} placeholder="https://maps.app.goo.gl/…" />
               {f.googleMapsUrl && <a className="lx-btn lx-btn-ghost" href={f.googleMapsUrl} target="_blank" rel="noopener noreferrer">Test</a>}
             </div>
           </label>
@@ -268,16 +282,25 @@ const SAMPLES = [
 function Rewards() {
   const [list, setList] = useState(null)
   const [edit, setEdit] = useState(null)   // a reward being added/edited
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   const load = () => loyalty.rewards().then(setList).catch(fail)
   useEffect(() => { load() }, [])
+  const open = (r) => { setErr(''); setEdit(r) }
 
   const save = async () => {
-    const body = { ...edit, pointsCost: Number(edit.pointsCost) || 0, sortOrder: Number(edit.sortOrder) || 0 }
+    if (busy) return
+    if (!String(edit.title || '').trim()) return setErr('Give the reward a name.')
+    if (!wholeIn(edit.pointsCost, 1, 1000000)) return setErr('Points needed must be a whole number, 1 or more.')
+    if (!wholeIn(edit.sortOrder, -1000, 1000)) return setErr('Order in the list must be a whole number.')
+    const body = { ...edit, pointsCost: Number(edit.pointsCost), sortOrder: Number(edit.sortOrder) || 0 }
+    setErr(''); setBusy(true)
     try {
       if (edit.id) await loyalty.updateReward(edit.id, body)
       else await loyalty.addReward(body)
       setEdit(null); load(); toast.success('Reward saved.')
-    } catch (e) { fail(e) }
+    } catch (e) { setErr(friendlyError(e)) }
+    setBusy(false)
   }
   const remove = async (r) => {
     if (!(await ui.confirm({ title: 'Delete reward?', message: `“${r.title}” will disappear from the QR menu. Requests already waiting can still be approved.`, confirmText: 'Delete', danger: true }))) return
@@ -287,7 +310,10 @@ function Rewards() {
     try { await loyalty.updateReward(r.id, { ...r, active: !r.active }); load() } catch (e) { fail(e) }
   }
   const addSamples = async () => {
+    if (busy) return
+    setBusy(true)
     try { for (const s of SAMPLES) await loyalty.addReward(s); load(); toast.success('Sample rewards added. Edit them to suit you.') } catch (e) { fail(e) }
+    setBusy(false)
   }
 
   if (!list) return <div className="loading"><span className="spinner dark" /> Loading…</div>
@@ -296,8 +322,8 @@ function Rewards() {
       <div className="row between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <span className="muted" style={{ fontSize: 13.5 }}>Guests claim these with their points; reception confirms each one.</span>
         <div className="row" style={{ gap: 8 }}>
-          {list.length === 0 && <button onClick={addSamples}>Add sample rewards</button>}
-          <button className="primary" onClick={() => setEdit({ ...blank, sortOrder: list.length + 1 })}><PlusIcon size={15} /> New reward</button>
+          {list.length === 0 && <button disabled={busy} onClick={addSamples}>{busy ? 'Adding…' : 'Add sample rewards'}</button>}
+          <button className="primary" onClick={() => open({ ...blank, sortOrder: list.length + 1 })}><PlusIcon size={15} /> New reward</button>
         </div>
       </div>
 
@@ -314,7 +340,7 @@ function Rewards() {
                 <div className="lx-cost" style={{ marginTop: 4 }}>{r.pointsCost.toLocaleString('en-PK')} pts</div>
               </div>
               <Toggle label="" checked={r.active} onChange={() => toggle(r)} />
-              <button className="icon-btn" onClick={() => setEdit(r)} aria-label="Edit"><EditIcon size={16} /></button>
+              <button className="icon-btn" onClick={() => open(r)} aria-label="Edit"><EditIcon size={16} /></button>
               <button className="icon-btn danger" onClick={() => remove(r)} aria-label="Delete"><TrashIcon size={16} /></button>
             </div>
           ))}
@@ -326,23 +352,24 @@ function Rewards() {
           <div className="modal fade-up">
             <div className="row between"><b style={{ fontSize: 17 }}>{edit.id ? 'Edit reward' : 'New reward'}</b>
               <button className="icon-btn" onClick={() => setEdit(null)} aria-label="Close"><CloseIcon size={17} /></button></div>
-            <div className="lx-emojis">
-              {EMOJIS.map((e) => <button key={e} className={edit.emoji === e ? 'on' : ''} onClick={() => setEdit({ ...edit, emoji: e })}>{e}</button>)}
+            <div className="lx-emojis" role="group" aria-label="Picture">
+              {EMOJIS.map((e) => <button key={e} aria-pressed={edit.emoji === e} className={edit.emoji === e ? 'on' : ''} onClick={() => setEdit({ ...edit, emoji: e })}>{e}</button>)}
             </div>
             <label className="field"><span className="field-label">Name</span>
-              <input value={edit.title} maxLength={60} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="e.g. Free dessert" autoFocus /></label>
-            <label className="field"><span className="field-label">Details (optional)</span>
+              <input required value={edit.title} maxLength={60} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="e.g. Free dessert" autoFocus /></label>
+            <label className="field"><span className="field-label">Details <span className="opt">(optional)</span></span>
               <input value={edit.description} maxLength={200} onChange={(e) => setEdit({ ...edit, description: e.target.value })} placeholder="e.g. Chef’s dessert of the day" /></label>
             <div className="grid g2" style={{ gap: 12 }}>
               <label className="field"><span className="field-label">Points needed</span>
-                <input type="number" min="1" value={edit.pointsCost} onChange={(e) => setEdit({ ...edit, pointsCost: e.target.value })} /></label>
-              <label className="field"><span className="field-label">Order in the list</span>
-                <input type="number" value={edit.sortOrder} onChange={(e) => setEdit({ ...edit, sortOrder: e.target.value })} /></label>
+                <input required type="number" min="1" step="1" inputMode="numeric" value={edit.pointsCost} onChange={(e) => setEdit({ ...edit, pointsCost: e.target.value })} /></label>
+              <label className="field"><span className="field-label">Order in the list <span className="opt">(optional)</span></span>
+                <input type="number" step="1" inputMode="numeric" value={edit.sortOrder} onChange={(e) => setEdit({ ...edit, sortOrder: e.target.value })} /></label>
             </div>
             <Toggle label="Guests can claim it" checked={edit.active} onChange={(v) => setEdit({ ...edit, active: v })} />
+            {err && <div className="form-error" role="alert" style={{ marginTop: 10 }}>{err}</div>}
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button onClick={() => setEdit(null)}>Cancel</button>
-              <button className="primary" onClick={save}>Save reward</button>
+              <button className="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save reward'}</button>
             </div>
           </div>
         </div>
@@ -406,6 +433,8 @@ function MemberModal({ id, onClose, onChanged }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => { loyalty.member(id).then(setD).catch(fail) }, [id])
   const adjust = async () => {
+    if (busy) return
+    if (!Number.isInteger(Number(points)) || Math.abs(Number(points)) > 100000) return toast.error('Enter whole points, up to 100,000 (use a minus to take off).')
     setBusy(true)
     try {
       const res = await loyalty.adjust(id, Number(points), note)
@@ -430,11 +459,14 @@ function MemberModal({ id, onClose, onChanged }) {
             </div>
             <div className="set-block" style={{ marginTop: 12 }}>
               <b style={{ fontSize: 13.5 }}>Adjust points</b>
-              <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                <input type="number" style={{ width: 110 }} value={points} onChange={(e) => setPoints(e.target.value)} placeholder="+50 or -20" />
-                <input style={{ flex: 1, minWidth: 160 }} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="Reason (e.g. birthday gift)" />
-                <button className="primary" disabled={busy || !Number(points) || !note.trim()} onClick={adjust}>Apply</button>
+              <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <label className="fld" style={{ width: 120 }}><span>Points</span>
+                  <input required type="number" step="1" inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="+50 or -20" style={{ minWidth: 0 }} /></label>
+                <label className="fld" style={{ flex: 1, minWidth: 160 }}><span>Reason</span>
+                  <input required value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="e.g. birthday gift" /></label>
+                <button className="primary" disabled={busy || !Number(points) || !note.trim()} onClick={adjust}>{busy ? 'Saving…' : 'Apply'}</button>
               </div>
+              {!busy && (!Number(points) || !note.trim()) && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Enter the points and a short reason.</div>}
             </div>
             <div className="lx-sub" style={{ marginTop: 14 }}>History</div>
             <div className="lx-history admin">
@@ -476,7 +508,7 @@ export function Requests({ onCount, compact }) {
   const decide = async (r, ok) => {
     let note = null
     if (!ok) {
-      note = await ui.prompt({ title: 'Reject request', message: `Reject ${r.rewardTitle} for ${r.memberName}? Their points stay with them.`, placeholder: 'Reason (optional)', confirmText: 'Reject' })
+      note = await ui.prompt({ title: 'Reject request', message: `Reject ${r.rewardTitle} for ${r.memberName}? Their points stay with them.`, label: 'Reason (optional)', maxLength: 200, confirmText: 'Reject' })
       if (note === null) return
     }
     setBusy(r.id)
@@ -543,6 +575,7 @@ export function BillMember({ code, total, onChange }) {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [deciding, setDeciding] = useState(null)   // one tap per request: a double tap must not approve twice
   const load = () => loyalty.tableMember(code).then((x) => { setD(x); onChange?.(x) }).catch(() => setD(null))
   useEffect(() => { load() }, [code])
   const est = useMemo(() => {
@@ -552,15 +585,24 @@ export function BillMember({ code, total, onChange }) {
   if (!d?.enabled) return null
 
   const attach = async () => {
+    if (busy) return
     setBusy(true)
     try { const x = await loyalty.attach(code, phone, name); setD(x); onChange?.(x); setPhone(''); setName(''); toast.success('Member added to this bill.') }
     catch (e) { fail(e) }
     setBusy(false)
   }
-  const detach = async () => { try { await loyalty.detach(code); load() } catch (e) { fail(e) } }
+  const detach = async () => {
+    if (busy) return
+    setBusy(true)
+    try { await loyalty.detach(code); load() } catch (e) { fail(e) }
+    setBusy(false)
+  }
   const decide = async (r, ok) => {
+    if (deciding) return
+    setDeciding(r.id)
     try { if (ok) await loyalty.approve(r.id); else await loyalty.reject(r.id, null); load(); toast.success(ok ? 'Reward approved.' : 'Request rejected.') }
     catch (e) { fail(e) }
+    setDeciding(null)
   }
 
   return (
@@ -573,14 +615,14 @@ export function BillMember({ code, total, onChange }) {
               <div><b>{d.member.name}</b> <span className="muted" style={{ fontSize: 12.5 }}>{d.member.phone}</span>
                 <div className="muted" style={{ fontSize: 12.5 }}>{d.member.points.toLocaleString('en-PK')} pts · this bill earns about <b style={{ color: 'var(--accent2)' }}>+{est.toLocaleString('en-PK')}</b></div></div>
             </div>
-            <button className="ghost btn-sm" onClick={detach}>Remove</button>
+            <button className="ghost btn-sm" disabled={busy} onClick={detach}>Remove</button>
           </div>
           {d.pending.map((r) => (
             <div key={r.id} className="lx-billreq">
               <span>{r.rewardEmoji} {r.rewardTitle} · <b>{r.code}</b> · {r.pointsCost} pts</span>
               <span className="row" style={{ gap: 4 }}>
-                <button className="btn-sm" onClick={() => decide(r, false)}>Reject</button>
-                <button className="green btn-sm" onClick={() => decide(r, true)}>Approve</button>
+                <button className="btn-sm" disabled={deciding === r.id} onClick={() => decide(r, false)}>Reject</button>
+                <button className="green btn-sm" disabled={deciding === r.id} onClick={() => decide(r, true)}>Approve</button>
               </span>
             </div>
           ))}
@@ -589,10 +631,11 @@ export function BillMember({ code, total, onChange }) {
         <>
           <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}><StarIcon size={13} /> Loyalty: add the guest's number so this bill earns points</div>
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            <input style={{ flex: '1 1 130px' }} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" />
-            <input style={{ flex: '1 1 110px' }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (new member)" />
-            <button className="btn-sm" disabled={busy || phone.replace(/\D/g, '').length < 10} onClick={attach}>Add</button>
+            <input aria-label="Guest's mobile number" required style={{ flex: '1 1 130px' }} value={phone} inputMode="tel" autoComplete="off" maxLength={20} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" />
+            <input aria-label="Name, for a new member (optional)" style={{ flex: '1 1 110px' }} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Name (new member, optional)" />
+            <button className="btn-sm" disabled={busy || phone.replace(/\D/g, '').length < 10} onClick={attach}>{busy ? 'Adding…' : 'Add'}</button>
           </div>
+          {!busy && phone.trim() !== '' && phone.replace(/\D/g, '').length < 10 && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Enter the full mobile number to add them.</div>}
         </>
       )}
     </div>

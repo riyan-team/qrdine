@@ -158,14 +158,16 @@ public class RestaurantAdminService
         if (s.Role == StaffRole.Owner && role != StaffRole.Owner &&
             await _db.Staff.CountAsync(x => x.Role == StaffRole.Owner, ct) <= 1)
             throw new DomainException("There must be at least one owner.");
-        // Optional rename of the sign-in username (unique, lower-cased).
+        // Optional rename of the sign-in username. Same spelling rule as a new one ("0300 1234567"
+        // and "03001234567" are one name), and unique across every restaurant, because staff
+        // sign in without saying which restaurant they belong to.
         if (!string.IsNullOrWhiteSpace(input.Username))
         {
-            var uname = input.Username.Trim().ToLowerInvariant();
+            var uname = Auth.LoginName.Normalize(input.Username);
             if (uname != s.Username)
             {
-                if (await _db.Staff.AnyAsync(x => x.Username == uname && x.Id != id, ct))
-                    throw new DomainException($"Username '{uname}' is taken.");
+                if (await _db.Staff.IgnoreQueryFilters().AnyAsync(x => x.Username == uname && x.Id != id, ct))
+                    throw new DomainException($"The username '{uname}' is already in use. Try another one.");
                 s.Username = uname;
             }
         }
@@ -194,10 +196,16 @@ public class RestaurantAdminService
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         if (!r.FeatureFbr && i.FbrEnabled)
             throw new DomainException("FBR integration isn't included in your plan. Contact the operator to enable it.");
+        var business = i.BusinessName?.Trim() ?? "";
+        var ntn = i.Ntn?.Trim() ?? "";
+        var strn = i.Strn?.Trim() ?? "";
+        if (business.Length > 150) throw new DomainException("Business name must be 150 characters or fewer.");
+        if (ntn.Length > 15) throw new DomainException("NTN must be 15 characters or fewer.");
+        if (strn.Length > 20) throw new DomainException("STRN must be 20 characters or fewer.");
         r.FbrEnabled = i.FbrEnabled;
-        r.BusinessName = i.BusinessName?.Trim() ?? "";
-        r.Ntn = i.Ntn?.Trim() ?? "";
-        r.Strn = i.Strn?.Trim() ?? "";
+        r.BusinessName = business;
+        r.Ntn = ntn;
+        r.Strn = strn;
         await _db.SaveChangesAsync(ct);
     }
 
@@ -274,16 +282,25 @@ public class RestaurantAdminService
 
     public async Task SetBillingSettings(BillingSettingsInput i, CancellationToken ct = default)
     {
+        // A wrong number is refused, never quietly changed: the owner must see what will be charged.
+        if (!BillingRules.IsPercent(i.TaxPercent)) throw new DomainException(BillingRules.TaxMessage);
+        if (i.TaxPercentCard is decimal c && !BillingRules.IsPercent(c)) throw new DomainException(BillingRules.CardTaxMessage);
+        if (!BillingRules.IsPercent(i.ServiceChargePercent)) throw new DomainException(BillingRules.ServiceMessage);
+        if (i.DiscountValue < 0) throw new DomainException(BillingRules.DiscountNegativeMessage);
+        if (i.DiscountIsPercent && i.DiscountValue > 100) throw new DomainException(BillingRules.DiscountPercentMessage);
+        if (!i.DiscountIsPercent && i.DiscountValue >= BillingRules.MaxAmount) throw new DomainException(BillingRules.DiscountTooBigMessage);
+        var taxName = string.IsNullOrWhiteSpace(i.TaxName) ? "GST" : i.TaxName.Trim();
+        if (taxName.Length > 40) throw new DomainException("Tax name must be 40 characters or fewer.");
+
         var r = await _db.Restaurants.FirstAsync(x => x.Id == TenantId, ct);
         r.TaxEnabled = i.TaxEnabled;
-        r.TaxName = string.IsNullOrWhiteSpace(i.TaxName) ? "GST" : i.TaxName.Trim();
-        r.TaxPercent = Math.Clamp(i.TaxPercent, 0, 100);
-        r.TaxPercentCard = i.TaxPercentCard is decimal card ? Math.Clamp(card, 0, 100) : null;
-        r.ServiceChargePercent = Math.Clamp(i.ServiceChargePercent, 0, 100);
+        r.TaxName = taxName;
+        r.TaxPercent = i.TaxPercent;
+        r.TaxPercentCard = i.TaxPercentCard;
+        r.ServiceChargePercent = i.ServiceChargePercent;
         r.DiscountEnabled = i.DiscountEnabled;
         r.DiscountIsPercent = i.DiscountIsPercent;
-        // A percentage is capped at 100; a fixed amount is a plain non-negative number.
-        r.DiscountValue = i.DiscountIsPercent ? Math.Clamp(i.DiscountValue, 0, 100) : Math.Max(0, i.DiscountValue);
+        r.DiscountValue = i.DiscountValue;
         r.ReceiptEnabled = i.ReceiptEnabled;
         r.StockTrackingEnabled = i.StockTrackingEnabled;
         await _db.SaveChangesAsync(ct);

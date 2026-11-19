@@ -5,6 +5,7 @@ import { CONTACT } from '../contact'
 import DineInLogo from '../DineInLogo.jsx'
 import Diorama from '../Diorama.jsx'
 import { PasswordInput } from '../forms.jsx'
+import { friendlyError } from '../errors.js'
 import { useParallax } from '../motion'
 
 // One box for everyone. The owner uses their mobile number, staff use the username the owner
@@ -41,7 +42,7 @@ export default function Login() {
       setLeaving(true)
       setTimeout(() => nav(loc.state?.from || auth.home(), { replace: true }), 460)
     } catch (err) {
-      setError(err.message || 'Could not sign in. Please try again.')
+      setError(friendlyError(err))
       setBusy(false)
       shake()
     }
@@ -67,16 +68,18 @@ export default function Login() {
             <h2>Sign in</h2>
             <p className="au-hint">Use your mobile number or the username your owner gave you.</p>
 
-            {error && <div className="au-error" role="alert">{error}</div>}
+            {error && <div className="au-error" id="login-error" role="alert">{error}</div>}
 
-            <label className="au-field">
+            <label className="au-field" htmlFor="login-who">
               <span>Mobile number or username</span>
-              <input value={who} onChange={(e) => setWho(e.target.value)} autoComplete="username" autoCapitalize="none"
-                spellCheck="false" placeholder="0300 1234567" autoFocus disabled={busy} />
+              <input id="login-who" required maxLength={60} value={who} onChange={(e) => setWho(e.target.value)} autoComplete="username" autoCapitalize="none"
+                aria-invalid={!!error && !who.trim()} aria-describedby={error ? 'login-error' : undefined}
+                spellCheck="false" placeholder="e.g. 0300 1234567" autoFocus disabled={busy} />
             </label>
-            <label className="au-field">
+            <label className="au-field" htmlFor="login-password">
               <span>Password</span>
-              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+              <PasswordInput id="login-password" required maxLength={200} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+                aria-describedby={error ? 'login-error' : undefined}
                 placeholder="Your password" disabled={busy} />
             </label>
 

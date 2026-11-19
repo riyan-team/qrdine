@@ -1,5 +1,6 @@
 using FluentValidation;
 using QrDine.Application.Billing;
+using QrDine.Application.Common;
 using QrDine.Application.Customers;
 using QrDine.Application.Ordering;
 using QrDine.Application.Ordering.Dtos;
@@ -7,15 +8,45 @@ using QrDine.Application.Staffing;
 
 namespace QrDine.Application.Validation;
 
+/// <summary>One dish on an order, the same rule wherever the order comes from.</summary>
+public class OrderLineRequestValidator : AbstractValidator<OrderLineRequest>
+{
+    public OrderLineRequestValidator()
+    {
+        RuleFor(i => i.MenuItemId).GreaterThan(0).WithMessage("Choose a dish.");
+        RuleFor(i => i.Qty).InclusiveBetween(1, 50).WithMessage("Each dish can be ordered 1 to 50 at a time.");
+        RuleFor(i => i.Note).MaximumLength(200).WithMessage("The note on a dish must be 200 characters or fewer.");
+    }
+}
+
 public class TicketRequestValidator : AbstractValidator<TicketRequest>
 {
     public TicketRequestValidator()
     {
         RuleFor(x => x.CustomerName).MaximumLength(120).WithMessage("Name is too long.");
-        RuleFor(x => x.CustomerPhone).MaximumLength(30).WithMessage("Phone number is too long.");
+        RuleFor(x => x.CustomerPhone).MaximumLength(30).WithMessage("Phone number is too long.")
+            .Must(Phone.IsBlankOrValid).WithMessage(Phone.Message);
         RuleFor(x => x.Address).MaximumLength(300).WithMessage("Address is too long.");
         RuleFor(x => x.Note).MaximumLength(300).WithMessage("Note is too long.");
+        RuleFor(x => x.DeliveryCharge!.Value).InclusiveBetween(0, 100000).When(x => x.DeliveryCharge is not null)
+            .WithMessage("The delivery charge must be between 0 and 100,000.");
         RuleFor(x => x.Items).NotEmpty().WithMessage("Add something to the order first.");
+        RuleFor(x => x.Items.Count).LessThanOrEqualTo(100).When(x => x.Items != null).WithMessage("That's too many lines for one order.");
+        RuleForEach(x => x.Items).SetValidator(new OrderLineRequestValidator());
+    }
+}
+
+public class GuestTicketRequestValidator : AbstractValidator<GuestTicketRequest>
+{
+    public GuestTicketRequestValidator()
+    {
+        RuleFor(x => x.CustomerName).MaximumLength(60).WithMessage("Please keep the name under 60 characters.");
+        RuleFor(x => x.CustomerPhone).MaximumLength(30).WithMessage("Phone number is too long.");
+        RuleFor(x => x.Address).MaximumLength(300).WithMessage("Please keep the address under 300 characters.");
+        RuleFor(x => x.Note).MaximumLength(200).WithMessage("Please keep the note under 200 characters.");
+        RuleFor(x => x.Items).NotEmpty().WithMessage("Add something to the order first.");
+        RuleFor(x => x.Items.Count).LessThanOrEqualTo(100).When(x => x.Items != null).WithMessage("That's too many lines for one order.");
+        RuleForEach(x => x.Items).SetValidator(new OrderLineRequestValidator());
     }
 }
 
@@ -24,9 +55,22 @@ public class TicketUpdateValidator : AbstractValidator<TicketUpdate>
     public TicketUpdateValidator()
     {
         RuleFor(x => x.CustomerName).MaximumLength(120).WithMessage("Name is too long.");
-        RuleFor(x => x.CustomerPhone).MaximumLength(30).WithMessage("Phone number is too long.");
+        RuleFor(x => x.CustomerPhone).MaximumLength(30).WithMessage("Phone number is too long.")
+            .Must(Phone.IsBlankOrValid).WithMessage(Phone.Message);
         RuleFor(x => x.Address).MaximumLength(300).WithMessage("Address is too long.");
         RuleFor(x => x.RiderName).MaximumLength(80).WithMessage("Rider's name is too long.");
+        RuleFor(x => x.DeliveryCharge!.Value).InclusiveBetween(0, 100000).When(x => x.DeliveryCharge is not null)
+            .WithMessage("The delivery charge must be between 0 and 100,000.");
+    }
+}
+
+public class RiderLinkInputValidator : AbstractValidator<RiderLinkInput>
+{
+    public RiderLinkInputValidator()
+    {
+        RuleFor(x => x.RiderName).MaximumLength(80).WithMessage("Rider's name is too long.");
+        RuleFor(x => x.RiderPhone).MaximumLength(30).WithMessage("Phone number is too long.")
+            .Must(Phone.IsBlankOrValid).WithMessage(Phone.Message);
     }
 }
 
@@ -36,7 +80,8 @@ public class CustomerInputValidator : AbstractValidator<CustomerInput>
     {
         RuleFor(x => x.Name).NotEmpty().WithMessage("Enter the customer's name.")
             .MaximumLength(120).WithMessage("Name must be 120 characters or fewer.");
-        RuleFor(x => x.Phone).MaximumLength(30).WithMessage("Phone number is too long.");
+        RuleFor(x => x.Phone).MaximumLength(30).WithMessage("Phone number is too long.")
+            .Must(Phone.IsBlankOrValid).WithMessage(Phone.Message);
         RuleFor(x => x.Address).MaximumLength(300).WithMessage("Address is too long.");
         RuleFor(x => x.Notes).MaximumLength(500).WithMessage("Notes are too long.");
         RuleFor(x => x.CreditLimit).GreaterThanOrEqualTo(0).WithMessage("The khata limit can't be negative.");
@@ -48,7 +93,7 @@ public class CustomerPaymentInputValidator : AbstractValidator<CustomerPaymentIn
     public CustomerPaymentInputValidator()
     {
         RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Enter how much they paid.");
-        RuleFor(x => x.Method).MaximumLength(30);
+        RuleFor(x => x.Method).MaximumLength(30).WithMessage("Payment method is too long.");
         RuleFor(x => x.Reference).MaximumLength(60).WithMessage("Reference is too long.");
         RuleFor(x => x.Note).MaximumLength(300).WithMessage("Note is too long.");
     }
@@ -60,7 +105,8 @@ public class EmployeeInputValidator : AbstractValidator<EmployeeInput>
     {
         RuleFor(x => x.Name).NotEmpty().WithMessage("Enter the person's name.")
             .MaximumLength(120).WithMessage("Name must be 120 characters or fewer.");
-        RuleFor(x => x.Phone).MaximumLength(30).WithMessage("Phone number is too long.");
+        RuleFor(x => x.Phone).MaximumLength(30).WithMessage("Phone number is too long.")
+            .Must(Phone.IsBlankOrValid).WithMessage(Phone.Message);
         RuleFor(x => x.Designation).MaximumLength(60).WithMessage("Job title is too long.");
         RuleFor(x => x.Notes).MaximumLength(300).WithMessage("Notes are too long.");
         RuleFor(x => x.MonthlySalary).GreaterThanOrEqualTo(0).WithMessage("Salary can't be negative.");
@@ -72,7 +118,7 @@ public class PayrollEntryInputValidator : AbstractValidator<PayrollEntryInput>
     public PayrollEntryInputValidator()
     {
         RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Enter an amount greater than zero.");
-        RuleFor(x => x.Method).MaximumLength(30);
+        RuleFor(x => x.Method).MaximumLength(30).WithMessage("Payment method is too long.");
         RuleFor(x => x.Note).MaximumLength(300).WithMessage("Note is too long.");
     }
 }

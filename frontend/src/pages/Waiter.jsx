@@ -3,6 +3,7 @@ import { api, money, statusLabel } from '../api'
 import { loadUntilOk, useStaffOrders, useCalls } from '../useStaffOrders'
 import { auth } from '../auth'
 import { ui, toast, playBell } from '../ui.jsx'
+import { friendlyError } from '../errors.js'
 import {
   useCart, plusOrCustomize, cartToItems, MenuList, CartLines, Customizer,
   OrderActions, Spinner, catAnchor,
@@ -102,6 +103,14 @@ export default function Waiter() {
 
 // ---- The live board: ready-to-serve + the tables you're handling ----
 function Board({ orders, me, canOrder, onAddItems, unreadReady, ackReady }) {
+  // One tap per order: a double tap must not send "take table" or "served" twice.
+  const [acting, setActing] = useState(null)
+  const act = async (o, fn) => {
+    if (acting) return
+    setActing(o.id); ackReady?.(o.id)
+    try { await fn() } catch (e) { ui.alert(friendlyError(e)) }
+    setActing(null)
+  }
   const ready = orders.filter((o) => o.status === 'Ready')
   const mine = orders.filter((o) => o.waiterName === me && o.status !== 'Ready')
 
@@ -125,9 +134,9 @@ function Board({ orders, me, canOrder, onAddItems, unreadReady, ackReady }) {
             </div>
             <Lines o={o} />
             <div className="row" style={{ marginTop: 8, gap: 8 }}>
-              {!o.waiterName && <button onClick={() => { ackReady?.(o.id); api.assign(o.id, me).catch((e) => ui.alert(e.message)) }}>Take table</button>}
-              <button className="green" style={{ marginLeft: 'auto' }}
-                onClick={() => { ackReady?.(o.id); api.serve(o.id).catch((e) => ui.alert(e.message)) }}><CheckIcon size={15} /> Mark served</button>
+              {!o.waiterName && <button disabled={acting === o.id} onClick={() => act(o, () => api.assign(o.id, me))}>Take table</button>}
+              <button className="green" style={{ marginLeft: 'auto' }} disabled={acting === o.id}
+                onClick={() => act(o, () => api.serve(o.id))}><CheckIcon size={15} /> Mark served</button>
             </div>
           </div>
         ))}
@@ -225,13 +234,13 @@ function TakeOrder({ orders, initialTable }) {
   }
 
   const submit = async () => {
-    if (!table || cart.list.length === 0) return
+    if (placing || !table || cart.list.length === 0) return
     setPlacing(true)
     try {
       const o = await api.placeStaffOrder({ tableCode: table.code, items: cartToItems(cart.list), note: note || null })
       cart.clear(); setNote(''); setPlaced({ id: o.id, tableName: table.name })
       window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (e) { ui.alert('Could not place order: ' + e.message) }
+    } catch (e) { ui.alert('Could not place the order. ' + friendlyError(e)) }
     setPlacing(false)
   }
 
@@ -288,7 +297,7 @@ function TakeOrder({ orders, initialTable }) {
 
       <div className="search" style={{ marginBottom: 4 }}>
         <span className="s-ico"><SearchIcon size={16} /></span>
-        <input placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input aria-label="Search the menu" placeholder="Search the menu…" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
 
       {!q && menu.length > 1 && (
@@ -314,7 +323,7 @@ function TakeOrder({ orders, initialTable }) {
             <div className="big" style={{ fontSize: 22 }}>{money(cart.total)}</div>
           </div>
           <div className="sheet-lines"><CartLines list={cart.list} changeQty={cart.changeQty} /></div>
-          <input placeholder="Note for kitchen (e.g. no onion)" value={note}
+          <input aria-label="Note for the kitchen (optional)" maxLength={200} placeholder="Note for kitchen (e.g. no onion)" value={note}
             onChange={(e) => setNote(e.target.value)} style={{ width: '100%', marginBottom: 8 }} />
           <button className="green" disabled={placing} onClick={submit}
             style={{ width: '100%', fontSize: 16, padding: '12px' }}>

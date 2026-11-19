@@ -18,13 +18,14 @@ export default function MenuAdmin() {
 
   const cats = data?.menu ?? []
 
+  const catPrompt = { label: 'Category name', required: true, requiredMessage: 'Enter a category name.', maxLength: 60 }
   const addCategory = async () => {
-    const name = await ui.prompt({ title: 'New category', placeholder: 'e.g. Starters', confirmText: 'Add', required: true })
+    const name = await ui.prompt({ title: 'New category', placeholder: 'e.g. Starters', confirmText: 'Add', ...catPrompt })
     if (!name) return
     try { await api.addCategory(name, cats.length + 1); load() } catch (e) { toast.error(friendlyError(e)) }
   }
   const renameCategory = async (c) => {
-    const name = await ui.prompt({ title: 'Rename category', defaultValue: c.name, confirmText: 'Rename', required: true })
+    const name = await ui.prompt({ title: 'Rename category', defaultValue: c.name, confirmText: 'Rename', ...catPrompt })
     if (!name || name === c.name) return
     try { await api.updateCategory(c.id, name, cats.indexOf(c) + 1); load() } catch (e) { toast.error(friendlyError(e)) }
   }
@@ -107,8 +108,15 @@ export default function MenuAdmin() {
   )
 }
 
+// 0 to 100 or blank, as the server allows for tax rates.
+const isPercentOrBlank = (v) => {
+  if (v === '' || v == null) return true
+  const n = Number(v)
+  return Number.isFinite(n) && n >= 0 && n <= 100
+}
+
 const blankItem = (categoryId) => ({
-  categoryId, name: '', nameUrdu: '', description: '', price: 0, emoji: '🍽️',
+  categoryId, name: '', nameUrdu: '', description: '', price: '', emoji: '🍽️',
   available: true, prepMinutes: 15, taxRate: '', furtherTaxRate: 0, pctCode: '',
   variants: [], modifierGroups: [],
   dealPrice: '', dealDescription: '', dealDays: [], dealStart: '', dealEnd: '', dealHideWhenOff: false,
@@ -130,6 +138,8 @@ function BulkPrice({ cats, onClose, onDone }) {
   const example = (cats.find((c) => String(c.id) === categoryId) || cats[0])?.items.find((i) => i.price > 0)
   const after = (p) => { const n = p * (1 + pct / 100); return round > 0 ? Math.round(n / round) * round : Math.round(n * 100) / 100 }
   const save = async () => {
+    const n = Number(percent)
+    if (percent.trim() === '' || !Number.isFinite(n) || n < -90 || n > 300) { setErr('Enter a percentage between -90 and 300.'); return }
     setBusy(true); setErr('')
     try {
       const r = await api.bulkPrice({ percent: pct, roundTo: round, categoryId: categoryId ? Number(categoryId) : null })
@@ -143,7 +153,7 @@ function BulkPrice({ cats, onClose, onDone }) {
       <button className="primary push" disabled={busy || pct === 0} onClick={save}>{busy ? 'Changing…' : pct > 0 ? `Raise by ${pct}%` : `Lower by ${-pct}%`}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Change by (%)</label><input autoFocus type="number" inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} /></div>
+        <div className="field"><label className="field-label" htmlFor="bp-pct">Change by (%)</label><input id="bp-pct" autoFocus required type="number" min="-90" max="300" inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} /></div>
         <div className="field"><label className="field-label">Round to the nearest</label>
           <select value={roundTo} onChange={(e) => setRoundTo(e.target.value)}>
             <option value="0">Don't round</option><option value="5">Rs 5</option><option value="10">Rs 10</option><option value="50">Rs 50</option>
@@ -205,7 +215,43 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
   const setOption = (gi, oi, k, v) => setGroup(gi, 'options', f.modifierGroups[gi].options.map((o, n) => n === oi ? { ...o, [k]: v } : o))
   const delOption = (gi, oi) => setGroup(gi, 'options', f.modifierGroups[gi].options.filter((_, n) => n !== oi))
 
+  // The server's rules (ItemInputValidator), checked here first so the owner sees the reason at once.
+  const problem = () => {
+    if (!f.name.trim()) return 'Enter the dish name.'
+    if (f.variants.length === 0 && String(f.price ?? '').trim() === '') return 'Enter the price, or add sizes with their own prices.'
+    const price = Number(f.price || 0)
+    if (!Number.isFinite(price) || price < 0) return "Price can't be negative."
+    const prep = Number(f.prepMinutes)
+    if (String(f.prepMinutes ?? '').trim() === '' || !Number.isInteger(prep) || prep < 1 || prep > 180) return 'Prep time must be a whole number from 1 to 180 minutes.'
+    if (!isPercentOrBlank(f.taxRate)) return 'Item tax % must be between 0 and 100.'
+    if (!isPercentOrBlank(f.furtherTaxRate)) return 'Further tax % must be between 0 and 100.'
+    if (f.dealPrice !== '' && f.dealPrice != null) {
+      const dp = Number(f.dealPrice)
+      if (!Number.isFinite(dp) || dp < 0) return "The deal price can't be negative."
+      if (dp >= price) return `The deal price must be less than the normal price (Rs ${price}).`
+    }
+    for (const v of f.variants) {
+      if (!v.name.trim()) return 'Give each size a name.'
+      if (String(v.price ?? '').trim() === '' || !(Number(v.price) >= 0)) return 'Give each size a price of 0 or more.'
+    }
+    for (const g of f.modifierGroups) {
+      if (!g.name.trim()) return 'Give each option group a name.'
+      const min = Number(g.minSelect), max = Number(g.maxSelect)
+      if (!Number.isInteger(min) || !Number.isInteger(max)) return 'Min and max picks must be whole numbers.'
+      if (max < 1) return 'Max picks must be 1 or more.'
+      if (min < 0 || min > max) return "Min picks can't be more than max picks."
+      for (const o of g.options) {
+        if (!o.name.trim()) return 'Give each option a name.'
+        if (!(Number(o.price || 0) >= 0)) return "Option price can't be negative."
+      }
+    }
+    return ''
+  }
+
   const save = async () => {
+    if (busy) return
+    const why = problem()
+    if (why) { setErr(why); return }
     setBusy(true); setErr('')
     const payload = {
       categoryId: Number(f.categoryId), name: f.name.trim(), nameUrdu: f.nameUrdu.trim(),
@@ -221,17 +267,17 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
       variants: f.variants.map((v, i) => ({ name: v.name.trim(), price: Number(v.price), sortOrder: i + 1 })),
       modifierGroups: f.modifierGroups.map((g, gi) => ({
         name: g.name.trim(), minSelect: Number(g.minSelect), maxSelect: Number(g.maxSelect), sortOrder: gi + 1,
-        options: g.options.map((o, oi) => ({ name: o.name.trim(), price: Number(o.price), sortOrder: oi + 1 })),
+        options: g.options.map((o, oi) => ({ name: o.name.trim(), price: Number(o.price) || 0, sortOrder: oi + 1 })),
       })),
     }
     try {
       if (item) await api.updateItem(item.id, payload); else await api.createItem(payload)
       onSaved()
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e)) }
     setBusy(false)
   }
 
-  const inp = { width: '100%', marginBottom: 8 }
+  const inp = { width: '100%', minWidth: 0, marginBottom: 8 }
   return (
     <div className="overlay" onClick={(e) => { if (e.target.className === 'overlay') onClose() }}>
       <div className="modal" style={{ maxWidth: 520 }}>
@@ -251,26 +297,35 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
           <div className="muted" style={{ fontSize: 12, margin: '8px 0' }}>Save the item first, then re-open it to add a photo.</div>
         )}
 
-        <label className="muted" style={{ fontSize: 12 }}>Category</label>
-        <select value={f.categoryId} onChange={(e) => set('categoryId', e.target.value)} style={inp}>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <label className="fld" style={{ marginBottom: 8 }}><span>Category</span>
+          <select required value={f.categoryId} onChange={(e) => set('categoryId', e.target.value)} style={{ width: '100%' }}>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>
 
-        <div className="row" style={{ gap: 8 }}>
-          <input placeholder="Name (English)" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ ...inp, flex: 2 }} />
-          <input placeholder="اردو نام" value={f.nameUrdu} onChange={(e) => set('nameUrdu', e.target.value)} style={{ ...inp, flex: 1 }} />
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="fld" style={{ flex: 2 }}><span>Name (English)</span>
+            <input required maxLength={80} value={f.name} onChange={(e) => set('name', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ flex: 1 }}><span>اردو نام <span className="opt">(optional)</span></span>
+            <input maxLength={80} dir="auto" value={f.nameUrdu} onChange={(e) => set('nameUrdu', e.target.value)} style={inp} /></label>
         </div>
-        <input placeholder="Description" value={f.description} onChange={(e) => set('description', e.target.value)} style={inp} />
-        <div className="row" style={{ gap: 8 }}>
-          <input placeholder="Emoji" value={f.emoji} onChange={(e) => set('emoji', e.target.value)} style={{ ...inp, width: 70 }} />
-          <input type="number" placeholder="Base price" value={f.price} onChange={(e) => set('price', e.target.value)} style={inp} />
-          <input type="number" placeholder="Prep min" value={f.prepMinutes} onChange={(e) => set('prepMinutes', e.target.value)} style={{ ...inp, width: 90 }} />
+        <label className="fld"><span>Description <span className="opt">(optional)</span></span>
+          <input value={f.description} onChange={(e) => set('description', e.target.value)} style={inp} /></label>
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="fld" style={{ width: 70 }}><span>Emoji</span>
+            <input value={f.emoji} maxLength={16} onChange={(e) => set('emoji', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ flex: 1 }}><span>{f.variants.length > 0 ? <>Base price <span className="opt">(sizes set their own)</span></> : 'Price (Rs)'}</span>
+            <input type="number" required={f.variants.length === 0} min="0" step="any" inputMode="decimal" value={f.price} onChange={(e) => set('price', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ width: 100 }}><span>Prep (min)</span>
+            <input type="number" required min="1" max="180" step="1" inputMode="numeric" value={f.prepMinutes} onChange={(e) => set('prepMinutes', e.target.value)} style={inp} /></label>
         </div>
-        <label className="muted" style={{ fontSize: 12 }}>Tax for FBR. Leave the rate blank to use the restaurant's default.</label>
-        <div className="row" style={{ gap: 8 }}>
-          <input type="number" placeholder="Tax %" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} style={{ ...inp, flex: 1 }} />
-          <input type="number" placeholder="Further tax %" value={f.furtherTaxRate} onChange={(e) => set('furtherTaxRate', e.target.value)} style={{ ...inp, flex: 1 }} />
-          <input placeholder="PCT / HS code" value={f.pctCode} onChange={(e) => set('pctCode', e.target.value)} style={{ ...inp, flex: 1 }} />
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Tax for FBR. Leave blank for the restaurant rate; 0 means no tax.</div>
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="fld" style={{ flex: 1 }}><span>Tax % <span className="opt">(optional)</span></span>
+            <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Restaurant rate" value={f.taxRate} onChange={(e) => set('taxRate', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ flex: 1 }}><span>Further tax % <span className="opt">(optional)</span></span>
+            <input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={f.furtherTaxRate} onChange={(e) => set('furtherTaxRate', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ flex: 1 }}><span>PCT / HS code <span className="opt">(optional)</span></span>
+            <input maxLength={12} value={f.pctCode} onChange={(e) => set('pctCode', e.target.value)} style={inp} /></label>
         </div>
         <label className="row" style={{ gap: 8, marginBottom: 8, cursor: 'pointer' }}>
           <input type="checkbox" checked={f.available} onChange={(e) => set('available', e.target.checked)} /> Available
@@ -279,9 +334,11 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
 
         {/* Deal / offer */}
         <div className="cat-title" style={{ fontSize: 14 }}>Deal / offer <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(optional, shows a reduced price)</span></div>
-        <div className="row" style={{ gap: 8 }}>
-          <input type="number" placeholder="Deal price" title="Deal price (must be below the base price)" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={{ ...inp, flex: 1 }} />
-          <input placeholder="What’s included (combo)" value={f.dealDescription} onChange={(e) => set('dealDescription', e.target.value)} style={{ ...inp, flex: 2 }} />
+        <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="fld" style={{ flex: 1 }}><span>Deal price <span className="opt">(below the price)</span></span>
+            <input type="number" min="0" step="any" inputMode="decimal" value={f.dealPrice} onChange={(e) => set('dealPrice', e.target.value)} style={inp} /></label>
+          <label className="fld" style={{ flex: 2 }}><span>What’s included <span className="opt">(optional)</span></span>
+            <input maxLength={200} placeholder="Combo: karahi, 2 naan, drink" value={f.dealDescription} onChange={(e) => set('dealDescription', e.target.value)} style={inp} /></label>
         </div>
         {f.dealPrice !== '' && Number(f.dealPrice) >= 0 && (
           <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
@@ -310,9 +367,9 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         <div className="cat-title" style={{ fontSize: 14 }}>Sizes / variants</div>
         {f.variants.map((v, i) => (
           <div key={i} className="row" style={{ gap: 8, marginBottom: 6 }}>
-            <input placeholder="e.g. Half" value={v.name} onChange={(e) => setVariant(i, 'name', e.target.value)} style={{ flex: 2 }} />
-            <input type="number" placeholder="Price" value={v.price} onChange={(e) => setVariant(i, 'price', e.target.value)} style={{ flex: 1 }} />
-            <button className="ghost" onClick={() => delVariant(i)}><CloseIcon size={15} /></button>
+            <input required aria-label={`Size ${i + 1} name`} maxLength={40} placeholder="Size name, e.g. Half" value={v.name} onChange={(e) => setVariant(i, 'name', e.target.value)} style={{ flex: 2 }} />
+            <input required aria-label={`Size ${i + 1} price`} type="number" min="0" step="any" inputMode="decimal" placeholder="Price" value={v.price} onChange={(e) => setVariant(i, 'price', e.target.value)} style={{ flex: 1 }} />
+            <button className="ghost" aria-label={`Remove size ${i + 1}`} onClick={() => delVariant(i)}><CloseIcon size={15} /></button>
           </div>
         ))}
         <button className="ghost" onClick={addVariant} style={{ marginBottom: 10 }}>+ size</button>
@@ -321,17 +378,20 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         <div className="cat-title" style={{ fontSize: 14 }}>Option groups (spice, add-ons)</div>
         {f.modifierGroups.map((g, gi) => (
           <div key={gi} className="card" style={{ padding: 10, marginBottom: 8 }}>
-            <div className="row" style={{ gap: 8, marginBottom: 6 }}>
-              <input placeholder="Group name" value={g.name} onChange={(e) => setGroup(gi, 'name', e.target.value)} style={{ flex: 2 }} />
-              <input type="number" title="min" value={g.minSelect} onChange={(e) => setGroup(gi, 'minSelect', e.target.value)} style={{ width: 56 }} />
-              <input type="number" title="max" value={g.maxSelect} onChange={(e) => setGroup(gi, 'maxSelect', e.target.value)} style={{ width: 56 }} />
-              <button className="ghost" onClick={() => delGroup(gi)}><CloseIcon size={15} /></button>
+            <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
+              <label className="fld" style={{ flex: 2 }}><span>Group name</span>
+                <input required maxLength={40} placeholder="e.g. Spice level" value={g.name} onChange={(e) => setGroup(gi, 'name', e.target.value)} /></label>
+              <label className="fld" style={{ width: 70 }}><span>Min picks</span>
+                <input type="number" min="0" step="1" inputMode="numeric" value={g.minSelect} onChange={(e) => setGroup(gi, 'minSelect', e.target.value)} style={{ minWidth: 0 }} /></label>
+              <label className="fld" style={{ width: 70 }}><span>Max picks</span>
+                <input type="number" min="1" step="1" inputMode="numeric" value={g.maxSelect} onChange={(e) => setGroup(gi, 'maxSelect', e.target.value)} style={{ minWidth: 0 }} /></label>
+              <button className="ghost" aria-label={`Remove group ${g.name || gi + 1}`} onClick={() => delGroup(gi)}><CloseIcon size={15} /></button>
             </div>
             {g.options.map((o, oi) => (
               <div key={oi} className="row" style={{ gap: 8, marginBottom: 4, paddingLeft: 12 }}>
-                <input placeholder="Option" value={o.name} onChange={(e) => setOption(gi, oi, 'name', e.target.value)} style={{ flex: 2 }} />
-                <input type="number" placeholder="+price" value={o.price} onChange={(e) => setOption(gi, oi, 'price', e.target.value)} style={{ flex: 1 }} />
-                <button className="ghost" onClick={() => delOption(gi, oi)}><CloseIcon size={15} /></button>
+                <input required aria-label={`Option ${oi + 1} name`} maxLength={40} placeholder="Option name" value={o.name} onChange={(e) => setOption(gi, oi, 'name', e.target.value)} style={{ flex: 2 }} />
+                <input aria-label={`Option ${oi + 1} extra price`} type="number" min="0" step="any" inputMode="decimal" placeholder="+price" value={o.price} onChange={(e) => setOption(gi, oi, 'price', e.target.value)} style={{ flex: 1 }} />
+                <button className="ghost" aria-label={`Remove option ${oi + 1}`} onClick={() => delOption(gi, oi)}><CloseIcon size={15} /></button>
               </div>
             ))}
             <button className="ghost" onClick={() => addOption(gi)} style={{ marginLeft: 12 }}>+ option</button>
@@ -339,9 +399,10 @@ function ItemEditor({ item, categories, onClose, onSaved }) {
         ))}
         <button className="ghost" onClick={addGroup} style={{ marginBottom: 10 }}>+ option group</button>
 
-        {err && <div style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
-        <div className="row" style={{ gap: 8 }}>
+        {err && <div role="alert" style={{ color: 'var(--red)', fontSize: 14, marginBottom: 8 }}>{err}</div>}
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <button onClick={onClose}>Cancel</button>
+          {!busy && !f.name.trim() && <span className="muted" style={{ fontSize: 12 }}>Enter the dish name to save.</span>}
           <button className="green" style={{ marginLeft: 'auto' }} disabled={busy || !f.name.trim()} onClick={save}>
             {busy ? 'Saving…' : 'Save item'}
           </button>
@@ -387,7 +448,22 @@ function MenuImportModal({ onClose, onImported }) {
   const setCat = (ci, name) => setPreview((p) => ({ ...p, categories: p.categories.map((c, x) => x !== ci ? c : { ...c, name }) }))
   const total = preview ? preview.categories.reduce((s, c) => s + c.items.length, 0) : 0
 
+  // The import drops a deal that isn't below the price, so say so here instead of losing it quietly.
+  const problem = () => {
+    for (const c of preview.categories) {
+      if (!String(c.name || '').trim()) return 'Give every category a name.'
+      for (const i of c.items) {
+        if (!String(i.name || '').trim()) return `Give every dish in ${c.name} a name, or remove it.`
+        if (!(Number(i.price || 0) >= 0)) return `The price of ${i.name} can't be negative.`
+        if (i.dealPrice !== '' && i.dealPrice != null && !(Number(i.dealPrice) >= 0 && Number(i.dealPrice) < Number(i.price || 0)))
+          return `The deal price of ${i.name} must be less than its price.`
+      }
+    }
+    return ''
+  }
   const apply = async () => {
+    const why = problem()
+    if (why) { setErr(why); return }
     setBusy(true); setErr('')
     try {
       const categories = preview.categories.map((c) => ({
@@ -402,7 +478,7 @@ function MenuImportModal({ onClose, onImported }) {
       const r = await api.applyMenuImport(categories)
       await ui.alert(`Added ${r.created} ${r.created === 1 ? 'dish' : 'dishes'} to your menu.`)
       onImported()
-    } catch (e) { setErr(e.message); setBusy(false) }
+    } catch (e) { setErr(friendlyError(e)); setBusy(false) }
   }
 
   return (
@@ -442,20 +518,20 @@ function MenuImportModal({ onClose, onImported }) {
             <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
               {preview.categories.map((c, ci) => (
                 <div key={ci} style={{ marginBottom: 12 }}>
-                  <input value={c.name} onChange={(e) => setCat(ci, e.target.value)} style={{ fontWeight: 700, width: '100%', marginBottom: 4 }} />
+                  <input required aria-label="Category name" maxLength={60} value={c.name} onChange={(e) => setCat(ci, e.target.value)} style={{ fontWeight: 700, width: '100%', marginBottom: 4 }} />
                   {c.items.map((it, ii) => (
                     <div key={ii} style={{ marginBottom: 6 }}>
                       <div className="row" style={{ gap: 6, marginBottom: 4 }}>
-                        <input value={it.name} placeholder="Item name" onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
-                        <input type="number" value={it.price} placeholder="Price" onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
-                        <button className="ghost" onClick={() => removeItem(ci, ii)}><TrashIcon size={15} /></button>
+                        <input required aria-label="Dish name" maxLength={80} value={it.name} placeholder="Item name" onChange={(e) => setItem(ci, ii, 'name', e.target.value)} style={{ flex: 1 }} />
+                        <input aria-label={`Price of ${it.name || 'this dish'}`} type="number" min="0" step="any" inputMode="decimal" value={it.price} placeholder="Price" onChange={(e) => setItem(ci, ii, 'price', e.target.value)} style={{ width: 90 }} />
+                        <button className="ghost" aria-label={`Remove ${it.name || 'this dish'}`} onClick={() => removeItem(ci, ii)}><TrashIcon size={15} /></button>
                       </div>
                       {(it.dealPrice != null && it.dealPrice !== '') || it.dealDescription ? (
                         <div className="row" style={{ gap: 6, paddingLeft: 12, marginBottom: 2 }}>
                           <span className="pill s-Cancelled" style={{ alignSelf: 'center' }}>deal</span>
-                          <input type="number" value={it.dealPrice ?? ''} placeholder="Deal price"
+                          <input aria-label={`Deal price of ${it.name || 'this dish'}`} type="number" min="0" step="any" inputMode="decimal" value={it.dealPrice ?? ''} placeholder="Deal price"
                             onChange={(e) => setItem(ci, ii, 'dealPrice', e.target.value)} style={{ width: 90 }} />
-                          <input value={it.dealDescription || ''} placeholder="What's included (combo)"
+                          <input aria-label="What's included" maxLength={200} value={it.dealDescription || ''} placeholder="What's included (combo)"
                             onChange={(e) => setItem(ci, ii, 'dealDescription', e.target.value)} style={{ flex: 1 }} />
                         </div>
                       ) : null}

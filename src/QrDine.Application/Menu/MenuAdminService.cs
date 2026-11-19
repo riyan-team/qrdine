@@ -72,6 +72,7 @@ public class MenuAdminService
     // ---- items ----
     public async Task<int> CreateItem(ItemInput input, CancellationToken ct = default)
     {
+        Check(input);
         var item = new MenuItem();
         Apply(item, input);
         _db.MenuItems.Add(item);
@@ -81,6 +82,7 @@ public class MenuAdminService
 
     public async Task UpdateItem(int id, ItemInput input, CancellationToken ct = default)
     {
+        Check(input);
         var item = await _db.MenuItems
             .Include(i => i.Variants)
             .Include(i => i.ModifierGroups).ThenInclude(g => g.Options)
@@ -114,6 +116,23 @@ public class MenuAdminService
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Why a deal price can't be used, or null when it's fine. A deal must cost less than the dish.</summary>
+    public static string? DealPriceProblem(decimal dealPrice, decimal price) =>
+        dealPrice < 0 ? "The deal price can't be negative."
+        : dealPrice >= price ? $"The deal price must be less than the normal price (Rs {price:0.##})."
+        : null;
+
+    /// <summary>
+    /// Wrong numbers are refused with a reason, never quietly changed or dropped, so the owner
+    /// knows exactly what guests will pay and what tax goes on the bill.
+    /// </summary>
+    private static void Check(ItemInput input)
+    {
+        if (input.TaxRate is decimal tr && !Admin.BillingRules.IsPercent(tr)) throw new DomainException(Admin.BillingRules.ItemTaxMessage);
+        if (!Admin.BillingRules.IsPercent(input.FurtherTaxRate)) throw new DomainException(Admin.BillingRules.FurtherTaxMessage);
+        if (input.DealPrice is decimal dp && DealPriceProblem(dp, input.Price) is string problem) throw new DomainException(problem);
+    }
+
     private static void Apply(MenuItem item, ItemInput input)
     {
         item.CategoryId = input.CategoryId;
@@ -124,13 +143,13 @@ public class MenuAdminService
         item.Emoji = string.IsNullOrWhiteSpace(input.Emoji) ? "🍽️" : input.Emoji.Trim();
         item.Available = input.Available;
         item.PrepMinutes = Math.Clamp(input.PrepMinutes, 1, 180);
-        // Per-item tax (null rate = use the restaurant default at bill time).
-        item.TaxRate = input.TaxRate is { } tr ? Math.Clamp(tr, 0, 100) : null;
-        item.FurtherTaxRate = Math.Clamp(input.FurtherTaxRate, 0, 100);
+        // Per-item tax (null rate = use the restaurant default at bill time). Check() has refused anything outside 0-100.
+        item.TaxRate = input.TaxRate;
+        item.FurtherTaxRate = input.FurtherTaxRate;
         item.PctCode = input.PctCode?.Trim() ?? "";
 
-        // Deal / offer. A deal price at/above the normal price is meaningless — drop it.
-        item.DealPrice = input.DealPrice is { } dp && dp >= 0 && dp < input.Price ? dp : null;
+        // Deal / offer. Check() has refused a deal price at or above the normal price.
+        item.DealPrice = input.DealPrice;
         item.DealDescription = input.DealDescription?.Trim() ?? "";
         item.DealDays = (input.DealDays ?? "").Trim();
         item.DealStartMinutes = input.DealStartMinutes;
