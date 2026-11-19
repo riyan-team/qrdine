@@ -82,6 +82,9 @@ if (pcPaths is not null)
         FirstAfter: TimeSpan.FromMinutes(builder.Configuration.GetValue("Pc:FirstBackupMinutes", 3.0))));
     builder.Services.AddSingleton<QrDine.Infrastructure.Pc.PcBackupService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<QrDine.Infrastructure.Pc.PcBackupService>());
+    // Hybrid: the counter runs here and the online copy is kept in step (off until the owner connects this PC).
+    builder.Services.AddSingleton<QrDine.Api.Pc.PcSync>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<QrDine.Api.Pc.PcSync>());
 }
 
 // CORS: the SPA is served from the API's own origin, so cross-origin isn't needed
@@ -262,6 +265,7 @@ app.MapAdminSettings();
 app.MapFiscal();
 app.MapSync();   // a restaurant's own PC; answers 404 unless Sync:Enabled=true
 if (pcPaths is not null) app.MapLicence();   // PC edition: this PC's code, its licence, entering a new one
+if (pcPaths is not null) app.MapPcSync();    // PC edition: connecting to the online restaurant, and how its copy stands
 
 // These change orders, tables, bills, stock, khatas and points, so each restaurant's changes take turns.
 var floor = app.MapGroup("").AddEndpointFilter<FloorGateFilter>();

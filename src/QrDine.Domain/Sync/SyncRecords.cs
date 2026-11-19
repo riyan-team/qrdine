@@ -26,6 +26,12 @@ public class SyncDevice : Entity, ITenantOwned
     public DateTime? LastSeenAt { get; set; }
     public DateTime? RevokedAt { get; set; }
 
+    /// <summary>
+    /// When this PC took over the restaurant's counter (after its first download). From then on the
+    /// server makes no orders, bills or other floor records for the restaurant: the PC does.
+    /// </summary>
+    public DateTime? CounterSince { get; set; }
+
     public bool IsActive => RevokedAt is null;
 }
 
@@ -43,12 +49,21 @@ public class SyncChange : ITenantOwned
     public Guid SyncId { get; set; }                     // the row's id everywhere
     public string Op { get; set; } = SyncOp.Upsert;
     public DateTime ChangedAt { get; set; }
+
+    /// <summary>
+    /// Where the change came from when it was applied from the other side: on the server, the device
+    /// that sent it (so that device isn't sent its own change back); on a PC, <see cref="FromServer"/>
+    /// (so the PC doesn't send the server's change back up). Null for a change made here.
+    /// </summary>
+    public int? OriginDeviceId { get; set; }
+
+    public const int FromServer = -1;
 }
 
 /// <summary>
-/// A change a device sent up, kept as it arrived. Phase 1 only stores it, once per
-/// <see cref="ChangeId"/>; applying inbox lines to the restaurant's data (with <see cref="SyncRules"/>)
-/// comes with the PC app.
+/// A change a device sent up, kept as it arrived, once per <see cref="ChangeId"/>. It is applied to the
+/// restaurant's data with <see cref="SyncRules"/> straight after it is stored; <see cref="Status"/> and
+/// <see cref="Note"/> say how that went.
 /// </summary>
 public class SyncInboxEntry : ITenantOwned
 {
@@ -63,9 +78,15 @@ public class SyncInboxEntry : ITenantOwned
     public DateTime ClientChangedAt { get; set; }
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = SyncInboxStatus.Pending;
+    public DateTime? AppliedAt { get; set; }
+    public int Attempts { get; set; }
+    public string? Note { get; set; }                    // why it was skipped or failed, for the Devices screen
 }
 
 public static class SyncInboxStatus
 {
-    public const string Pending = "Pending";
+    public const string Pending = "Pending";   // stored, not applied yet
+    public const string Applied = "Applied";   // the restaurant's data now has it
+    public const string Skipped = "Skipped";   // this side's copy was newer, or it changed nothing
+    public const string Failed = "Failed";     // could not be applied; Note says why
 }

@@ -123,13 +123,20 @@ public static class PcLicenceApplier
 /// never locks a restaurant out of its own data), but nothing new can be made. With no licence at all, only the
 /// licence screen works. The PC edition holds one restaurant.
 /// </summary>
-public sealed class LicenceGateMiddleware(RequestDelegate next, PcLicence licence, ILogger<LicenceGateMiddleware> log)
+public sealed class LicenceGateMiddleware(RequestDelegate next, PcLicence licence, ILogger<LicenceGateMiddleware> log, PcSync? sync = null)
 {
     public async Task InvokeAsync(HttpContext ctx, AppDbContext db)
     {
         var path = ctx.Request.Path;
         var api = path.StartsWithSegments("/api") || path.StartsWithSegments("/hub");
         if (!api || path.StartsWithSegments("/api/licence")) { await next(ctx); return; }
+
+        // Connecting to the online restaurant: nothing opens until the download is complete and this PC runs the counter.
+        if (sync is { Downloading: true } && !path.StartsWithSegments("/api/pc/sync"))
+        {
+            await Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "Downloading", "This PC is downloading its restaurant from online. It opens when that is done.");
+            return;
+        }
 
         var signUp = HttpMethods.IsPost(ctx.Request.Method) && path.StartsWithSegments("/api/onboard");
         if (signUp && await db.Restaurants.IgnoreQueryFilters().AnyAsync(ctx.RequestAborted))

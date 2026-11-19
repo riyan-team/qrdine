@@ -343,6 +343,10 @@ export const api = {
   addBranch: (b) => staffPost(`/admin/branches`, b),
   updateBranch: (id, b) => staffPut(`/admin/branches/${id}`, b),
   deleteBranch: (id) => staffDelete(`/admin/branches/${id}`),
+  // Hybrid (owner only): the restaurant's counter PC. 404 when this server has restaurant PCs switched off.
+  counterPcs: () => staffGet(`/admin/sync/devices`),
+  pairCounterPc: (name) => staffPost(`/admin/sync/devices`, { name }),
+  removeCounterPc: (id) => staffDelete(`/admin/sync/devices/${id}`),
 
   // tables admin
   listTables: () => staffGet(`/admin/tables`),

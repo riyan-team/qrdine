@@ -63,6 +63,23 @@ public static class SyncEndpoints
             Results.Ok(await svc.Snapshot(Device(ctx), type, after ?? 0, limit ?? 200, ct)));
         device.MapGet("/pull", async (long? since, int? limit, HttpContext ctx, SyncService svc, CancellationToken ct) =>
             Results.Ok(await svc.Pull(Device(ctx), since ?? 0, limit ?? 200, ct)));
+        device.MapPost("/takeover", async (bool? rejoin, HttpContext ctx, SyncService svc, CancellationToken ct) =>
+            Results.Ok(new { head = await svc.TakeOver(Device(ctx), rejoin ?? false, ct) }));
+        // A menu photo or logo the PC has and the server doesn't. Files are named by a random id, so the
+        // same photo has the same address on both sides; one the server already has is left alone.
+        device.MapPut("/files/{id}", async (string id, HttpContext ctx, AppDbContext db, CancellationToken ct) =>
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[0-9a-f]{32}$")) return Results.BadRequest(new { detail = "Bad file id." });
+            var type = ctx.Request.ContentType ?? "";
+            if (type is not ("image/jpeg" or "image/png" or "image/webp")) return Results.BadRequest(new { detail = "Only JPEG, PNG or WebP." });
+            if (await db.Set<QrDine.Domain.Files.StoredFile>().AnyAsync(f => f.Id == id, ct)) return Results.NoContent();
+            using var ms = new MemoryStream();
+            await ctx.Request.Body.CopyToAsync(ms, ct);
+            if (ms.Length is 0 or > 5 * 1024 * 1024) return Results.BadRequest(new { detail = "A photo of up to 5 MB." });
+            db.Set<QrDine.Domain.Files.StoredFile>().Add(new QrDine.Domain.Files.StoredFile { Id = id, ContentType = type, Data = ms.ToArray(), RestaurantId = Device(ctx).RestaurantId });
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
         device.MapPost("/push", async (SyncPushInput body, HttpContext ctx, SyncService svc, CancellationToken ct) =>
         {
             var result = await svc.Push(Device(ctx), body.Changes, ct);

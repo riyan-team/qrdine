@@ -10,25 +10,32 @@ namespace QrDine.Application.Sync;
 
 /// <summary>
 /// Pairing a restaurant's PC, and the PC's sync calls: hello, first download (snapshot), changes
-/// since N (pull) and sending its own changes (push). Every device call is held to the device's own
-/// restaurant: the restaurant comes from the device, never from the request.
+/// since N (pull), sending its own changes (push, applied at once with the sync rules) and taking over
+/// the counter. Every device call is held to the device's own restaurant: the restaurant comes from
+/// the device, never from the request.
 /// </summary>
 public class SyncService
 {
-    public const int MaxActiveDevices = 5;
+    /// <summary>
+    /// One counter PC per restaurant: it gives out the bill numbers, so two would repeat them. Phones,
+    /// tablets and the kitchen screen join that PC over the restaurant Wi-Fi; they aren't paired.
+    /// </summary>
+    public const int MaxActiveDevices = 1;
     public const int MaxBatch = 500;
-    public const int MaxPayloadChars = 64 * 1024;
+    public const int MaxPayloadChars = 256 * 1024;
     private const string KeyPrefix = "dk_";
 
     private readonly IAppDbContext _db;
     private readonly ISyncStore _store;
     private readonly SyncSettings _settings;
+    private readonly ISyncApplier? _applier;
 
-    public SyncService(IAppDbContext db, ISyncStore store, SyncSettings settings)
+    public SyncService(IAppDbContext db, ISyncStore store, SyncSettings settings, ISyncApplier? applier = null)
     {
         _db = db;
         _store = store;
         _settings = settings;
+        _applier = applier;
     }
 
     // ---------- pairing: the owner, signed in to their restaurant ----------
@@ -39,7 +46,7 @@ public class SyncService
         var clean = (name ?? "").Trim();
         if (clean.Length is 0 or > 80) throw new DomainException("Give the device a name of up to 80 characters, e.g. \"Counter PC\".");
         if (await _db.SyncDevices.CountAsync(d => d.RevokedAt == null, ct) >= MaxActiveDevices)
-            throw new DomainException($"This restaurant already has {MaxActiveDevices} paired devices. Remove one first.");
+            throw new DomainException("This restaurant already has its counter PC. Remove it first (let it finish sending its changes), then pair the new one.");
 
         var key = KeyPrefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var device = new SyncDevice { Name = clean, KeyHash = Hash(key), CreatedBy = createdBy };
@@ -48,10 +55,19 @@ public class SyncService
         return new PairedDevice(device.Id, device.Name, key);
     }
 
-    public async Task<List<SyncDeviceRow>> Devices(CancellationToken ct = default) =>
-        await _db.SyncDevices.OrderBy(d => d.Id)
-            .Select(d => new SyncDeviceRow(d.Id, d.Name, d.CreatedAt, d.CreatedBy, d.LastSeenAt, d.RevokedAt))
-            .ToListAsync(ct);
+    public async Task<List<SyncDeviceRow>> Devices(CancellationToken ct = default)
+    {
+        var devices = await _db.SyncDevices.OrderBy(d => d.Id).ToListAsync(ct);
+        var counts = await _db.SyncInbox
+            .Where(x => x.Status == SyncInboxStatus.Pending || x.Status == SyncInboxStatus.Failed)
+            .GroupBy(x => new { x.DeviceId, x.Status }).Select(g => new { g.Key.DeviceId, g.Key.Status, N = g.Count() }).ToListAsync(ct);
+        var lastFailed = await _db.SyncInbox.Where(x => x.Status == SyncInboxStatus.Failed)
+            .GroupBy(x => x.DeviceId).Select(g => g.OrderByDescending(x => x.Id).Select(x => new { x.DeviceId, x.EntityType, x.Note }).First()).ToListAsync(ct);
+        return devices.Select(d => new SyncDeviceRow(d.Id, d.Name, d.CreatedAt, d.CreatedBy, d.LastSeenAt, d.RevokedAt, d.CounterSince,
+            counts.Where(c => c.DeviceId == d.Id && c.Status == SyncInboxStatus.Pending).Sum(c => c.N),
+            counts.Where(c => c.DeviceId == d.Id && c.Status == SyncInboxStatus.Failed).Sum(c => c.N),
+            lastFailed.Where(f => f.DeviceId == d.Id).Select(f => $"{f.EntityType}: {f.Note}").FirstOrDefault())).ToList();
+    }
 
     /// <summary>Ends a device's access at once. Its key stops working on the next call.</summary>
     public async Task Revoke(int id, CancellationToken ct = default)
@@ -83,7 +99,38 @@ public class SyncService
     // ---------- a device's calls ----------
 
     public async Task<SyncHello> Hello(SyncDevice d, Restaurant r, CancellationToken ct = default) =>
-        new(r.Id, r.Slug, r.Name, d.Id, d.Name, DateTime.UtcNow, await Head(d.RestaurantId, ct), _store.RootTypes);
+        new(r.Id, r.Slug, r.Name, d.Id, d.Name, DateTime.UtcNow, await Head(d.RestaurantId, ct), _store.InDependencyOrder, d.CounterSince,
+            MaxBatch, MaxPayloadChars);
+
+    /// <summary>
+    /// The PC has its copy and runs the counter from now on: the server stops making orders, bills and
+    /// other floor records for the restaurant (see the counter-on-the-PC rule in AppDbContext). Saying
+    /// it again changes nothing. Returns the head, so the PC can catch up on anything made up to now.
+    /// </summary>
+    /// <param name="rejoin">A PC that already ran this counter, back with a new key after its old one was removed.
+    /// It keeps its own records, so it may take the counter back only if nothing was sold online in between:
+    /// those bills would clash with the PC's bill numbers. A fresh PC downloads everything first and needs no check.</param>
+    public async Task<long> TakeOver(SyncDevice d, bool rejoin = false, CancellationToken ct = default)
+    {
+        var tracked = await _db.SyncDevices.FirstAsync(x => x.Id == d.Id, ct);
+        if (tracked.CounterSince is null && rejoin)
+        {
+            var removedAt = await _db.SyncDevices
+                .Where(x => x.RestaurantId == d.RestaurantId && x.RevokedAt != null && x.CounterSince != null)
+                .MaxAsync(x => x.RevokedAt, ct);
+            var floor = SyncRules.FloorTypes.ToList();
+            if (removedAt is DateTime gap && await _db.SyncChanges.AnyAsync(c => c.RestaurantId == d.RestaurantId
+                    && c.OriginDeviceId == null && c.ChangedAt > gap && floor.Contains(c.EntityType), ct))
+                throw new DomainException("Orders, bills or khata entries were made online after the last PC was removed, so this PC " +
+                    "can't take the counter back without mixing bill numbers. Connect a fresh PC instead (Dine In with an empty data folder).");
+        }
+        if (tracked.CounterSince is null)
+        {
+            tracked.CounterSince = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+        return await Head(d.RestaurantId, ct);
+    }
 
     /// <summary>
     /// The newest change-list line for the restaurant. A new device notes this, downloads every type
@@ -111,7 +158,10 @@ public class SyncService
             .Where(c => c.RestaurantId == d.RestaurantId && c.Id > since && c.ChangedAt <= settled)
             .OrderBy(c => c.Id).Take(take).ToListAsync(ct);
 
-        var latest = batch.GroupBy(c => (c.EntityType, c.SyncId)).Select(g => g.MaxBy(c => c.Id)!).OrderBy(c => c.Id).ToList();
+        // A row whose every line in this batch is the device's own change, applied here, isn't sent back to it.
+        var latest = batch.GroupBy(c => (c.EntityType, c.SyncId))
+            .Where(g => g.Any(c => c.OriginDeviceId != d.Id))
+            .Select(g => g.MaxBy(c => c.Id)!).OrderBy(c => c.Id).ToList();
         var rows = new Dictionary<(string, Guid), SyncRow>();
         var unknown = new HashSet<string>();
         foreach (var group in latest.Where(c => c.Op == SyncOp.Upsert).GroupBy(c => c.EntityType))
@@ -134,8 +184,8 @@ public class SyncService
     }
 
     /// <summary>
-    /// Keeps a device's changes in the inbox, once per change id. Phase 1 stores them only;
-    /// applying them to the restaurant's data comes with the PC app.
+    /// Keeps a device's changes in the inbox, once per change id, then applies what is waiting with the
+    /// sync rules (newest per row only; older waiting copies of the same row are passed over).
     /// </summary>
     public async Task<SyncPushResult> Push(SyncDevice d, IReadOnlyList<SyncPushChange>? changes, CancellationToken ct = default)
     {
@@ -178,14 +228,54 @@ public class SyncService
                 .Where(x => x.RestaurantId == d.RestaurantId && ids.Contains(x.ChangeId))
                 .Select(x => x.ChangeId).ToListAsync(ct)).ToHashSet();
             var add = fresh.Where(x => !had.Contains(x.ChangeId)).ToList();
-            if (add.Count == 0) return new SyncPushResult(0, changes.Count);
-
-            _db.SyncInbox.AddRange(add);
-            try { await _db.SaveChangesAsync(ct); }
-            catch (DbUpdateException) { return new SyncPushResult(0, 0, Busy: true); }
-            return new SyncPushResult(add.Count, changes.Count - add.Count);
+            if (add.Count > 0)
+            {
+                _db.SyncInbox.AddRange(add);
+                try { await _db.SaveChangesAsync(ct); }
+                catch (DbUpdateException) { return new SyncPushResult(0, 0, Busy: true); }
+            }
+            var applied = await ApplyWaiting(d, ct);
+            return new SyncPushResult(add.Count, changes.Count - add.Count, false, applied.Applied, applied.Skipped, applied.Failed, applied.Notes);
         }
         finally { PushTurns.Leave(d.RestaurantId); }
+    }
+
+    /// <summary>Applies the device's waiting inbox lines, newest per row, and records how each went.</summary>
+    private async Task<(int Applied, int Skipped, int Failed, List<string> Notes)> ApplyWaiting(SyncDevice d, CancellationToken ct)
+    {
+        if (_applier is null) return (0, 0, 0, new());
+        var waiting = await _db.SyncInbox
+            .Where(x => x.DeviceId == d.Id && x.Status == SyncInboxStatus.Pending)
+            .OrderBy(x => x.Id).Take(MaxBatch * 4).ToListAsync(ct);
+        if (waiting.Count == 0) return (0, 0, 0, new());
+
+        var now = DateTime.UtcNow;
+        var newest = waiting.GroupBy(x => (x.EntityType, x.SyncId)).Select(g => g.MaxBy(x => x.Id)!).ToHashSet();
+        foreach (var older in waiting.Where(x => !newest.Contains(x)))
+        {
+            older.Status = SyncInboxStatus.Skipped;
+            older.Note = "A newer copy of the same row came after it.";
+            older.AppliedAt = now;
+        }
+
+        var incoming = newest.OrderBy(x => x.Id).Select(x => new SyncIncoming(x.Id, x.EntityType, x.SyncId, x.Op, x.ClientChangedAt,
+            x.Payload is null ? null : System.Text.Json.JsonDocument.Parse(x.Payload).RootElement.Clone())).ToList();
+        var results = await _applier.Apply(d.RestaurantId, incoming, new SyncApplyOptions(SyncApplySide.OnServer, d.Id), ct);
+
+        var byId = newest.ToDictionary(x => x.Id);
+        var notes = new List<string>();
+        foreach (var r in results)
+        {
+            var row = byId[r.Seq];
+            row.Attempts++;
+            row.Status = r.Status;
+            row.Note = r.Note is { Length: > 400 } n ? n[..400] : r.Note;
+            row.AppliedAt = now;
+            if (r.Status == SyncInboxStatus.Failed && notes.Count < 10) notes.Add($"{r.Type} {r.SyncId}: {r.Note}");
+        }
+        await _db.SaveChangesAsync(ct);
+        return (results.Count(r => r.Status == SyncInboxStatus.Applied), results.Count(r => r.Status == SyncInboxStatus.Skipped),
+            results.Count(r => r.Status == SyncInboxStatus.Failed), notes);
     }
 
     // Separate from the floor's gate: storing a PC's batch never holds up a cashier.

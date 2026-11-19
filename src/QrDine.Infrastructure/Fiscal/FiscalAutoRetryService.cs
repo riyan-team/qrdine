@@ -45,6 +45,11 @@ public class FiscalAutoRetryService(IServiceScopeFactory scopes, IOptions<Fiscal
                 .Select(r => new { r.Id, r.Slug }).ToListAsync(ct);
             if (filing.Count == 0) return 0;
             var ids = filing.Select(r => r.Id).ToList();
+            // A restaurant whose counter runs on its own PC files its bills from that PC; the copies here are only copies.
+            var onPc = await db.SyncDevices.IgnoreQueryFilters().AsNoTracking()
+                .Where(d => ids.Contains(d.RestaurantId) && d.RevokedAt == null && d.CounterSince != null)
+                .Select(d => d.RestaurantId).ToListAsync(ct);
+            ids = ids.Except(onPc).ToList();
             var waiting = await db.Invoices.IgnoreQueryFilters().AsNoTracking()
                 .Where(i => ids.Contains(i.RestaurantId) && (i.FiscalStatus == FiscalStatus.Pending || i.FiscalStatus == FiscalStatus.Failed))
                 .Select(i => i.RestaurantId).Distinct().ToListAsync(ct);

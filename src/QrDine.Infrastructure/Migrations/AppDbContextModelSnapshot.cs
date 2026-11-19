@@ -2669,6 +2669,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<int?>("OriginDeviceId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RestaurantId")
                         .HasColumnType("integer");
 
@@ -2689,6 +2692,9 @@ namespace QrDine.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CounterSince")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -2735,6 +2741,12 @@ namespace QrDine.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("ChangeId")
                         .HasColumnType("uuid");
 
@@ -2748,6 +2760,10 @@ namespace QrDine.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
 
                     b.Property<string>("Op")
                         .IsRequired()

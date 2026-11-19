@@ -536,6 +536,7 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.EntityType).HasMaxLength(60);
             e.Property(x => x.Op).HasMaxLength(10);
             e.Property(x => x.Status).HasMaxLength(12);
+            e.Property(x => x.Note).HasMaxLength(400);
             e.HasIndex(x => new { x.RestaurantId, x.ChangeId }).IsUnique();
             e.HasIndex(x => new { x.RestaurantId, x.Status, x.Id });
         });
@@ -555,18 +556,63 @@ public class AppDbContext : DbContext, IAppDbContext
         return base.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Set while the sync applier saves a change that came from the other side: the change-list lines
+    /// it writes carry this origin (so the change isn't sent back where it came from), its times are
+    /// the other side's, and the counter-on-the-PC rule below doesn't stop it.
+    /// </summary>
+    public int? ApplyingFrom { get; set; }
+
     // Every save, sync or async, passes through these two. The tenant stamp above runs first.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        var lines = SyncTracker.Prepare(this, _sync.Enabled, DateTime.UtcNow);
+        CounterOnPcRule();
+        var lines = SyncTracker.Prepare(this, _sync.Records, DateTime.UtcNow, ApplyingFrom);
         try { return base.SaveChanges(acceptAllChangesOnSuccess); }
         catch { SyncTracker.Forget(this, lines); throw; }
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
-        var lines = SyncTracker.Prepare(this, _sync.Enabled, DateTime.UtcNow);
+        CounterOnPcRule();
+        var lines = SyncTracker.Prepare(this, _sync.Records, DateTime.UtcNow, ApplyingFrom);
         try { return await base.SaveChangesAsync(acceptAllChangesOnSuccess, ct); }
         catch { SyncTracker.Forget(this, lines); throw; }
+    }
+
+    private readonly Dictionary<int, DateTime?> _counterOnPc = new();
+
+    /// <summary>
+    /// On the server: once a restaurant's PC has taken over its counter, orders, bills, payments,
+    /// khata lines, stock and points movements (and the counts they keep) are made on the PC only.
+    /// A screen here that tries to make or change one is told so, instead of making a second copy
+    /// of the truth (or a second bill 105).
+    /// </summary>
+    private void CounterOnPcRule()
+    {
+        if (!_sync.Enabled || ApplyingFrom is not null) return;
+        foreach (var e in ChangeTracker.Entries())
+        {
+            if (e.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted) || !SyncModel.IsSynced(e.Metadata)) continue;
+            var root = SyncModel.RootTypeName(e.Metadata);
+            var floor = Domain.Sync.SyncRules.IsFloor(root);
+            var counts = !floor && e.State == EntityState.Modified && root == SyncModel.NameOf(e.Metadata)
+                && e.Properties.Any(p => p.IsModified && Domain.Sync.SyncRules.IsDeviceOwned(root, p.Metadata.Name));
+            if (!floor && !counts) continue;
+            var rid = e.Entity is ITenantOwned owned ? owned.RestaurantId : TenantId ?? 0;
+            if (rid <= 0 || CounterSince(rid) is not DateTime since) continue;
+            throw new DomainException(
+                $"This restaurant's counter runs on its own PC (since {since.AddHours(5):d MMM yyyy}). Orders, bills, payments, stock counts and khata entries are made there, and this screen shows them. " +
+                "Guests: please scan the QR code on your table while on the restaurant's Wi-Fi, or ask the staff.");
+        }
+    }
+
+    private DateTime? CounterSince(int restaurantId)
+    {
+        if (_counterOnPc.TryGetValue(restaurantId, out var known)) return known;
+        var since = Set<Domain.Sync.SyncDevice>().IgnoreQueryFilters().AsNoTracking()
+            .Where(d => d.RestaurantId == restaurantId && d.RevokedAt == null && d.CounterSince != null)
+            .Select(d => d.CounterSince).FirstOrDefault();
+        return _counterOnPc[restaurantId] = since;
     }
 }

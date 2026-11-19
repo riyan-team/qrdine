@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd -W 2>/dev/null || pwd)"
 export MSYS_NO_PATHCONV=1 PYTHONIOENCODING=utf-8 PYTHONUTF8=1
 export DINEIN_DATA="$T/data" Pc__Port=5310 Pc__OpenBrowser=false Pc__FirstBackupMinutes=0.1
 export PC_BASE=http://127.0.0.1:5310 PC_STATE="$T/state.json"
-taskkill //F //IM DineIn.exe >/dev/null 2>&1; sleep 1
+taskkill /F /IM DineIn.exe >/dev/null 2>&1; sleep 1
 rm -rf "$T/data" "$T/state.json"; mkdir -p "$T/data"
 [ -e "$T/data/dinein.db" ] && { echo "old data still there"; exit 1; }
 
@@ -18,7 +18,7 @@ start() {
   for _ in $(seq 1 60); do curl -fsS --max-time 2 "$PC_BASE/health" >/dev/null 2>&1 && return 0; sleep 1; done
   echo "DID NOT START"; tail -30 "$T/$1.log"; return 1
 }
-stop() { taskkill //F //T //PID "$PID" >/dev/null 2>&1; for _ in $(seq 1 20); do curl -s --max-time 1 "$PC_BASE/health" >/dev/null 2>&1 || break; sleep 1; done; }
+stop() { taskkill /F /T /PID "$PID" >/dev/null 2>&1; for _ in $(seq 1 20); do curl -s --max-time 1 "$PC_BASE/health" >/dev/null 2>&1 || break; sleep 1; done; }
 
 echo "=== first start"
 start run1 || exit 1
@@ -40,4 +40,4 @@ echo "errors in the log: $(grep -cE ' (ERR|FTL)\] ' "$T/run2.log")"
 grep -iE 'Database upgraded|New database' "$T/run1.log" "$T/run2.log" | cut -c1-160
 echo "data folder: $(ls "$T/data" | tr '\n' ' ')"
 stop
-taskkill //F //IM DineIn.exe >/dev/null 2>&1 || true
+taskkill /F /IM DineIn.exe >/dev/null 2>&1 || true

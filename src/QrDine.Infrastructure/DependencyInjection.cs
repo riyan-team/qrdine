@@ -42,6 +42,7 @@ public static class DependencyInjection
             config.GetValue("Sync:Enabled", false),
             config.GetValue("Sync:SettleSeconds", 2)));
         services.AddScoped<Application.Sync.ISyncStore, Sync.EfSyncStore>();
+        services.AddSingleton<Application.Sync.ISyncApplier, Sync.SyncApplier>();
 
         // One tenant holder per request.
         services.AddScoped<CurrentTenant>();

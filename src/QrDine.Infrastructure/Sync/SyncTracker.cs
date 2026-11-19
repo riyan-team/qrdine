@@ -15,7 +15,9 @@ namespace QrDine.Infrastructure.Sync;
 /// </summary>
 public static class SyncTracker
 {
-    public static List<SyncChange> Prepare(DbContext db, bool recordChanges, DateTime now)
+    /// <param name="applyingFrom">Set when this save applies a change from the other side: rows keep the
+    /// change times the applier gave them, and the lines carry the origin (see <see cref="SyncChange.OriginDeviceId"/>).</param>
+    public static List<SyncChange> Prepare(DbContext db, bool recordChanges, DateTime now, int? applyingFrom = null)
     {
         var changed = db.ChangeTracker.Entries()
             .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted && SyncModel.IsSynced(e.Metadata))
@@ -30,7 +32,9 @@ public static class SyncTracker
                 var id = e.Property(SyncModel.SyncIdProperty);
                 if (id.CurrentValue is not Guid g || g == Guid.Empty) id.CurrentValue = Guid.NewGuid();
             }
-            if (e.State != EntityState.Deleted) e.Property(SyncModel.LastChangedAtProperty).CurrentValue = now;
+            if (e.State == EntityState.Deleted) continue;
+            var changedAt = e.Property(SyncModel.LastChangedAtProperty);
+            if (applyingFrom is null || changedAt.CurrentValue is null) changedAt.CurrentValue = now;
         }
 
         var tracked = new TrackedRows(db);
@@ -40,7 +44,7 @@ public static class SyncTracker
             var root = RootOf(db, e, tracked);
             if (root is null) continue;
             // A child changed: its root changed too (an order whose items changed is a changed order).
-            if (!ReferenceEquals(root, e) && root.State is EntityState.Unchanged or EntityState.Modified)
+            if (!ReferenceEquals(root, e) && root.State is EntityState.Unchanged or EntityState.Modified && applyingFrom is null)
                 root.Property(SyncModel.LastChangedAtProperty).CurrentValue = now;
             if (!recordChanges) continue;
 
@@ -58,7 +62,7 @@ public static class SyncTracker
             byRoot[key] = new SyncChange
             {
                 RestaurantId = rid, EntityType = key.Item1, SyncId = syncId,
-                Op = deleted ? SyncOp.Delete : SyncOp.Upsert, ChangedAt = now,
+                Op = deleted ? SyncOp.Delete : SyncOp.Upsert, ChangedAt = now, OriginDeviceId = applyingFrom,
             };
         }
 

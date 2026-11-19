@@ -5,7 +5,7 @@ import { auth } from './auth'
 import { api, getPlans, roleLabel } from './api'
 import { CONTACT } from './contact'
 import DineInLogo from './DineInLogo.jsx'
-import { getEdition, licenceNeedsKey, licenceWarns } from './pcEdition'
+import { getEdition, licenceNeedsKey, licenceWarns, pcSyncStatus } from './pcEdition'
 import {
   BookIcon, BoxIcon, CashIcon, ChartIcon, GearIcon, KitchenIcon, ListIcon, LogoutIcon, MenuIcon, NoteIcon,
   QrIcon, ReceiptIcon, StarIcon, TrendIcon, UsersIcon, WalletIcon, BankIcon, CloseIcon, TruckIcon,
@@ -50,6 +50,7 @@ const DayClose = screen(() => import('./pages/DayClose.jsx'))
 const Deliveries = screen(() => import('./pages/Deliveries.jsx'))
 const Ride = screen(() => import('./pages/Ride.jsx'))
 const Activate = screen(() => import('./pages/Activate.jsx'))
+const Connect = screen(() => import('./pages/Connect.jsx'))
 
 // The server has the last word on a saved sign-in: a removed account, a new password or a deleted
 // restaurant all end it. Ask once per sign-in per page load, before any staff screen shows, so an
@@ -247,8 +248,9 @@ function LicenceBanner() {
 function PcGate({ children }) {
   const loc = useLocation()
   const [lic, setLic] = useState(undefined)
+  const [sync, setSync] = useState(null)
   useEffect(() => {
-    getEdition().then(setLic)
+    getEdition().then(async (l) => { if (l) setSync(await pcSyncStatus()); setLic(l) })
     const on = () => getEdition(true).then(setLic)
     window.addEventListener('dinein:licence', on)
     return () => window.removeEventListener('dinein:licence', on)
@@ -256,6 +258,8 @@ function PcGate({ children }) {
   if (lic === undefined) return null
   if (lic && loc.pathname !== '/activate') {
     if (licenceNeedsKey(lic)) return <Navigate to="/activate" replace />
+    // Downloading the restaurant from online: nothing else opens until it is done.
+    if (sync?.state === 'connecting' && loc.pathname !== '/connect') return <Navigate to="/connect" replace />
     // No restaurant on this PC yet: sign-up, even if this browser still holds a sign-in from an older database.
     if (loc.pathname === '/') return <Navigate to={!lic.hasRestaurant ? '/signup' : auth.staffToken ? auth.home() : '/login'} replace />
   }
@@ -327,6 +331,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/activate" element={<Activate />} />
+        <Route path="/connect" element={<Connect />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/platform/login" element={<PlatformLogin />} />

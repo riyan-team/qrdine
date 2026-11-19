@@ -131,61 +131,64 @@ with a **“Take orders (waiter/reception)”** row; waiter sees a **➕ Take or
 - **Local dev test accounts** (SQLite only, NOT on the server): owner/`owner123`,
   cashier/`cash123`, kitchen/`kit123`, waiter/`wait123`; dev platform `superadmin`/`super123`.
 
-## Sync with a restaurant's own PC (hybrid offline, phase 1)
+## Sync with a restaurant's own PC (hybrid)
 For the owner-level picture (what is ready online, offline and hybrid, and how to set each up) see
-**`docs/ONLINE-OFFLINE-HYBRID.md`**.
-Goal: a restaurant's counter PC keeps a copy of **that restaurant's data only** and keeps working when
-the power or internet goes. Phase 1 is the server side only: no PC app exists yet, and nothing is applied
-from a PC. **It is all off until `Sync:Enabled=true`** (`Sync__Enabled=true` in `/etc/qrdine/qrdine.env`).
-While it is off, the sync routes aren't mapped at all: every sync address answers 404 to everyone, even with a bad
-body or a valid key, and no change lines are written. The switch is read once at start, so changing it needs a restart. Code: `Domain/Sync`,
-`Application/Sync/SyncService.cs`, `Infrastructure/Sync`, `Api/Endpoints/SyncEndpoints.cs`, tests in `SyncTests.cs`.
+**`docs/ONLINE-OFFLINE-HYBRID.md`** (section 5 is hybrid).
+A restaurant's counter PC (`DineIn.exe`) runs the counter with or without internet and keeps the restaurant's online copy
+in step. **The server side is off until `Sync:Enabled=true`** (`Sync__Enabled=true` in `/etc/qrdine/qrdine.env`).
+While it is off, the sync routes aren't mapped at all: every sync address answers 404 to everyone, and no change lines
+are written. The switch is read once at start, so changing it needs a restart. Code: `Domain/Sync` (`SyncRules`,
+`SyncRecords`), `Application/Sync` (`SyncService`, DTOs), `Infrastructure/Sync` (`SyncModel`, `SyncTracker`, `EfSyncStore`,
+`SyncKeys`, `SyncApplier`), `Api/Endpoints/SyncEndpoints.cs`, the PC side `Api/Pc/PcSync.cs`, screens `pages/Connect.jsx`,
+`CounterPc` and `PcSyncCard` in `Settings.jsx`. Tests: `SyncTests`, `SyncHttpTests`, `HybridSyncTests` (server + PC in one
+process over HTTP), and `deploy/pc/run-hybrid-check.sh` (real processes; 2026-11-20: 54 + 11 + 6 checks, 0 failed).
 
-**What every synced row gets** (migration `AddSyncFoundation`, additive only):
-- `SyncId` (uuid, unique). It is the row's id on every copy: a PC and the server can both make "order 105", so sync matches rows by this instead. On Postgres the column has the default `gen_random_uuid()`, so rows inserted by an older build or by hand still get one.
-- `LastChangedAt` (nullable). It is when the row last changed, used for "newest change wins". It is null for rows last saved before sync existed. It is named so because several tables already have their own `UpdatedAt`.
-- Both are EF shadow properties (`SyncModel.cs`), so the domain classes don't change. `SyncTracker` stamps them in `SaveChanges` whether the switch is on or off.
-- **Roots** are the restaurant-owned tables (`ITenantOwned`) plus `Restaurant`. **Children** travel with their root: order items and their modifiers, invoice lines, variants, modifier groups and options, recipe lines, and supplier entry lines. A changed child marks its root as changed.
-- **Never synced:** platform admins, plans, subscription payments, stored photo bytes, and the sync tables themselves.
+**What every synced row gets** (migrations `AddSyncFoundation`, `HybridSyncApply`, additive only):
+- `SyncId` (uuid, unique): the row's id on every copy. On Postgres the column defaults to `gen_random_uuid()`.
+- `LastChangedAt` (nullable): when the row last changed, for "newest change wins".
+- Both are EF shadow properties (`SyncModel.cs`). `SyncTracker` stamps them in `SaveChanges`.
+- **Roots** are the restaurant-owned tables plus `Restaurant`. **Children** (order items and modifiers, invoice lines, variants, modifier groups and options, recipe lines, supplier entry lines) travel inside their root, each with its own `SyncId`.
+- **Never synced:** platform admins, plans, subscription payments and the sync tables. Photos travel as files (`/api/files/{id}` down, `PUT /api/sync/files/{id}` up).
 
-**Change log:** `SyncChanges` (Seq, RestaurantId, Type, SyncId, Op `Upsert`/`Delete`, ChangedAt). A line is written in the same save as the change. A failed save drops its lines, so the bill-number and ticket retry loops don't leave strays.
-- **Deletes are recorded as `Delete` lines (tombstones), not as a soft-delete column.** A soft-delete flag would have changed every delete path and every query in the app, which breaks the "no behaviour change" rule. A device that sees a `Delete` line removes its copy.
+**Change log:** `SyncChanges` (Seq, RestaurantId, Type, SyncId, Op `Upsert`/`Delete`, ChangedAt, `OriginDeviceId`), written in the same save. `OriginDeviceId` is the device whose push made the change (server) or `-1` = from the server (PC); a device never pulls back rows whose lines all came from itself, and the PC pushes only lines with no origin. On the PC, `SyncSettings.RecordOnThisPc` turns the log on once connected.
 
-**Device API** (key in the `X-Device-Key` header):
+**Device API** (key in `X-Device-Key`):
 
 | Route | What it does |
 |---|---|
-| `GET/POST /api/r/{slug}/admin/sync/devices`, `DELETE …/devices/{id}` | Owner only. Pairing (body `{name}`) returns the key once (`dk_…`, 32 random bytes); only its SHA-256 is stored. At most 5 active devices. Revoking stops the key at once. |
-| `GET /api/sync/hello` | The restaurant, the device, the server time, `head` (the newest change number) and the synced types. |
-| `GET /api/sync/snapshot?type=Order&after=0&limit=200` | A new device's first download, one type at a time, paged by id (`next`). Take `head` from hello **before** the snapshot, then pull from it. |
-| `GET /api/sync/pull?since=N&limit=200` | Changes after N, each with the row as it is now (children included). It returns `next` and `more`. Lines from the last `Sync:SettleSeconds` (default 2) wait for the next pull, so a save still in flight can't be skipped. |
-| `POST /api/sync/push` | `{changes:[{changeId, type, syncId, op, changedAt, data}]}`, up to 500 changes of 64 KB each. They are **stored in `SyncInbox` only and not applied yet** (that is phase 3). It is idempotent: a `changeId` sent again counts as `alreadyHad`. A 409 means the same batch was saving at that moment, so send it again. |
+| `GET/POST /api/r/{slug}/admin/sync/devices`, `DELETE …/devices/{id}` | Owner only. Pairing (body `{name}`) returns the key once (`dk_…`); only its hash is stored. **One active PC per restaurant.** The list shows `counterSince`, `waiting`, `failed`, `lastFailure`. Removing stops the key at once and frees the online counter. |
+| `GET /api/sync/hello` | The restaurant, the device, `head`, `counterSince`, the synced types **in dependency order**, batch limits. |
+| `GET /api/sync/snapshot?type=…&after=0&limit=…` | A new PC's download, one type at a time. |
+| `GET /api/sync/pull?since=N&limit=…` | Changes after N with the row as it is now. Lines from the last `Sync:SettleSeconds` wait. |
+| `POST /api/sync/push` | Stored in `SyncInbox` (idempotent by `changeId`), then **applied** by `SyncApplier`: newest copy per row, older ones `Skipped`; each row `Applied`, `Skipped` or `Failed` with a note. |
+| `POST /api/sync/takeover[?rejoin=true]` | The PC runs the counter from now on (`SyncDevice.CounterSince`). `rejoin` (a removed PC back with a new key) is refused if floor records were made online since the last PC was removed. |
 
-- **Isolation:** the restaurant comes from the device row, never from the request. Every query also checks `RestaurantId`, and the tenant filter is on too, so a device can't reach another restaurant's rows even with another slug or sign-in. A suspended or unpaid restaurant's device gets 403, like its staff screens.
-- **Secrets never leave the server:** staff password hashes, FBR tokens, a loyalty member's phone pass and a rider's link key (`SyncRules.SecretFields`). How staff sign in on the PC while offline is phase 2.
+**Rules** (`SyncRules.cs`, applied by `SyncApplier`):
+- Rows travel without either side's own ids: references as the target's `SyncId` (`SyncRules.References`), children matched by `SyncId`. A row whose reference hasn't arrived waits for the batch, then goes in with the link empty and a note.
+- **Settings-like rows** (menu, prices, tables, staff, branches, stock items, suppliers, customers, loyalty set-up…): newest change wins, both ways.
+- **Floor rows** (orders, seatings, bills, payments, voids, returns, calls, day closings, khata lines, expenses, feedback, redemptions, stock movements, points lines): made **only on the PC** after takeover. `CounterOnPcRule` in `AppDbContext` refuses them on the server (and changes to device-owned fields) while a PC runs the counter, except while applying a push. The PC never takes the server's floor rows after its download.
+- **Device-owned fields** (`DeviceOwnedFields`): stock `Quantity`/`LastCost`, loyalty `Points`/`LifetimePoints`/`LifetimeSpend`/`Visits`, table `GuestPassesFrom`: the PC's value always wins.
+- **Server only** (`ServerOnlyFields`): the restaurant's plan, status, paid dates, features, slug. On the PC, features come from its licence.
+- **Never travel** (`SecretFields`): FBR tokens (staff and branch), a loyalty member's phone pass, a rider's link key. **Staff password hashes do travel** (PBKDF2, salted), only to the paired PC, so staff sign in there offline.
+- `FiscalAutoRetryService` skips restaurants whose counter is on a PC (the PC files).
+- If the switch is ever turned off after a PC connected, or the server is restored from an older backup, the PC must be removed and a fresh PC connected.
 
-**Conflict rules** (`SyncRules.cs`, tested; applied by phase 3):
-- **Newest change wins** for settings-like rows: menu, prices, tables, staff, branches, roles, stock items, suppliers, customers, employees, attendance and loyalty set-up. A tie keeps what this side has.
-- **Owned by where it was made** for money and floor records: orders, seatings, bills, payments, voids, calls, day closings, khata lines, expenses, feedback and redemptions. The other side never overwrites them, so one bill can't be changed in two places.
-- **Ledger** for stock movements and loyalty points. The lines are written once and never edited. Stock on hand and points are rebuilt from the lines on each side, never copied (`ServerOnlyFields`), so +5 here and -2 there add up.
-- **Server only:** the plan, status, paid dates and feature switches. A PC can never set them.
-- **Bill numbers:** once a restaurant runs its counter from a PC, only that PC gives out bill numbers (`BillNumbersFrom`). This isn't switched on yet.
-- If the switch is ever turned off after a device paired, changes made while it was off aren't in the log. Such a device must download a fresh snapshot.
+**The PC side** (`PcSync`, a hosted service in the PC edition): `POST /api/pc/sync/connect` (empty PC: hello, then the download in the background; the licence gate answers 503 to everything but `/api/licence` and `/api/pc/sync` until done; connected PC: a new key for the same restaurant, owner/manager only), `GET /api/pc/sync` (status, no secrets), `POST /api/pc/sync/now`. State in `DineIn-data/sync.json`. Every 5 s: push, then pull; prunes pushed lines older than 3 days.
 
 **Deploy checklist** (the migrations only add columns, tables and indexes, plus small data fix-ups: item tax 0 becomes blank, see the 2026-11-19 QA entry; tax office settings, see the 2026-11-20 03:18 entry). The scripts used for the 2026-11-20 deploys (`run.sh` with its tax stage, `rehearse.sh` + `prodcopy.sh`, `deploy-live.sh`) follow these steps:
 1. **Quiet hour:** pick a time with no restaurant open. After the 03:30 Pakistan full backup works well. Tell the owner first.
 2. **Backup first:** run `qrdine-backup status` and check the last full is good. Then take a dump just before the deploy: `sudo -u postgres /usr/pgsql-18/bin/pg_dump -p 5433 -Fc qrdine > /var/backups/qrdine/pre-sync-$(date +%F-%H%M).dump`.
 3. **Keep the running build:** `cp -a /opt/qrdine/app /opt/qrdine/app.prev-$(cat /opt/qrdine/app/DEPLOYED_COMMIT | cut -c1-7)` (now `app.prev-18c989e`).
-4. **Deploy** with the README command. **Leave `Sync__Enabled` out**, so sync stays off.
+4. **Deploy** with the README command. `Sync__Enabled` stays as it is in `/etc/qrdine/qrdine.env` (switching it on is step 8).
 5. **Check:**
    - `/health` returns 200.
-   - The newest `__EFMigrationsHistory` row is `20261119210227_TaxOfficeGuestPassesGiveBack` (16 in all).
-   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5100/api/sync/hello` returns 404.
+   - The newest `__EFMigrationsHistory` row is `20261119223509_HybridSyncApply` (17 in all).
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5100/api/sync/hello` returns 404 with sync off, 401 with it on (no key).
    - `journalctl -u qrdine -n 50` is clean.
    - One test bill on the demo or own restaurant settles.
 6. **Rollback, app only (normal case):** `systemctl stop qrdine && rm -rf /opt/qrdine/app && cp -a /opt/qrdine/app.prev-18c989e /opt/qrdine/app && systemctl start qrdine` (and `cp -p /etc/qrdine/qrdine.env.before-f9770ce /etc/qrdine/qrdine.env` to put `Fiscal__Simulate=true` back). The old build runs on the new schema (tested: see the change log), and its new rows still get a `SyncId` from the database default. Leave the new columns and tables in place. If sync was ever on, every paired PC must take a fresh snapshot after a rollback, because the old build writes no change lines and doesn't update `LastChangedAt`.
 7. **Rollback, schema too (only if the database itself is wrong):** stop the app, then restore the step-2 dump into a fresh database. This loses everything after the dump. Or, with no data loss, run the migration's Down: on the PC, `dotnet ef migrations script 20261119210227_TaxOfficeGuestPassesGiveBack 20261119183302_BillOptionsAndCancelRules -p src/QrDine.Infrastructure -s src/QrDine.Api -o down.sql`, then run `down.sql` with psql. Either way, then start the old build.
-8. **Switching sync on** waits for the PC app (phase 2): set `Sync__Enabled=true`, restart, and pair from the owner's screen.
+8. **Switching sync on:** set `Sync__Enabled=true`, restart (one process), check `hello` answers 401 without a key. Owners then pair from Settings > Restaurant PC. Every save writes change lines from then on.
 
 ## Tax office filing (FBR / PRA)
 How it works for owners: `docs/ONLINE-OFFLINE-HYBRID.md` section 7. For agents:
@@ -211,6 +214,7 @@ How it works for owners: `docs/ONLINE-OFFLINE-HYBRID.md` section 4 and `deploy/p
 - SignalR hub reconnect errors in the browser console during a redeploy are transient/expected.
 
 ## Change log (most recent first)
+- **2026-11-20 04:30 PKT**: **Hybrid (branch `hybrid-sync`)**, see "Sync with a restaurant's own PC" above and the guide's section 5. The server applies what a PC sends (`SyncApplier`), rows travel by `SyncId` with their links, one counter PC per restaurant takes over the counter (`takeover`, `CounterOnPcRule`), the PC side (`PcSync`: connect, download, push/pull every 5 s, photos, offline catch-up, a new key after removal), and the screens (PC `/connect`, PC Settings > Your account > Online copy, online Settings > Restaurant PC). Migration `HybridSyncApply` (additive). Checked: 338 unit tests (5 new hybrid ones over real HTTP plus removal and reconnect), `run-hybrid-check.sh` with the real exe and server (54 + 11 + 6, 0 failed, no log errors), the offline PC check again (101/0, 6/0), and every new screen in the browser pane (desktop and phone width). Also fixed in the PC check scripts: `taskkill` flags (`//F` reached Windows as `//F` with path conversion off, so processes were never stopped) and finding the exe's process (it listens on all addresses).
 - **2026-11-20 03:20 PKT**: **PC edition (branch `pc-edition`)**, see "PC edition" above. One `DineIn.exe` (about 54 MB, win-x64, nothing to install) with SQLite, the licence, the activation screen, backups and the restaurant's READ-ME. Checked with the real exe (101/0 and 6/0 after a restart) and in the browser pane (activation, sign-up without the plan step, the licence reminder, Settings > Your account, phone width). 330 unit tests. The server is not changed by it and was not redeployed.
 - **2026-11-20 03:18 PKT**: **Deployed `f9770ce` (branch `hybrid-sync-foundation`) to Hostworld, and merged the branch into `main`.** Tax office filing with FBR and PRA, Practice / Test / Live per branch, send at settle or later, resend one / picked / all, the automatic resend, one tax rate for all items (see "Tax office filing" above and the guide's section 7). Also the guest pass fix: a guest who scans in the same second the table's bill settles now gets a pass that works (it waits for the next second; before, every order from that pass got 401).
   - Before, on the server's throwaway copy with the exact package: old build 551/0; new build migrated 559/2, rollback 549/2, sync on 559/2 (the two known slug false failures each time); smoke 34/0; the new tax stage (`tax_check.py` against the stand-in FBR/PRA on 127.0.0.1:8599, never the real offices) 255/0; no app errors; production untouched. Locally: 317 unit tests. The rehearsal on a copy of production's data: 16 migrations, the one branch became FBR Practice Online (it was "On this computer", the old default, which can't work online), filing off, guest menu 200, sync 404, no errors.

@@ -8,7 +8,7 @@ import { PasswordInput } from '../forms.jsx'
 import { EditIcon, TrashIcon, KeyIcon, PlusIcon, ImageIcon, LocateIcon } from '../icons.jsx'
 import MapView, { myLocation } from '../MapView.jsx'
 import { usernameProblem } from '../phone.js'
-import { getEdition } from '../pcEdition'
+import { connectPc, getEdition, pcSyncStatus, syncNow } from '../pcEdition'
 
 const ROLES = ['Owner', 'Manager', 'Cashier', 'Kitchen', 'Waiter']
 
@@ -59,13 +59,20 @@ const SETTINGS_TABS = [
 export default function Settings() {
   const isOwner = auth.role() === 'Owner'
   const [tab, setTab] = useState('billing')
+  // Online, the owner pairs the restaurant's counter PC (only when this server has restaurant PCs switched on).
+  const [pcTab, setPcTab] = useState(false)
+  useEffect(() => {
+    if (!isOwner) return
+    getEdition().then((l) => { if (!l) api.counterPcs().then(() => setPcTab(true)).catch(() => {}) })
+  }, [isOwner])
+  const tabs = pcTab ? [...SETTINGS_TABS.slice(0, -1), { id: 'pc', label: 'Restaurant PC' }, SETTINGS_TABS[SETTINGS_TABS.length - 1]] : SETTINGS_TABS
   return (
     <div className="wrap">
       <div className="h">Settings</div>
       <p className="muted" style={{ marginTop: -4 }}>Pick a section.</p>
 
       <div className="settings-nav">
-        {SETTINGS_TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
       </div>
@@ -77,8 +84,156 @@ export default function Settings() {
         {tab === 'staff' && <><Staff />{isOwner && <Permissions />}</>}
         {tab === 'service' && <><ServiceSettings /><PickupSettings /></>}
         {tab === 'fbr' && <FbrSettings />}
-        {tab === 'account' && <><PcLicenceCard /><AccountSettings /></>}
+        {tab === 'pc' && <CounterPc />}
+        {tab === 'account' && <><PcLicenceCard /><PcSyncCard /><AccountSettings /></>}
       </div>
+    </div>
+  )
+}
+
+// Server times without a zone mark are UTC.
+const asUtc = (t) => (t ? new Date(/[zZ]$|[+-]\d\d:\d\d$/.test(t) ? t : `${t}Z`) : null)
+const shortWhen = (t) => (t ? asUtc(t).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' }) : 'never')
+
+// Online (owner only): the restaurant's counter PC running Dine In for PC. Pair it, see how its copy keeps up, remove it.
+function CounterPc() {
+  const [rows, setRows] = useState(null)
+  const [name, setName] = useState('Counter PC')
+  const [key, setKey] = useState(null)   // shown once, right after pairing
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState('')
+  const keyEl = useRef(null)
+  const load = () => api.counterPcs().then(setRows).catch((e) => setErr(e.message))
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t) }, [])
+
+  const active = (rows || []).filter((d) => !d.revokedAt)
+  const pair = async () => {
+    setErr(''); setBusy(true)
+    try { const p = await api.pairCounterPc(name.trim()); setKey(p.key); load() } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+  const remove = async (d) => {
+    const message = d.counterSince
+      ? `Remove "${d.name}"? Do this only once it has sent everything (on that PC, Settings > Your account says 0 waiting). After that, orders and bills are made online again and that PC stops syncing.`
+      : `Remove "${d.name}"? Its key stops working.`
+    if (!await ui.confirm({ title: 'Remove restaurant PC', message, confirmText: 'Remove', danger: true })) return
+    try { await api.removeCounterPc(d.id); setKey(null); load() } catch (e) { ui.alert(e.message) }
+  }
+  // Some browsers refuse the clipboard: then the key is selected so Ctrl+C copies it.
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(key); setCopied('Copied') }
+    catch {
+      if (keyEl.current) window.getSelection()?.selectAllChildren(keyEl.current)
+      setCopied('Selected: press Ctrl+C')
+    }
+    setTimeout(() => setCopied(''), 4000)
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <b>Restaurant PC</b>
+      <p className="muted" style={{ fontSize: 14, margin: '4px 0 12px' }}>
+        Run the counter on a Windows PC with Dine In for PC. Orders, bills, payments and stock are then made on that PC, even with no internet,
+        and this online copy follows within seconds whenever it is online. Menu, prices, tables and staff can still be changed here.
+      </p>
+
+      {key && (
+        <div className="card" style={{ borderColor: 'var(--green, #2e7d32)', marginBottom: 12 }}>
+          <div style={{ fontWeight: 600 }}>PC key (shown only now)</div>
+          <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+            <code ref={keyEl} style={{ fontSize: 14, wordBreak: 'break-all', userSelect: 'all' }}>{key}</code>
+            <button className="ghost btn-sm" type="button" onClick={copy}>{copied || 'Copy'}</button>
+          </div>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
+            On the PC: open Dine In, choose <b>My restaurant is already online</b>, and paste this key. It downloads the restaurant and takes over the counter.
+            Keep the key private; if it leaks, remove this PC and pair again.
+          </p>
+        </div>
+      )}
+
+      {rows && active.length === 0 && (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label className="fld" style={{ flex: 1, minWidth: 180 }}><span>Name for the PC</span>
+            <input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></label>
+          <button className="primary" disabled={busy || !name.trim()} onClick={pair}><PlusIcon size={15} /> {busy ? 'Pairing…' : 'Pair a PC'}</button>
+        </div>
+      )}
+
+      {active.map((d) => (
+        <div key={d.id} className="card" style={{ marginTop: 10 }}>
+          <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <b>{d.name}</b>
+            <button className="ghost btn-sm" onClick={() => remove(d)}><TrashIcon size={15} /> Remove</button>
+          </div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.6 }}>
+            Paired {shortWhen(d.createdAt)}{d.createdBy ? ` by ${d.createdBy}` : ''} · last heard from {shortWhen(d.lastSeenAt)}<br />
+            {d.counterSince ? `Runs the counter since ${shortWhen(d.counterSince)}` : 'Not connected yet: paste the key on the PC.'}
+            {d.waiting > 0 && <><br />{d.waiting} change(s) from the PC still being filed here</>}
+          </div>
+          {d.failed > 0 && (
+            <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>
+              {d.failed} change(s) from the PC could not be filed here.{d.lastFailure ? ` Last: ${d.lastFailure}` : ''} The PC keeps its own copy; tell your Dine In seller.
+            </div>
+          )}
+        </div>
+      ))}
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{err}</div>}
+    </div>
+  )
+}
+
+// PC edition, hybrid: how this PC's online copy stands, and a way to send everything now.
+function PcSyncCard() {
+  const [st, setSt] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [newKey, setNewKey] = useState('')
+  const [err, setErr] = useState('')
+  const load = () => pcSyncStatus().then(setSt)
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [])
+  if (!st || st.state !== 'ready') return null
+  const now = async () => {
+    setBusy(true)
+    try { setSt(await syncNow(auth.staffToken)); setTimeout(load, 2500) } catch (e) { toast(e.message) }
+    setBusy(false)
+  }
+  // Removed online (by mistake, or the key leaked): a new key for the same restaurant reconnects this PC as it is.
+  const rejoin = async (e) => {
+    e.preventDefault()
+    setErr(''); setBusy(true)
+    try { setSt(await connectPc(st.server, newKey.trim(), auth.staffToken)); setNewKey(''); setTimeout(load, 2500) } catch (x) { setErr(x.message) }
+    setBusy(false)
+  }
+  const line = st.keyRefused || (st.online && st.lastError) ? st.lastError
+    : !st.online ? (st.lastError || 'No internet. This PC keeps working and sends everything when it is back.')
+      : st.waiting > 0 ? `Sending ${st.waiting} change(s)…` : 'Up to date.'
+  const warn = !st.online || !!st.lastError
+  return (
+    <div className="card" style={{ marginBottom: 16, borderColor: warn ? 'var(--amber, #b26a00)' : undefined }}>
+      <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="h" style={{ fontSize: 17 }}>Online copy</div>
+        {!st.keyRefused && <button className="btn-sm" disabled={busy} onClick={now}>{busy ? 'Syncing…' : 'Sync now'}</button>}
+      </div>
+      <p style={{ margin: '6px 0 4px' }} role="status">{line}</p>
+      <div className="muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
+        {st.restaurant} at {st.server} · last synced {shortWhen(st.lastSyncAt)}
+        {st.waiting > 0 && <><br />{st.waiting} change(s) waiting to go up</>}
+      </div>
+      {st.keyRefused && (
+        <form onSubmit={rejoin} className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10 }}>
+          <label className="fld" style={{ flex: 1, minWidth: 200 }}><span>New PC key</span>
+            <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="dk_…" autoComplete="off" spellCheck={false}
+              maxLength={200} style={{ fontFamily: 'monospace' }} /></label>
+          <button className="primary" disabled={busy || !newKey.trim()}>{busy ? 'Checking…' : 'Reconnect'}</button>
+          {err && <div style={{ color: 'var(--red)', fontSize: 13, width: '100%' }}>{err}</div>}
+        </form>
+      )}
+      {st.serverFailed > 0 && (
+        <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>
+          The online copy could not take {st.serverFailed} change(s). This PC still has them.
+          {(st.serverNotes || []).slice(0, 3).map((n, i) => <div key={i}>· {n}</div>)}
+        </div>
+      )}
     </div>
   )
 }

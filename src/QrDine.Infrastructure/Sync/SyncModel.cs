@@ -79,6 +79,13 @@ public static class SyncModel
     /// <summary>The name a type goes by in the change list and the sync API, e.g. "Order".</summary>
     public static string NameOf(IReadOnlyEntityType t) => t.ClrType.Name;
 
+    /// <summary>The root a synced type travels with: itself for a root, its order for an order item, and so on.</summary>
+    public static string RootTypeName(IReadOnlyEntityType t)
+    {
+        for (var depth = 0; !IsRoot(t) && depth < 8; depth++) t = ParentKey(t).PrincipalEntityType;
+        return NameOf(t);
+    }
+
     private static readonly ConcurrentDictionary<IReadOnlyEntityType, IReadOnlyForeignKey> ParentKeys = new();
 
     /// <summary>For a child type, the foreign key to the row it belongs to.</summary>

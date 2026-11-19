@@ -13,4 +13,12 @@ namespace QrDine.Application.Common;
 public sealed record SyncSettings(bool Enabled, int SettleSeconds = 2)
 {
     public static readonly SyncSettings Off = new(false);
+
+    /// <summary>
+    /// The PC edition, once it is connected to its online restaurant: write change-list lines (so it
+    /// knows what to send up) without serving the server's sync API. Set at start or when connecting.
+    /// </summary>
+    public bool RecordOnThisPc { get; set; }
+
+    public bool Records => Enabled || RecordOnThisPc;
 }

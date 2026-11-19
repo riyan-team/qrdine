@@ -1,7 +1,7 @@
 # Dine In: online, offline and hybrid
 
 How the app can run, what is ready today, how to set each one up, and how each one works.
-Written 2026-11-19, for branch `hybrid-sync-foundation`.
+Updated 2026-11-20.
 
 No passwords or keys belong in this file. Where a setting needs one, it says `<make a strong one>`.
 
@@ -13,12 +13,12 @@ No passwords or keys belong in this file. Where a setting needs one, it says `<m
 |---|---|---|
 | **Fully online** | **Yes. It runs today** on the Hostworld server (`qrdine.mystay.live`). | One server in the cloud. Every phone, tablet and PC opens the website. |
 | **Fully offline** | **Yes. `DineIn.exe`**, one file with its own database and licence (section 4). | The same app on one PC inside the restaurant. Everyone connects to that PC over the restaurant Wi-Fi. No internet needed for daily work. |
-| **Hybrid** (PC in the restaurant **and** the cloud, kept in step) | **No. Only the first part is built**, and it is switched off. | The PC keeps working when the internet goes. When it comes back, the PC and the cloud swap their changes. |
+| **Hybrid** (PC in the restaurant **and** the cloud, kept in step) | **Yes.** `DineIn.exe` connected to the online restaurant (section 5). The server needs `Sync__Enabled=true`. | The counter runs on the PC and keeps working when the internet goes. Every few seconds the PC and the cloud swap their changes. |
 
 **What to use now:**
 - Most restaurants: **online**. If the internet is weak, add a backup connection (a 4G device or a second line), because online needs the internet at the counter.
 - A restaurant with no dependable internet at all: **offline** on its own PC.
-- **Hybrid** is the long-term answer for Pakistan (load-shedding, weak lines). It needs the work in section 5.4 first.
+- A restaurant online today whose internet drops: **hybrid**. The counter moves to a PC and the online copy keeps up whenever it can.
 
 ---
 
@@ -156,52 +156,72 @@ The check starts the exe on port 5310 with its own data folder, makes keys with 
 
 ## 5. Hybrid (PC in the restaurant + the cloud)
 
-### How it will work
+### How it works
 
 ```
  Restaurant (works with or without internet)                Cloud (Hostworld)
- ┌──────────────────────────────────┐   when internet    ┌─────────────────────────┐
- │ Counter PC: app + PostgreSQL     │ ◄─── is up: ─────► │ app + PostgreSQL         │
- │ staff and guests on the Wi-Fi    │   send my changes, │ owner, reports, backups, │
- │ keeps a list of its changes      │   get the cloud's  │ FBR, online orders       │
+ ┌──────────────────────────────────┐   every 5 seconds  ┌─────────────────────────┐
+ │ Counter PC: DineIn.exe + SQLite  │ ◄── when online: ─► │ app + PostgreSQL         │
+ │ staff and guests on the Wi-Fi    │   send my changes, │ owner from home, reports │
+ │ keeps a list of its changes      │   take the cloud's │ menu edits, backups      │
  └──────────────────────────────────┘                    └─────────────────────────┘
 ```
 
-- In the restaurant everything runs on the PC, exactly like offline. Load-shedding or a dead line doesn't stop the counter.
-- When the internet is up, the PC sends the cloud what changed and takes what changed in the cloud (for example, the owner edited the menu from home).
-- The owner sees sales online, a little behind when the internet was down.
+- **The counter runs on the PC.** Orders, bills, payments, cancellations and returns, day closing, khata entries (customers, suppliers, staff), expenses, stock movements, loyalty points and feedback are made there, exactly like offline. Load-shedding or a dead line doesn't stop it.
+- **Every 5 seconds while online**, the PC sends what changed and then takes what changed online. With no internet it keeps a list, and sends it all by itself when the line is back. Menu photos travel both ways.
+- **Both sides can change the menu, prices, tables, branches, staff, customers, suppliers and settings.** The newest change wins.
+- **Counts come from the PC:** stock quantities and loyalty point balances. The owner can rename a stock item from home; the quantity stays the PC's.
+- **Online only:** the plan, paid dates, feature switches and the restaurant's address. On the PC, features come from its licence.
+- **Never travel:** FBR/PRA tokens, members' phone passes and riders' links (each is entered or made where it is used). Staff passwords travel as salted hashes, only to the paired PC, so staff sign in there with no internet.
+- **The online copy steps back.** Once the PC takes over, the online copy refuses new orders, bills, payments, stock counts and khata entries with a clear message (guests are told to scan the QR code on the restaurant's Wi-Fi). Everything the PC makes shows up online within seconds.
+- **Tax office:** bills are filed from the PC, with tokens entered on the PC. The server's retry job leaves these restaurants alone.
 
-### What is built today (phase 1, on the server, switched off)
+### Setting it up
 
-Turned on by `Sync__Enabled=true`. While it is off (the default, and how the server runs), every sync address answers 404 and nothing extra is written.
+1. **Server:** `Sync__Enabled=true` in `/etc/qrdine/qrdine.env`, then restart (one process). While it is off, every sync address answers 404.
+2. **Online, as the owner:** Settings > **Restaurant PC** > **Pair a PC**. Copy the key; it is shown once. One PC per restaurant.
+3. **On the PC:** start the new `DineIn.exe` and activate the licence (section 4). On the sign-up page choose **My restaurant is already online**, keep the address `https://qrdine.mystay.live`, and paste the key. The PC downloads the whole restaurant (nothing else opens until it is done), then takes over the counter.
+4. Staff sign in on the PC with their usual mobile numbers and passwords.
+5. **Print the table QR codes again from the PC** (the QR codes page, opened from the PC's fixed address, not `localhost`). Guests order over the restaurant Wi-Fi.
+6. **Tax office:** enter each branch's FBR/PRA token on the PC (Settings > Tax office). Tokens never travel.
 
-- Every row that should travel has a world-wide id (`SyncId`) and a "last changed" time, so the PC and the cloud can both make "order 105" without a clash.
-- A **change log**: each save writes which rows changed, in the same save.
-- **Pairing:** the owner pairs a PC and gets a device key once (only its hash is kept). At most 5 devices. A device can be removed at once.
-- **Download:** a first full copy (snapshot) and then "what changed since number N" (pull). Secrets never leave the server: staff password hashes, FBR tokens, and riders' and members' private links.
-- **Upload:** the PC's changes are received and stored, once each, **but not applied yet**.
-- **Rules for clashes** are written and tested, ready for phase 3:
-  - Menu, prices, tables, staff and other settings: **the newest change wins**.
-  - Orders, bills, payments, khata and other money records: **owned by the place that made them**. The other side never changes them.
-  - Stock and loyalty points: **lines are added, never overwritten**, so "+5 here and −2 there" add up.
-  - Plan, paid dates and feature switches: **cloud only**. A PC can never change them.
-  - Bill numbers: once a restaurant runs from a PC, only that PC gives out bill numbers.
+### Watching it
 
-### What is missing before hybrid can be used
+- **On the PC:** Settings > Your account > **Online copy**: up to date or offline, what is still waiting to go up, the last sync, **Sync now**, and any change the online copy could not take.
+- **Online:** Settings > Restaurant PC: when the PC was last heard from, since when it runs the counter, and anything waiting or refused (with the reason).
 
-| Phase | Work | Why it is needed |
-|---|---|---|
-| **2: the PC side** | The PC edition is built (section 4). Still missing: a sync worker that pairs, takes the snapshot, then pulls and pushes every few seconds and retries when the internet comes back. Also staff sign-in on the PC while offline (password hashes never leave the server, so the PC needs its own sign-in), and an installer. | Without it there is nothing in the restaurant to sync. |
-| **3: applying uploads** | The server applies what PCs send, with the clash rules above. Bill numbers come from the PC. Each PC's own changes come back to it once, not twice. | Today uploads are only stored. |
-| **4: proving it** | Real tests with the internet pulled out mid-service: two cashiers, a menu edit at home, a day close, FBR filing late. | Money must never double or go missing. |
+### Moving, removing, starting again
 
-### How it will be set up (once phases 2–4 are done)
+- **A new PC:** copy the whole `DineIn-data` folder (it holds `sync.json`, the link to the online copy) and get a key for the new PC's code.
+- **Back to online only:** let the PC send everything (0 waiting), then **Remove** it online. The online copy takes orders and bills again.
+- **Removed by mistake, or the key leaked:** the PC keeps working and says it was removed. Pair again online and enter the new key on the PC (Settings > Your account > Online copy, as the owner or a manager). It keeps everything and sends what waited. This is refused if orders, bills or khata entries were made online in between, because their numbers would clash; then connect a fresh PC.
+- **Never delete the PC's data folder while changes are waiting.** They exist only there.
+- If sync is ever switched off and on again, or the server is restored from an older backup, remove the PC online and connect a fresh PC data folder.
 
-1. Deploy the new server build. Set `Sync__Enabled=true` in `/etc/qrdine/qrdine.env` and restart.
-2. The owner pairs the counter PC and copies the key shown **once**. Today pairing is an owner-only address (`/api/r/{slug}/admin/sync/devices`) with no screen. A Devices screen in Settings is part of phase 2.
-3. Install the PC edition (section 4) and give it the server address and the device key.
-4. The PC downloads its first copy, then stays in step on its own.
-5. If sync is ever switched off and on again, or the server is rolled back to an older build, every paired PC must download a fresh copy.
+### Limits (this version)
+
+| Limit | Why |
+|---|---|
+| One counter PC per restaurant | Two PCs would both give out bill numbers. |
+| Connecting works only on a PC with no restaurant yet | A PC that already sold offline on its own would need its records merged with the online ones. |
+| Once the PC runs the counter, orders and khata entries are made only on it | One place gives out bill numbers and owns the money records, so nothing doubles. |
+| QR codes printed for the online address stop taking orders | Guests order through the PC. Reprint them from the PC. |
+| Members' phone passes and riders' links made online don't work on the PC | They never travel. Staff give the member a new code. |
+| The newest change wins by each side's clock | Keep the PC's clock automatic (Windows does this). |
+
+### How it is built (for developers)
+
+- Every synced row has a world-wide id (`SyncId`) and `LastChangedAt`. Each save writes a change log (`SyncChanges`) in the same transaction, with `OriginDeviceId` so a device never gets its own changes back.
+- Device API (`/api/sync`, device key): `hello`, `snapshot`, `pull`, `push`, `takeover`, `files/{id}`. Owner API: `/api/r/{slug}/admin/sync/devices`.
+- Rows travel without either side's own ids: links to other rows go as that row's `SyncId` (`SyncRules.References`), and children (order items, bill lines, variants…) are matched by their own `SyncId`.
+- `SyncApplier` applies a batch in dependency order. A row whose link has not arrived waits for the rest of the batch, then goes in with that link empty and a note. A row that fails is marked **Failed** with the reason and never blocks the others. The server takes the PC's floor records and counts; settings go to the newest. After the download, the PC never takes the server's floor records.
+- `CounterOnPcRule` in `AppDbContext` is the guard that makes the online copy step back.
+- The PC side is `PcSync` (`src/QrDine.Api/Pc/PcSync.cs`); its state is in `DineIn-data/sync.json`.
+- Tests: `SyncTests`, `SyncHttpTests`, `HybridSyncTests` (a server and a PC in one process over real HTTP), and, with both as real processes (the server is stopped and started again mid-way):
+
+```bash
+bash deploy/pc/run-hybrid-check.sh <DineIn.exe> <server publish folder> <empty work folder> <dinein-licence.dll> <private-key.pem>
+```
 
 ---
 

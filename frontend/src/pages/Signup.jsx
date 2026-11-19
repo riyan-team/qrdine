@@ -128,7 +128,9 @@ export default function Signup() {
       <div className="au-light" />
       <header className="au-top">
         <Link to="/" className="au-brand" aria-label="Dine In home"><DineInLogo /></Link>
-        <Link to="/login" className="au-top-link">I already have an account</Link>
+        {pc
+          ? <Link to="/connect" className="au-top-link">My restaurant is already online</Link>
+          : <Link to="/login" className="au-top-link">I already have an account</Link>}
       </header>
 
       <main className={'su-grid' + (name === 'plan' ? ' wide' : '')}>

@@ -219,10 +219,11 @@ public class SyncTests : IDisposable
     }
 
     [Fact]
-    public async Task A_restaurant_pairs_at_most_five_devices_and_each_needs_a_name()
+    public async Task A_restaurant_pairs_one_counter_pc_and_it_needs_a_name()
     {
+        Assert.Equal(1, SyncService.MaxActiveDevices);   // two PCs would both give out bill numbers
         for (var i = 0; i < SyncService.MaxActiveDevices; i++) await Service().Pair($"PC {i}", "owner");
-        await Assert.ThrowsAsync<DomainException>(() => Service().Pair("PC 6", "owner"));
+        await Assert.ThrowsAsync<DomainException>(() => Service().Pair("PC 2", "owner"));
         await Assert.ThrowsAsync<DomainException>(() => Service().Pair("  ", "owner"));
     }
 
@@ -242,7 +243,10 @@ public class SyncTests : IDisposable
         var everything = JsonSerializer.Serialize(new { pull, snap });
         Assert.Contains("Cafe biryani", everything);
         Assert.DoesNotContain("Other's secret dish", everything);
-        Assert.All(pull.Changes, c => Assert.True(c.Data is null || (int)c.Data["RestaurantId"]! == 1 || c.Type == "Restaurant"));
+        // Rows travel without this side's ids (each side has its own): every row pulled is one of the cafe's.
+        Assert.All(pull.Changes, c => Assert.False(c.Data?.ContainsKey("RestaurantId") == true || c.Data?.ContainsKey("Id") == true));
+        var cafeRows = _db.MenuItems.IgnoreQueryFilters().Where(i => i.RestaurantId == 1).Select(i => EF.Property<Guid>(i, "SyncId")).ToList();
+        Assert.All(pull.Changes.Where(c => c.Type == "MenuItem"), c => Assert.Contains(c.SyncId, cafeRows));
 
         // Even with the wrong restaurant in the tenant filter, the device's own restaurant check still holds.
         _tenant.Set(2, "other");
@@ -405,7 +409,7 @@ public class SyncTests : IDisposable
     }
 
     [Fact]
-    public async Task Secrets_never_leave_the_server_in_a_sync_answer()
+    public async Task Fbr_tokens_never_leave_the_server_and_sign_in_hashes_go_only_to_the_paired_pc()
     {
         _db.Staff.Add(new StaffMember
         {
@@ -420,10 +424,36 @@ public class SyncTests : IDisposable
         var json = JsonSerializer.Serialize(new { snap, pull });
 
         Assert.Contains("cashier", json);
-        Assert.DoesNotContain("the-password-hash", json);
         Assert.DoesNotContain("the-fbr-token", json);
-        Assert.DoesNotContain("PasswordHash", json);
+        Assert.DoesNotContain("FbrToken", json);
         Assert.DoesNotContain(_db.SyncDevices.Single().KeyHash, json);
+        // The PC signs staff in with no internet, so their (salted PBKDF2) hash goes to it, and only over the device key.
+        Assert.Contains("the-password-hash", json);
+    }
+
+    [Fact]
+    public void Every_column_that_points_at_another_row_travels_as_that_rows_sync_id()
+    {
+        var roots = _db.Model.GetEntityTypes().Where(SyncModel.IsRoot).Select(SyncModel.NameOf).ToHashSet();
+        foreach (var t in _db.Model.GetEntityTypes().Where(SyncModel.IsSynced))
+        {
+            var name = SyncModel.NameOf(t);
+            var parent = SyncModel.IsRoot(t) ? null : SyncModel.ParentKey(t).Properties[0].Name;
+            foreach (var p in t.GetProperties().Where(p => (p.ClrType == typeof(int) || p.ClrType == typeof(int?)) && p.Name.EndsWith("Id") && !p.IsPrimaryKey()))
+            {
+                if (p.Name == "RestaurantId" || p.Name == parent || SyncRules.IsServerOnly(name, p.Name)) continue;
+                Assert.True(SyncRules.ReferenceOf(name, p.Name) is not null, $"{name}.{p.Name} points at another row: add it to SyncRules.References.");
+            }
+        }
+        foreach (var target in SyncRules.References.Values.SelectMany(r => r.Values)) Assert.Contains(target, roots);
+        // A new copy is filled in an order where every row's references already exist.
+        var order = new EfSyncStore(_db).InDependencyOrder.ToList();
+        Assert.Equal("Restaurant", order[0]);
+        Assert.True(order.IndexOf("MenuCategory") < order.IndexOf("MenuItem"));
+        Assert.True(order.IndexOf("StockItem") < order.IndexOf("MenuItem"));     // recipe lines
+        Assert.True(order.IndexOf("MenuItem") < order.IndexOf("Order"));         // order items
+        Assert.True(order.IndexOf("TableSession") < order.IndexOf("Invoice"));
+        Assert.True(order.IndexOf("Invoice") < order.IndexOf("CustomerEntry"));
     }
 
     // ---------- the conflict rules ----------
@@ -463,13 +493,16 @@ public class SyncTests : IDisposable
     }
 
     [Fact]
-    public void Stock_moves_as_movements_and_its_total_is_never_copied()
+    public void Stock_and_points_counts_come_from_the_pc_and_the_plan_never_travels()
     {
         Assert.Equal(SyncRule.Ledger, SyncRules.For("StockMovement"));
         Assert.Equal(SyncDecision.Skip, SyncRules.Decide(SyncRule.Ledger, true, SyncSide.Device, T0, SyncSide.Device, T0.AddHours(1)));
-        Assert.Contains("Quantity", SyncRules.ServerOnlyFields["StockItem"]);
-        Assert.Contains("Points", SyncRules.ServerOnlyFields["LoyaltyMember"]);
-        Assert.Contains("PlanExpiresAt", SyncRules.ServerOnlyFields["Restaurant"]);
+        Assert.True(SyncRules.IsDeviceOwned("StockItem", "Quantity"));
+        Assert.True(SyncRules.IsDeviceOwned("LoyaltyMember", "Points"));
+        Assert.True(SyncRules.IsDeviceOwned("DiningTable", "GuestPassesFrom"));
+        Assert.True(SyncRules.IsServerOnly("Restaurant", "PlanExpiresAt"));
+        Assert.True(SyncRules.IsServerOnly("Restaurant", "FeatureFbr"));
+        Assert.True(SyncRules.IsFloor("Invoice") && SyncRules.IsFloor("StockMovement") && !SyncRules.IsFloor("MenuItem"));
         Assert.Throws<ArgumentException>(() => SyncRules.For("PlatformAdmin"));
     }
 

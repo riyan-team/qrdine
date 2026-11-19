@@ -95,8 +95,9 @@ public static class SyncRules
     }
 
     /// <summary>
-    /// Fields a device's change may never set: the subscription and plan (only the platform console
-    /// sets those) and totals that are rebuilt from ledger lines.
+    /// Fields that never travel in either direction: the subscription, the plan and the feature
+    /// switches. On the server only the platform console sets them; on a PC its licence does. The
+    /// slug is set once, when the PC first downloads its restaurant.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> ServerOnlyFields = new Dictionary<string, string[]>
     {
@@ -105,18 +106,32 @@ public static class SyncRules
             "Slug", "Plan", "PlanId", "PlanName", "Status", "CreatedAt", "PlanExpiresAt", "SetupFeePaid", "LastPaymentAt",
             "FeatureFbr", "FeatureOrdering", "FeatureKitchen", "FeatureWaiter", "FeatureBilling", "FeatureInventory", "FeatureReports",
         },
-        ["StockItem"] = new[] { "Quantity" },
-        ["LoyaltyMember"] = new[] { "Points", "LifetimePoints", "LifetimeSpend", "Visits" },
     };
 
     /// <summary>
-    /// Secrets that never leave the server in a sync answer: sign-in hashes, FBR tokens, a member's
-    /// phone pass and a rider's link key. How staff sign in on the PC while offline is decided with
-    /// the PC app (phase 2).
+    /// Counts the floor keeps up as it works: stock on hand and the last price paid, a member's points,
+    /// and the moment a table's guest passes were renewed. Once the counter runs on the PC these come
+    /// from the PC only. The server takes them from every PC change, even when its own copy of the rest
+    /// of the row is newer, and the PC never takes them from the server.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> DeviceOwnedFields = new Dictionary<string, string[]>
+    {
+        ["StockItem"] = new[] { "Quantity", "LastCost" },
+        ["LoyaltyMember"] = new[] { "Points", "LifetimePoints", "LifetimeSpend", "Visits" },
+        ["DiningTable"] = new[] { "GuestPassesFrom" },
+    };
+
+    /// <summary>
+    /// Secrets that never travel, in either direction: FBR tokens (each side keeps the one entered
+    /// there; the PC files its own bills), a member's phone pass and a rider's link key. A change that
+    /// arrives without them keeps this side's value.
+    /// Sign-in hashes do travel, to the restaurant's own paired PC only, so staff can sign in there
+    /// with no internet. They are salted PBKDF2, and a changed password still signs that person's
+    /// other sessions out on both sides (the session stamp comes from the hash).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> SecretFields = new Dictionary<string, string[]>
     {
-        ["StaffMember"] = new[] { "PasswordHash", "FbrToken" },
+        ["StaffMember"] = new[] { "FbrToken" },
         ["Branch"] = new[] { "FbrToken" },
         ["LoyaltyMember"] = new[] { "Token" },
         ["TableSession"] = new[] { "RiderKey" },
@@ -124,6 +139,64 @@ public static class SyncRules
 
     public static bool IsSecret(string entityType, string field) =>
         SecretFields.TryGetValue(entityType, out var f) && f.Contains(field);
+
+    public static bool IsServerOnly(string entityType, string field) =>
+        ServerOnlyFields.TryGetValue(entityType, out var f) && f.Contains(field);
+
+    public static bool IsDeviceOwned(string entityType, string field) =>
+        DeviceOwnedFields.TryGetValue(entityType, out var f) && f.Contains(field);
+
+    /// <summary>
+    /// The number columns that point at another synced row. Their int values mean nothing on the other
+    /// side, so they travel as the other row's SyncId and are turned back into this side's id on arrival.
+    /// A test checks every "...Id" column of a synced type is listed here (or never travels).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> References =
+        new Dictionary<string, IReadOnlyDictionary<string, string>>
+        {
+            ["AttendanceMark"] = new Dictionary<string, string> { ["EmployeeId"] = "Employee" },
+            ["CustomerEntry"] = new Dictionary<string, string> { ["CustomerId"] = "Customer", ["InvoiceId"] = "Invoice" },
+            ["DayClosing"] = new Dictionary<string, string> { ["BranchId"] = "Branch" },
+            ["DiningTable"] = new Dictionary<string, string> { ["BranchId"] = "Branch" },
+            ["EmployeeEntry"] = new Dictionary<string, string> { ["EmployeeId"] = "Employee", ["ExpenseId"] = "Expense" },
+            ["Expense"] = new Dictionary<string, string> { ["BranchId"] = "Branch" },
+            ["Invoice"] = new Dictionary<string, string> { ["BranchId"] = "Branch", ["TableSessionId"] = "TableSession" },
+            ["LoyaltyRedemption"] = new Dictionary<string, string> { ["MemberId"] = "LoyaltyMember", ["RewardId"] = "LoyaltyReward" },
+            ["LoyaltyTransaction"] = new Dictionary<string, string>
+            {
+                ["InvoiceId"] = "Invoice", ["MemberId"] = "LoyaltyMember", ["RedemptionId"] = "LoyaltyRedemption", ["TableSessionId"] = "TableSession",
+            },
+            ["MenuItem"] = new Dictionary<string, string> { ["CategoryId"] = "MenuCategory" },
+            ["Order"] = new Dictionary<string, string> { ["BranchId"] = "Branch", ["DiningTableId"] = "DiningTable", ["TableSessionId"] = "TableSession" },
+            ["OrderItem"] = new Dictionary<string, string> { ["MenuItemId"] = "MenuItem" },
+            ["OrderVoid"] = new Dictionary<string, string> { ["BranchId"] = "Branch", ["OrderId"] = "Order" },
+            ["Payment"] = new Dictionary<string, string> { ["BranchId"] = "Branch", ["TableSessionId"] = "TableSession" },
+            ["PaymentReturn"] = new Dictionary<string, string> { ["BranchId"] = "Branch", ["TableSessionId"] = "TableSession" },
+            ["RecipeLine"] = new Dictionary<string, string> { ["StockItemId"] = "StockItem" },
+            ["ServiceRequest"] = new Dictionary<string, string> { ["BranchId"] = "Branch" },
+            ["StockMovement"] = new Dictionary<string, string> { ["StockItemId"] = "StockItem" },
+            ["SupplierEntry"] = new Dictionary<string, string> { ["SupplierId"] = "Supplier", ["LinkedEntryId"] = "SupplierEntry" },
+            ["SupplierEntryLine"] = new Dictionary<string, string> { ["StockItemId"] = "StockItem" },
+            ["TableSession"] = new Dictionary<string, string>
+            {
+                ["BranchId"] = "Branch", ["CustomerId"] = "Customer", ["DiningTableId"] = "DiningTable", ["LoyaltyMemberId"] = "LoyaltyMember",
+            },
+        };
+
+    /// <summary>The type a column points at, or null when it isn't a reference.</summary>
+    public static string? ReferenceOf(string entityType, string field) =>
+        References.TryGetValue(entityType, out var r) && r.TryGetValue(field, out var target) ? target : null;
+
+    /// <summary>
+    /// Floor and money records, and ledger lines. Once a restaurant's counter runs on its PC they are
+    /// made on the PC only: the server refuses to make or change them, and takes the PC's copies.
+    /// </summary>
+    public static bool IsFloor(string entityType) =>
+        Rules.TryGetValue(entityType, out var rule) && rule is SyncRule.OwnedByOrigin or SyncRule.Ledger;
+
+    /// <summary>The floor types: what only the counter makes once a PC runs it (orders, bills, khata, stock movements…).</summary>
+    public static readonly IReadOnlyList<string> FloorTypes =
+        Rules.Where(kv => kv.Value is SyncRule.OwnedByOrigin or SyncRule.Ledger).Select(kv => kv.Key).ToArray();
 
     /// <summary>
     /// Who gives out bill numbers. Today only the server does. Once a restaurant pairs a PC that
