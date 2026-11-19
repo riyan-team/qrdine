@@ -109,13 +109,23 @@ def report(base, token):
     return sorted((x['number'], round(x['total'], 2)) for x in rows)
 
 
-def item_price(base, name):
+def menu_item(base, name):
     s, m = req(base, 'GET', f"/api/r/{state['slug']}")
     for c in (m.get('menu') or []) if isinstance(m, dict) else []:
         for i in c.get('items', []):
             if i['name'] == name:
-                return i['price']
+                return i
     return None
+
+
+def item_price(base, name):
+    return (menu_item(base, name) or {}).get('price')
+
+
+def pc_id(name):
+    """Each side numbers its rows itself: on the PC an item is ordered by the PC's own id, as a guest's phone does."""
+    i = menu_item(PC, name)
+    return i['id'] if i else None
 
 
 def save():
@@ -202,7 +212,7 @@ def server_steps_back():
 
 
 def pc_sells():
-    inv = sell(PC, state['pc_token'], 'T2', [line(state['K'])])
+    inv = sell(PC, state['pc_token'], 'T2', [line(pc_id('Karahi'))])
     same('bill #2 on the PC, at the new price', (inv['number'], inv['total']), ('INV-00002', round(1300 * 1.16, 2)))
     state['bills'].append((inv['number'], round(inv['total'], 2)))
     until('the bill reaches the online copy', lambda: report(SERVER, state['server_token']) == state['bills'], 30)
@@ -214,7 +224,7 @@ def pc_sells():
 # ------------------------------------------------------------------ 2. offline
 def offline():
     state.update(json.load(open(STATE_FILE)))
-    inv = sell(PC, state['pc_token'], 'T3', [line(state['N'], 5)])
+    inv = sell(PC, state['pc_token'], 'T3', [line(pc_id('Naan'), 5)])
     same('bill #3 with no internet', (inv['number'], inv['total']), ('INV-00003', round(200 * 1.16, 2)))
     state['bills'].append((inv['number'], round(inv['total'], 2)))
     st = until('the PC says it is offline', lambda: (lambda s: s if s and not s['online'] else None)(pc_status()), 30)
