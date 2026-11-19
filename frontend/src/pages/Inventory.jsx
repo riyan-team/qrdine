@@ -76,17 +76,17 @@ export default function Inventory() {
           <b>Stock</b>
           <div style={{ margin: '10px 0' }}>
             {stock.map((s) => (
-              <div key={s.id} className="row between" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-                <div>
+              <div key={s.id} className="row between" style={{ padding: '8px 0', borderBottom: '1px solid var(--line)', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                   <b>{s.name}</b> {s.isLow && <span className="pill s-Placed" style={{ marginLeft: 4 }}>LOW</span>}
                   <div className="muted" style={{ fontSize: 13 }}>{s.quantity} {s.unit} · low at {s.lowThreshold}{s.lastCost > 0 ? ` · last bought at ${money(s.lastCost)}` : ''}</div>
                 </div>
-                <div className="row" style={{ gap: 4 }}>
+                <div className="row" style={{ gap: 4, flexWrap: 'wrap', marginLeft: 'auto' }}>
                   <button className="ghost" onClick={() => restock(s)}>+ Stock</button>
                   <button className="ghost" onClick={() => setWasting(s)}>Waste</button>
                   <button className="ghost" onClick={() => adjust(s)}>Count</button>
                   <button className="ghost" onClick={() => editThreshold(s)}>Alert</button>
-                  <button className="ghost" onClick={() => del(s)}><TrashIcon size={15} /></button>
+                  <button className="ghost" aria-label={`Remove ${s.name}`} title="Remove" onClick={() => del(s)}><TrashIcon size={15} /></button>
                 </div>
               </div>
             ))}
@@ -94,15 +94,15 @@ export default function Inventory() {
           </div>
           <div className="cat-title" style={{ fontSize: 13, margin: '6px 0' }}>Add stock item</div>
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
-            <label className="fld" style={{ flex: 2 }}><span>Name</span>
+            <label className="fld" style={{ flex: 2, minWidth: 0 }}><span>Name</span>
               <input required maxLength={80} placeholder="e.g. Chicken" value={ns.name} onChange={(e) => setNs({ ...ns, name: e.target.value })} /></label>
             <label className="fld" style={{ width: 80 }}><span>Unit</span>
               <input required maxLength={20} value={ns.unit} onChange={(e) => setNs({ ...ns, unit: e.target.value })} style={{ minWidth: 0 }} /></label>
           </div>
-          <div className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
-            <label className="fld" style={{ flex: 1 }}><span>In stock now <span className="opt">(optional)</span></span>
+          <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label className="fld" style={{ flex: '1 1 130px', minWidth: 0 }}><span>In stock now <span className="opt">(optional)</span></span>
               <input type="number" min="0" step="any" inputMode="decimal" placeholder="0" value={ns.quantity} onChange={(e) => setNs({ ...ns, quantity: e.target.value })} style={{ minWidth: 0 }} /></label>
-            <label className="fld" style={{ flex: 1 }}><span>Warn when at <span className="opt">(optional)</span></span>
+            <label className="fld" style={{ flex: '1 1 130px', minWidth: 0 }}><span>Warn when at <span className="opt">(optional)</span></span>
               <input type="number" min="0" step="any" inputMode="decimal" placeholder="0" value={ns.lowThreshold} onChange={(e) => setNs({ ...ns, lowThreshold: e.target.value })} style={{ minWidth: 0 }} /></label>
             <button className="primary" disabled={busy || !ns.name.trim()} onClick={add}>{busy ? 'Adding…' : 'Add'}</button>
           </div>

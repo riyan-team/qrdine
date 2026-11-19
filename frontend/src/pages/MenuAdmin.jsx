@@ -73,11 +73,11 @@ export default function MenuAdmin() {
           <div className="card">
             {c.items.length === 0 && <div className="muted" style={{ fontSize: 13 }}>No items yet.</div>}
             {c.items.map((it) => (
-              <div className="item" key={it.id}>
+              <div className="item" key={it.id} style={{ flexWrap: 'wrap' }}>
                 <div className="emoji">{it.imageUrl
                   ? <img src={it.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} />
                   : it.emoji}</div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                   <div className="name">{it.name} {!it.available && <span className="pill s-Served">out of stock</span>}
                     {it.dealPrice != null && <span className="pill s-Cancelled">deal {money(it.dealPrice)}{it.dealActive ? '' : ' (scheduled)'}</span>}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
@@ -85,10 +85,11 @@ export default function MenuAdmin() {
                     {it.modifierGroups?.length ? ` · ${it.modifierGroups.length} ${it.modifierGroups.length === 1 ? 'option group' : 'option groups'}` : ''}
                   </div>
                 </div>
-                <div className="row" style={{ gap: 6 }}>
+                {/* On a narrow phone the buttons drop under the dish instead of pushing the page sideways. */}
+                <div className="row" style={{ gap: 6, marginLeft: 'auto' }}>
                   <button className="ghost" onClick={() => toggle(it)}>{it.available ? 'Mark out' : 'Mark in'}</button>
                   <button onClick={() => setEditing(it)}>Edit</button>
-                  <button className="ghost" onClick={() => removeItem(it)}><TrashIcon size={15} /></button>
+                  <button className="ghost" aria-label={`Remove ${it.name}`} title="Remove" onClick={() => removeItem(it)}><TrashIcon size={15} /></button>
                 </div>
               </div>
             ))}

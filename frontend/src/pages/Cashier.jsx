@@ -6,6 +6,7 @@ import { NOT_LOADED, loadUntilOk, useStaffOrders, useCalls } from '../useStaffOr
 import { OrderActions, useCart, plusOrCustomize, cartToItems, Customizer } from '../ordering.jsx'
 import { toast, playBell, ui } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { isPhone, phoneProblem } from '../phone.js'
 import { Modal, Tabs, waLink } from '../backoffice.jsx'
 import { directionsUrl } from '../MapView.jsx'
 import Receipt from './Receipt.jsx'
@@ -354,7 +355,7 @@ function VoidDialog({ order, item, onClose }) {
         <div className="bo-chips" style={{ marginBottom: 8 }}>
           {VOID_REASONS.map((r) => <button key={r} className={`bo-chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
         </div>
-        <input style={{ width: '100%' }} placeholder="Or type a reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <input style={{ width: '100%' }} required maxLength={200} aria-label="Reason for removing it" placeholder="Or type a reason" value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
@@ -369,29 +370,40 @@ function TicketDetails({ ticket, total, onChanged }) {
   const isDelivery = ticket.channel === 'Delivery'
   const dirty = f.customerName !== ticket.customerName || f.customerPhone !== ticket.customerPhone || f.address !== ticket.address
     || f.riderName !== ticket.riderName || Number(f.deliveryCharge || 0) !== (ticket.deliveryCharge || 0)
+  const [busy, setBusy] = useState(false)
+  const charge = Number(f.deliveryCharge) || 0
+  // The rider needs a number they can call and an address, the same as when the delivery was taken.
+  const problem = phoneProblem(f.customerPhone)
+    || (isDelivery && !(f.customerPhone || '').trim() ? "A delivery needs the customer's phone number." : '')
+    || (isDelivery && !(f.address || '').trim() ? "A delivery needs the customer's address." : '')
+    || (charge < 0 || charge > 100000 ? 'The delivery charge must be between 0 and 100,000.' : '')
   const save = async () => {
+    if (busy || problem) return
+    setBusy(true)
     try {
-      await api.updateTicket(ticket.tableCode, { ...f, deliveryCharge: Number(f.deliveryCharge) || 0 })
+      await api.updateTicket(ticket.tableCode, { ...f, deliveryCharge: charge })
       toast.success('Saved')
       onChanged()
     } catch (e) { toast.error(friendlyError(e)) }
+    setBusy(false)
   }
   const riderText = `Delivery from ${auth.getStaff()?.restaurantName || 'us'}\n${ticket.tableName}\nCustomer: ${f.customerName || '-'} ${f.customerPhone || ''}\nAddress: ${f.address || '-'}${ticket.home ? `\nMap: ${directionsUrl(ticket.home)}` : ''}\nCollect: ${money(total)}`
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   return (
     <div className="ts-who">
-      <div className="field"><label className="field-label">Customer</label><input value={f.customerName} onChange={set('customerName')} placeholder="Name" /></div>
-      <div className="field"><label className="field-label">Phone</label><input value={f.customerPhone} onChange={set('customerPhone')} inputMode="tel" placeholder="03xx xxxxxxx" /></div>
+      <div className="field"><label className="field-label" htmlFor="td-name">Customer</label><input id="td-name" maxLength={120} value={f.customerName} onChange={set('customerName')} placeholder="Name" /></div>
+      <div className="field"><label className="field-label" htmlFor="td-phone">Phone</label><input id="td-phone" required={isDelivery} maxLength={30} value={f.customerPhone} onChange={set('customerPhone')} inputMode="tel" placeholder="03xx xxxxxxx" aria-invalid={!!phoneProblem(f.customerPhone)} /></div>
       {isDelivery && <>
-        <div className="field is-full"><label className="field-label">Address</label><input value={f.address} onChange={set('address')} /></div>
-        <div className="field"><label className="field-label">Rider</label><input value={f.riderName} onChange={set('riderName')} placeholder="Rider's name" /></div>
-        <div className="field"><label className="field-label">Delivery charge (Rs)</label><input type="number" min="0" value={f.deliveryCharge} onChange={set('deliveryCharge')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="td-addr">Address</label><input id="td-addr" required maxLength={300} value={f.address} onChange={set('address')} /></div>
+        <div className="field"><label className="field-label" htmlFor="td-rider">Rider</label><input id="td-rider" maxLength={80} value={f.riderName} onChange={set('riderName')} placeholder="Rider's name" /></div>
+        <div className="field"><label className="field-label" htmlFor="td-charge">Delivery charge (Rs)</label><input id="td-charge" type="number" min="0" max="100000" step="any" inputMode="decimal" value={f.deliveryCharge} onChange={set('deliveryCharge')} /></div>
       </>}
+      {dirty && problem && <div className="form-error is-full" role="alert">{problem}</div>}
       <div className="is-full row" style={{ gap: 8 }}>
         {isDelivery && <a className="btn-link" href={waLink('', riderText)} target="_blank" rel="noreferrer"><button className="btn-sm"><ChatIcon size={15} /> Send to rider</button></a>}
         {f.customerPhone && <a href={`tel:${f.customerPhone}`}><button className="btn-sm">Call customer</button></a>}
         {auth.can('orders.create') && <Link className="btn-link" to="/deliveries"><button className="btn-sm"><TruckIcon size={15} /> Time, rider &amp; tracking</button></Link>}
-        {dirty && <button className="primary btn-sm" style={{ marginLeft: 'auto' }} onClick={save}>Save details</button>}
+        {dirty && <button className="primary btn-sm" style={{ marginLeft: 'auto' }} disabled={busy || !!problem} onClick={save}>{busy ? 'Saving…' : 'Save details'}</button>}
       </div>
     </div>
   )
@@ -431,10 +443,13 @@ function NewOrder({ init, tables, byTable, onClose }) {
   const pick = (c) => { setWho({ ...who, name: c.name, phone: c.phone, address: c.address || who.address }); setMatches([]) }
 
   const needsWho = channel === 'Delivery' && (!who.phone.trim() || !who.address.trim())
-  const blocked = cart.count === 0 || busy || (channel === 'Dine' && !table) || (!adding && needsWho)
+  const whoCharge = Number(who.charge) || 0
+  const whoProblem = adding || channel === 'Dine' ? ''
+    : phoneProblem(who.phone) || (channel === 'Delivery' && (whoCharge < 0 || whoCharge > 100000) ? 'The delivery charge must be between 0 and 100,000.' : '')
+  const blocked = cart.count === 0 || busy || (channel === 'Dine' && !table) || (!adding && needsWho) || !!whoProblem
   const hint = channel === 'Dine' && !table ? 'Choose a table first.'
     : !adding && needsWho ? "A delivery needs the customer's phone and address."
-      : cart.count === 0 ? 'Tap a dish to add it.' : ''
+      : whoProblem || (cart.count === 0 ? 'Tap a dish to add it.' : '')
 
   const place = async () => {
     setBusy(true); setErr('')
@@ -482,8 +497,9 @@ function NewOrder({ init, tables, byTable, onClose }) {
       {!adding && channel !== 'Dine' && (
         <div className="ts-who">
           <div className="field">
-            <label className="field-label">Phone{channel === 'Takeaway' ? ' (optional)' : ''}</label>
-            <input inputMode="tel" placeholder="03xx xxxxxxx" value={who.phone} onChange={(e) => { setWho({ ...who, phone: e.target.value }); search(e.target.value) }} />
+            <label className="field-label" htmlFor="no-phone">Phone{channel === 'Takeaway' && <span className="opt"> (optional)</span>}</label>
+            <input id="no-phone" required={channel === 'Delivery'} maxLength={30} inputMode="tel" placeholder="03xx xxxxxxx" value={who.phone} aria-invalid={!!phoneProblem(who.phone)}
+              onChange={(e) => { setWho({ ...who, phone: e.target.value }); search(e.target.value) }} />
             {matches.length > 0 && (
               <div className="no-suggest">
                 {matches.map((c) => (
@@ -493,12 +509,12 @@ function NewOrder({ init, tables, byTable, onClose }) {
             )}
           </div>
           <div className="field">
-            <label className="field-label">Name{channel === 'Takeaway' ? ' (optional)' : ''}</label>
-            <input value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} />
+            <label className="field-label" htmlFor="no-name">Name <span className="opt">(optional)</span></label>
+            <input id="no-name" maxLength={120} value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} />
           </div>
           {channel === 'Delivery' && <>
-            <div className="field is-full"><label className="field-label">Address</label><input value={who.address} onChange={(e) => setWho({ ...who, address: e.target.value })} /></div>
-            <div className="field"><label className="field-label">Delivery charge (Rs)</label><input type="number" min="0" inputMode="numeric" value={who.charge} onChange={(e) => setWho({ ...who, charge: e.target.value })} /></div>
+            <div className="field is-full"><label className="field-label" htmlFor="no-addr">Address</label><input id="no-addr" required maxLength={300} value={who.address} onChange={(e) => setWho({ ...who, address: e.target.value })} /></div>
+            <div className="field"><label className="field-label" htmlFor="no-charge">Delivery charge (Rs) <span className="opt">(optional)</span></label><input id="no-charge" type="number" min="0" max="100000" step="any" inputMode="decimal" value={who.charge} onChange={(e) => setWho({ ...who, charge: e.target.value })} /></div>
           </>}
         </div>
       )}
@@ -543,7 +559,7 @@ function NewOrder({ init, tables, byTable, onClose }) {
           ))}
           {cart.count > 0 && <input style={{ width: '100%', marginTop: 8 }} maxLength={200} aria-label="Note for the kitchen (optional)" placeholder="Note for the kitchen (optional)" value={note} onChange={(e) => setNote(e.target.value)} />}
           <div className="no-sum"><span>Subtotal</span><b>{money(cart.total + (channel === 'Delivery' ? Number(who.charge) || 0 : 0))}</b></div>
-          {cart.count > 0 && <div className="bo-small" style={{ marginTop: -4, marginBottom: 8 }}>Tax, service and any discount are added on the bill.</div>}
+          {cart.count > 0 && <div className="bo-small" style={{ marginTop: -4, marginBottom: 8 }}>{channel === 'Dine' ? 'Tax, service and any discount are added on the bill.' : 'Tax and any discount are added on the bill.'}</div>}
           {err && <div className="form-error">{err}</div>}
           {hint && <div className="bo-small" style={{ marginBottom: 8 }}>{hint}</div>}
           <button className="primary" style={{ width: '100%' }} disabled={blocked} onClick={place}>{busy ? 'Sending…' : 'Send to kitchen'}</button>
@@ -825,7 +841,7 @@ function KhataPicker({ customer, onPick, amount, initialPhone, initialName }) {
     if (saving) return
     setSaving(true)
     try {
-      const phone = /^[+\d\s-]{7,}$/.test(q.trim()) ? q.trim() : ''
+      const phone = isPhone(q) ? q.trim() : ''
       const res = await api.addCustomer({ name: name.trim(), phone, address: '', notes: '', openingBalance: 0, creditLimit: 0 })
       onPick({ id: res.id, name: name.trim(), phone, balance: 0, creditLimit: 0 })
     } catch (e) { toast.error(friendlyError(e)) }

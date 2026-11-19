@@ -6,7 +6,9 @@
 /* ---- the frame ---- */
 .sx { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100dvh; }
 .sx.is-solo { display: block; }
-.sx-main { min-width: 0; display: flex; flex-direction: column; }
+/* overflow-x: clip, not hidden: the page's opening tilt is briefly wider than the frame, and clip trims that
+   without making a scroll box, so the sticky top bar keeps working and no sideways scrollbar flashes. */
+.sx-main { min-width: 0; display: flex; flex-direction: column; overflow-x: clip; }
 .sx-page { flex: 1; min-width: 0; animation: sx-page .32s var(--ease) backwards; transform-origin: 50% 0; }
 @keyframes sx-page { from { opacity: 0; transform: perspective(1400px) rotateX(1.6deg) translateY(10px); } }
 

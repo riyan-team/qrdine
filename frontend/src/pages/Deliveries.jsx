@@ -5,6 +5,7 @@ import { auth, ticketLabel } from '../auth'
 import { NOT_LOADED, loadUntilOk, useStaffOrders } from '../useStaffOrders'
 import { toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { phoneProblem } from '../phone.js'
 import { waLink } from '../backoffice.jsx'
 import MapView, { directionsUrl } from '../MapView.jsx'
 import { BagIcon, BikeIcon, CallIcon, ChatIcon, CheckIcon, ClockIcon, PinIcon, ReceiptIcon, TruckIcon } from '../icons.jsx'
@@ -110,6 +111,7 @@ function TicketCard({ x, onChanged }) {
     try { await run(fn()); onChanged() } catch { /* toast shown */ }
     setBusy('')
   }
+  const riderPhoneProblem = phoneProblem(rider.phone)
   const makeLink = () => act('link', async () => {
     const res = await api.riderLink(t.tableCode, rider.name.trim(), rider.phone.trim())
     setLink(location.origin + res.path)
@@ -161,16 +163,17 @@ function TicketCard({ x, onChanged }) {
       {d && !done && (
         <div className="dl-rider">
           <div className="dl-rider-in">
-            <input value={rider.name} onChange={(e) => setRider({ ...rider, name: e.target.value })} placeholder="Rider's name" maxLength={60} />
-            <input value={rider.phone} onChange={(e) => setRider({ ...rider, phone: e.target.value })} placeholder="Rider's phone" inputMode="tel" maxLength={16} />
+            <input required aria-label="Rider's name" value={rider.name} onChange={(e) => setRider({ ...rider, name: e.target.value })} placeholder="Rider's name *" maxLength={60} />
+            <input aria-label="Rider's phone (optional)" value={rider.phone} onChange={(e) => setRider({ ...rider, phone: e.target.value })} placeholder="Rider's phone" inputMode="tel" maxLength={30} aria-invalid={!!riderPhoneProblem} />
           </div>
+          {riderPhoneProblem && <small className="form-error" role="alert">{riderPhoneProblem}</small>}
           {link ? (
             <div className="dl-link">
               <a href={waLink(rider.phone, riderText)} target="_blank" rel="noreferrer"><button className="btn-sm green"><ChatIcon size={15} /> WhatsApp the rider</button></a>
               <button className="btn-sm" onClick={() => navigator.clipboard?.writeText(link).then(() => toast.success('Rider link copied'))}>Copy link</button>
             </div>
           ) : (
-            <button className="btn-sm" disabled={!!busy || !rider.name.trim()} onClick={makeLink}>
+            <button className="btn-sm" disabled={!!busy || !rider.name.trim() || !!riderPhoneProblem} onClick={makeLink}>
               <BikeIcon size={15} /> {t.hasRiderLink ? 'New rider link' : 'Send to rider'}
             </button>
           )}

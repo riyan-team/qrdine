@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api, money } from '../api'
 import { ui, toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
+import { phoneProblem } from '../phone.js'
 import {
   DataTable, Empty, Figure, Loading, Modal, PAY_METHODS, PageHead, Problem, Tabs, fmtDate, fmtMonth, monthPk, printPage, todayPk, useData, waLink,
 } from '../backoffice.jsx'
@@ -89,9 +90,12 @@ function PersonForm({ person, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const salary = Number(f.monthlySalary) || 0
+  const problem = phoneProblem(f.phone) || (salary < 0 ? "Salary can't be negative." : '')
   const save = async () => {
+    if (busy || problem) return
     setBusy(true); setErr('')
-    const body = { ...f, monthlySalary: Number(f.monthlySalary) || 0, joinedOn: f.joinedOn || null }
+    const body = { ...f, monthlySalary: salary, joinedOn: f.joinedOn || null }
     try {
       if (isNew) await api.addEmployee(body); else await api.updateEmployee(person.id, body)
       onSaved()
@@ -100,15 +104,16 @@ function PersonForm({ person, onClose, onSaved }) {
   return (
     <Modal title={isNew ? 'Add person' : `Edit ${person.name}`} onClose={onClose} footer={<>
       <button onClick={onClose}>Cancel</button>
-      <button className="primary push" disabled={busy || !f.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      <button className="primary push" disabled={busy || !f.name.trim() || !!problem} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Name</label><input autoFocus value={f.name} onChange={set('name')} /></div>
-        <div className="field"><label className="field-label">Job</label><input placeholder="Cook, waiter, helper" value={f.designation} onChange={set('designation')} /></div>
-        <div className="field"><label className="field-label">Monthly salary (Rs)</label><input type="number" min="0" inputMode="numeric" value={f.monthlySalary} onChange={set('monthlySalary')} /></div>
-        <div className="field"><label className="field-label">Mobile</label><input inputMode="tel" value={f.phone} onChange={set('phone')} /></div>
-        <div className="field"><label className="field-label">Joined on</label><input type="date" value={f.joinedOn} onChange={set('joinedOn')} /></div>
-        <div className="field"><label className="field-label">Notes</label><input value={f.notes} onChange={set('notes')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-name">Name</label><input id="pf-name" autoFocus required maxLength={120} value={f.name} onChange={set('name')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-job">Job <span className="opt">(optional)</span></label><input id="pf-job" maxLength={60} placeholder="Cook, waiter, helper" value={f.designation} onChange={set('designation')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-salary">Monthly salary (Rs)</label><input id="pf-salary" type="number" min="0" step="any" inputMode="decimal" value={f.monthlySalary} onChange={set('monthlySalary')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-phone">Mobile <span className="opt">(optional)</span></label><input id="pf-phone" maxLength={30} inputMode="tel" placeholder="03xx xxxxxxx" value={f.phone} onChange={set('phone')} aria-invalid={!!phoneProblem(f.phone)} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-joined">Joined on <span className="opt">(optional)</span></label><input id="pf-joined" type="date" value={f.joinedOn} onChange={set('joinedOn')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pf-notes">Notes <span className="opt">(optional)</span></label><input id="pf-notes" maxLength={300} value={f.notes} onChange={set('notes')} /></div>
+        {problem && <div className="form-error is-full" role="alert">{problem}</div>}
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
@@ -187,17 +192,17 @@ function EntryForm({ type, person, month, onClose, onSaved }) {
   return (
     <Modal title={`${type.label}: ${person.name}`} sub={type.hint} onClose={onClose} footer={<>
       <button onClick={onClose}>Cancel</button>
-      <button className="primary push" disabled={busy || !(Number(f.amount) > 0)} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      <button className="primary push" disabled={busy || !(Number(f.amount) > 0) || !f.date} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
     </>}>
       <div className="bo-form">
-        <div className="field"><label className="field-label">Amount (Rs)</label><input autoFocus type="number" min="0" inputMode="numeric" value={f.amount} onChange={set('amount')} /></div>
-        <div className="field"><label className="field-label">Date</label><input type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pe-amount">Amount (Rs)</label><input id="pe-amount" autoFocus required type="number" min="0" step="any" inputMode="decimal" value={f.amount} onChange={set('amount')} /></div>
+        <div className="field"><label className="field-label" htmlFor="pe-date">Date</label><input id="pe-date" required type="date" max={todayPk()} value={f.date} onChange={set('date')} /></div>
         {type.key !== 'Deduction' && (
           <div className="field is-full"><label className="field-label">Paid by</label>
             <select value={f.method} onChange={set('method')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
           </div>
         )}
-        <div className="field is-full"><label className="field-label">Note (optional)</label><input value={f.note} onChange={set('note')} /></div>
+        <div className="field is-full"><label className="field-label" htmlFor="pe-note">Note <span className="opt">(optional)</span></label><input id="pe-note" maxLength={300} value={f.note} onChange={set('note')} /></div>
       </div>
       {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
     </Modal>
