@@ -36,6 +36,8 @@ public class FiscalAutoRetryService(IServiceScopeFactory scopes, IOptions<Fiscal
     /// <summary>One round over every restaurant with bills waiting. Public for tests.</summary>
     public async Task<int> RoundOnce(CancellationToken ct)
     {
+        try { await PruneLog(ct); }
+        catch (Exception ex) when (!ct.IsCancellationRequested) { log.LogWarning(ex, "Clearing old tax office log lines failed."); }
         List<(int Id, string Slug)> due;
         using (var scope = scopes.CreateScope())
         {
@@ -69,5 +71,20 @@ public class FiscalAutoRetryService(IServiceScopeFactory scopes, IOptions<Fiscal
         }
         if (filed > 0) log.LogInformation("Automatic resend filed {Count} bill(s).", filed);
         return filed;
+    }
+
+    private DateTime _lastPrune = DateTime.MinValue;
+
+    /// <summary>Clears tax office log lines older than <see cref="FiscalLogEntry.KeepDays"/> days, at most every 6 hours. Public for tests.</summary>
+    public async Task<int> PruneLog(CancellationToken ct, bool now = false)
+    {
+        if (!now && DateTime.UtcNow - _lastPrune < TimeSpan.FromHours(6)) return 0;
+        _lastPrune = DateTime.UtcNow;
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var cutoff = DateTime.UtcNow.AddDays(-FiscalLogEntry.KeepDays);
+        var gone = await db.FiscalLog.IgnoreQueryFilters().Where(x => x.At < cutoff).ExecuteDeleteAsync(ct);
+        if (gone > 0) log.LogInformation("Cleared {Count} tax office log line(s) older than {Days} days.", gone, FiscalLogEntry.KeepDays);
+        return gone;
     }
 }

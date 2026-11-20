@@ -29,7 +29,17 @@ public interface IFiscalService
 /// <summary>Environment: where it actually went (Practice when the server forces practice for everyone).
 /// Unreachable: the tax office couldn't be reached at all (no internet, office down), as opposed to a refusal.</summary>
 public record FiscalResult(string Provider, FiscalStatus Status, string? Number, string? QrPayload, string? Error,
-    string? Environment = null, bool Unreachable = false);
+    string? Environment = null, bool Unreachable = false)
+{
+    /// <summary>What was sent and what came back, for the tax office log (null when nothing was prepared).</summary>
+    public FiscalExchange? Exchange { get; init; }
+}
+
+/// <summary>
+/// One request to the tax office as it happened: the address, the JSON sent (never the token, which goes in a
+/// header), the HTTP status and body that came back, and how long it took. Practice fills in the JSON it would send.
+/// </summary>
+public record FiscalExchange(string? Endpoint, string? Request, int? HttpStatus, string? Response, int DurationMs);
 
 /// <summary>What the transport can do on this install (the online server can't reach a PC's FBR software).</summary>
 public interface IFiscalCapabilities

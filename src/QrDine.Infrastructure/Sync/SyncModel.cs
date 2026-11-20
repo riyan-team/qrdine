@@ -29,13 +29,15 @@ public static class SyncModel
     public const string SyncIdProperty = "SyncId";
     public const string LastChangedAtProperty = "LastChangedAt";
 
-    // Platform-level data (operators, plans, subscription payments), menu photo bytes, and the sync
-    // tables themselves are never synced to a restaurant's PC.
+    // Platform-level data (operators, plans, subscription payments), menu photo bytes, the tax office log and the
+    // sync tables themselves are never synced to a restaurant's PC.
     private static readonly HashSet<Type> NeverSynced = new()
     {
         typeof(Domain.Identity.PlatformAdmin), typeof(Domain.Subscriptions.Plan),
         typeof(Domain.Subscriptions.SubscriptionPayment), typeof(Domain.Files.StoredFile),
         typeof(Domain.Sync.SyncDevice), typeof(Domain.Sync.SyncChange), typeof(Domain.Sync.SyncInboxEntry),
+        // The tax office log stays on the copy that did the sending.
+        typeof(Domain.Billing.FiscalLogEntry),
     };
 
     /// <summary>Adds the sync columns to every synced table. Call at the end of OnModelCreating.</summary>

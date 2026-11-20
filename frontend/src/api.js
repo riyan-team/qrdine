@@ -385,6 +385,17 @@ export const api = {
   fbrRetryMany: (ids) => staffPost(`/admin/fbr/invoices/retry`, { ids: ids && ids.length ? ids : null }),
   fbrCheck: () => staffGet(`/admin/fbr/check`),
   fbrTest: (branchId) => staffPost(`/admin/fbr/branches/${branchId}/test`),
+  // The log: every try at sending a bill, newest first (filters: one bill, problems only, a number), and one try in full.
+  fbrLog: ({ invoiceId, problems, q, before, take } = {}) => {
+    const p = new URLSearchParams()
+    if (invoiceId) p.set('invoiceId', invoiceId)
+    if (problems) p.set('problems', 'true')
+    if (q) p.set('q', q)
+    if (before) p.set('before', before)
+    if (take) p.set('take', take)
+    return staffGet(`/admin/fbr/log?${p}`)
+  },
+  fbrLogLine: (id) => staffGet(`/admin/fbr/log/${id}`),
 
   // permissions (owner only)
   getPermissions: () => staffGet(`/admin/permissions`),

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -58,11 +59,17 @@ public class FbrFiscalService : IFiscalService
     public async Task<FiscalResult> Register(Invoice invoice, FiscalContext ctx, CancellationToken ct = default)
     {
         if (_opt.Simulate || ctx.Environment == FiscalEnvironment.Practice)
-            return await _practice.Register(invoice, ctx, ct);
+        {
+            var practice = await _practice.Register(invoice, ctx, ct);
+            // The log shows the JSON a real send would carry, so practice teaches what goes to the office.
+            return practice with { Exchange = new FiscalExchange("Practice: nothing was sent", TryPayload(invoice, ctx), null, null, 0) };
+        }
 
         var office = ctx.Authority.ToString();
         var env = ctx.Environment.ToString();
-        FiscalResult Refused(string why) => new(office, FiscalStatus.Failed, null, null, why, env);
+        var url = UrlFor(ctx);
+        FiscalResult Refused(string why, FiscalExchange? x = null) =>
+            new(office, FiscalStatus.Failed, null, null, why, env) { Exchange = x ?? new FiscalExchange($"Not sent: {url}", null, null, null, 0) };
 
         if (ctx.PosId is null or <= 0)
             return Refused($"No POSID for this branch or cashier. Add the POSID {office} gave you in Settings → Tax office.");
@@ -72,8 +79,9 @@ public class FbrFiscalService : IFiscalService
         if (!local && string.IsNullOrWhiteSpace(ctx.Token))
             return Refused($"No {office} token for this branch. Add it in Settings → Tax office.");
 
-        var url = UrlFor(ctx);
         var json = Payload(invoice, ctx);
+        var clock = Stopwatch.StartNew();
+        FiscalExchange Sent(int? status, string? body) => new(url, json, status, body, (int)clock.ElapsedMilliseconds);
         try
         {
             using var msg = new HttpRequestMessage(HttpMethod.Post, url)
@@ -84,34 +92,43 @@ public class FbrFiscalService : IFiscalService
 
             using var resp = await _http.SendAsync(msg, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
+            var x = Sent((int)resp.StatusCode, body);
             if (!resp.IsSuccessStatusCode)
             {
                 _log.LogWarning("{Office} {Env} HTTP {Status} for invoice {Number}: {Body}", office, env, (int)resp.StatusCode, invoice.FormattedNumber, Trim(body));
                 if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || body.Contains("900908"))
-                    return Refused(NotAllowed(office, env));
+                    return Refused(NotAllowed(office, env), x);
                 // The office's own server failing (5xx, gateway timeouts) is temporary: keep the bill waiting.
                 if ((int)resp.StatusCode >= 500)
                     return new FiscalResult(office, FiscalStatus.Pending, null, null,
-                        $"{office} {env} is having a problem (HTTP {(int)resp.StatusCode}). The bill will be sent again.", env, Unreachable: true);
-                return Refused($"{office} refused it (HTTP {(int)resp.StatusCode}): {Trim(body)}");
+                        $"{office} {env} is having a problem (HTTP {(int)resp.StatusCode}). The bill will be sent again.", env, Unreachable: true) { Exchange = x };
+                return Refused($"{office} refused it (HTTP {(int)resp.StatusCode}): {Trim(body)}", x);
             }
 
             FbrResponse? answer = null;
             try { answer = JsonSerializer.Deserialize<FbrResponse>(body); } catch (JsonException) { }
             if (answer is null)
-                return Refused($"{office} sent an answer that couldn't be read: {Trim(body)}");
+                return Refused($"{office} sent an answer that couldn't be read: {Trim(body)}", x);
             if (!answer.Accepted)
-                return Refused($"{office} refused it (code {answer.Code}): {answer.Errors ?? answer.Response ?? Trim(body)}");
+                return Refused($"{office} refused it (code {answer.Code}): {answer.Errors ?? answer.Response ?? Trim(body)}", x);
 
             var qr = ctx.Authority == FiscalAuthority.PRA ? string.Format(_opt.PraVerifyUrl, Uri.EscapeDataString(answer.Number!)) : answer.Number;
-            return new FiscalResult(office, FiscalStatus.Registered, answer.Number, qr, null, env);
+            return new FiscalResult(office, FiscalStatus.Registered, answer.Number, qr, null, env) { Exchange = x };
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             _log.LogWarning(ex, "{Office} {Env} unreachable for invoice {Number}; left waiting.", office, env, invoice.FormattedNumber);
             return new FiscalResult(office, FiscalStatus.Pending, null, null,
-                $"Couldn't reach {office} ({(local ? "FBR software on this PC" : env)}): {ex.Message}. The bill will be sent again.", env, Unreachable: true);
+                $"Couldn't reach {office} ({(local ? "FBR software on this PC" : env)}): {ex.Message}. The bill will be sent again.", env, Unreachable: true)
+            { Exchange = Sent(null, null) };
         }
+    }
+
+    // Practice never fails over the log: a bill the mapper can't turn into JSON still gets its practice number.
+    private static string? TryPayload(Invoice invoice, FiscalContext ctx)
+    {
+        try { return Payload(invoice, ctx); }
+        catch (Exception) { return null; }
     }
 
     private static string NotAllowed(string office, string env) =>

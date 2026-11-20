@@ -80,6 +80,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Domain.Ordering.PaymentReturn> PaymentReturns => Set<Domain.Ordering.PaymentReturn>();
     public DbSet<Domain.Ordering.ServiceRequest> ServiceRequests => Set<Domain.Ordering.ServiceRequest>();
     public DbSet<Domain.Billing.DayClosing> DayClosings => Set<Domain.Billing.DayClosing>();
+    public DbSet<Domain.Billing.FiscalLogEntry> FiscalLog => Set<Domain.Billing.FiscalLogEntry>();
     public DbSet<Domain.Sync.SyncDevice> SyncDevices => Set<Domain.Sync.SyncDevice>();
     public DbSet<Domain.Sync.SyncChange> SyncChanges => Set<Domain.Sync.SyncChange>();
     public DbSet<Domain.Sync.SyncInboxEntry> SyncInbox => Set<Domain.Sync.SyncInboxEntry>();
@@ -216,6 +217,21 @@ public class AppDbContext : DbContext, IAppDbContext
             e.Property(x => x.Note).HasMaxLength(300);
             e.Property(x => x.ClosedBy).HasMaxLength(60);
             e.HasIndex(x => new { x.RestaurantId, x.BranchId, x.Date }).IsUnique();
+        });
+        b.Entity<Domain.Billing.FiscalLogEntry>(e =>
+        {
+            e.HasQueryFilter(x => x.RestaurantId == TenantId);
+            e.Property(x => x.BillNumber).HasMaxLength(60);
+            e.Property(x => x.Office).HasMaxLength(10);
+            e.Property(x => x.Environment).HasMaxLength(12);
+            e.Property(x => x.Trigger).HasMaxLength(12);
+            e.Property(x => x.By).HasMaxLength(60);
+            e.Property(x => x.Outcome).HasMaxLength(12);
+            e.Property(x => x.FiscalNumber).HasMaxLength(120);
+            e.Property(x => x.Error).HasMaxLength(2000);
+            e.Property(x => x.Endpoint).HasMaxLength(300);
+            e.HasIndex(x => new { x.RestaurantId, x.At });
+            e.HasIndex(x => new { x.RestaurantId, x.InvoiceId });
         });
 
         b.Entity<Restaurant>(e =>

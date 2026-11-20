@@ -109,3 +109,16 @@ public record InvoiceDto(
         inv.FiscalEnvironment is "" && inv.FiscalProvider is "Simulated" ? "Practice" : inv.FiscalEnvironment,
         sellerNtn, sellerStrn, inv.SyncedByPosId);
 }
+
+/// <summary>One try in the tax office log (without the JSON). HasPayload: the JSON that was (or would be) sent is kept.</summary>
+public record FiscalLogRow(int Id, DateTime At, int? InvoiceId, string BillNumber, int BranchId, string Office, string Environment,
+    string Trigger, string? By, long? PosId, string Outcome, string? FiscalNumber, string? Error, int? HttpStatus, int DurationMs,
+    int Attempt, bool HasPayload);
+
+/// <summary>Tries in the last 24 hours, by how they ended.</summary>
+public record FiscalLogDay(int Filed, int Refused, int Waiting, int Errors);
+
+public record FiscalLogPage(IReadOnlyList<FiscalLogRow> Rows, bool More, FiscalLogDay Last24h);
+
+/// <summary>One try in full: where it went, the JSON sent, and the answer that came back.</summary>
+public record FiscalLogDetail(FiscalLogRow Row, string? Endpoint, string? RequestBody, string? ResponseBody);

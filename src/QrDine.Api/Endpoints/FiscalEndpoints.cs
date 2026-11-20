@@ -9,6 +9,7 @@ namespace QrDine.Api.Endpoints;
 /// The tax office (FBR / PRA) screens. Listing and the setup check are for whoever sees reports; sending (one bill,
 /// the picked ones, or every waiting one) needs the invoice.sync permission and uses the signed-in cashier's
 /// POSID and token, falling back to the branch's. The test bill is for whoever manages settings, and never goes to Live.
+/// The log (every try, with the JSON sent and the answer) is for whoever sees reports, like the lists.
 /// </summary>
 public static class FiscalEndpoints
 {
@@ -18,6 +19,10 @@ public static class FiscalEndpoints
         view.MapGet("/invoices/synced", async (FiscalSyncService svc) => Results.Ok(await svc.List(synced: true)));
         view.MapGet("/invoices/pending", async (FiscalSyncService svc) => Results.Ok(await svc.List(synced: false)));
         view.MapGet("/check", async (FiscalSyncService svc) => Results.Ok(await svc.Check()));
+        // The log: every try at sending a bill (newest first), and one try in full with the JSON sent and the answer.
+        view.MapGet("/log", async (int? invoiceId, bool? problems, string? q, int? before, int? take, FiscalSyncService svc)
+            => Results.Ok(await svc.Log(invoiceId, problems == true, q, before, take ?? 100)));
+        view.MapGet("/log/{id:int}", async (int id, FiscalSyncService svc) => Results.Ok(await svc.LogLine(id)));
 
         var sync = app.MapGroup("/api/r/{slug}/admin/fbr").RequireAuthorization(Policies.CanSyncInvoice);
         sync.MapPost("/invoices/{id:int}/retry", async (int id, ClaimsPrincipal user, FiscalSyncService svc)

@@ -4,10 +4,12 @@ import { auth } from '../auth'
 import { toast } from '../ui.jsx'
 import { friendlyError } from '../errors'
 import { RefreshIcon } from '../icons.jsx'
+import FbrLog from './FbrLog.jsx'
 
 // The tax office (FBR / PRA) view: bills still to go (waiting, or refused with the office's reason) and bills filed.
 // Sending: one bill, the picked ones, or every waiting one (25 a press). A bill already filed is refused by the
 // server, and a bill being sent by someone else at the same moment is left alone, so nothing is filed twice.
+// Log: every try (when settled, automatic, by hand, test bill) with the JSON sent and the office's answer.
 export default function FbrInvoices() {
   const [tab, setTab] = useState('pending')
   const [synced, setSynced] = useState([])
@@ -16,6 +18,7 @@ export default function FbrInvoices() {
   const [busy, setBusy] = useState('')   // '' | 'all' | 'picked' | <id>
   const [err, setErr] = useState('')
   const [last, setLast] = useState(null)
+  const [logBill, setLogBill] = useState(null)   // the log for one bill: { id, number }
   const canSync = auth.can('invoice.sync')
 
   const load = () => {
@@ -59,7 +62,8 @@ export default function FbrInvoices() {
   const togglePick = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = () => setPicked(allPicked ? new Set() : new Set(pending.map((r) => r.id)))
   const sending = tab === 'pending' && canSync
-  const cols = 6 + (sending ? 2 : 0)
+  const cols = 6 + (sending ? 2 : 0) + (tab === 'pending' && !sending ? 1 : 0)
+  const history = (i) => { setLogBill({ id: i.id, number: i.number }); setTab('log') }
 
   return (
     <div className="wrap">
@@ -67,6 +71,7 @@ export default function FbrInvoices() {
       <p className="muted">
         Bills filed with FBR or PRA are under Filed, with the office's number. Bills still to go wait under Waiting:
         ones that couldn't reach the office, and ones it refused, with its reason. Fix the reason, then send again.
+        Log shows every try, with exactly what was sent and what the office answered.
       </p>
 
       <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -76,8 +81,14 @@ export default function FbrInvoices() {
         <button className={tab === 'synced' ? 'primary' : 'ghost'} onClick={() => setTab('synced')}>
           Filed ({synced.length})
         </button>
-        <button className="ghost" style={{ marginLeft: 'auto' }} onClick={load}><RefreshIcon size={15} /> Refresh</button>
+        <button className={tab === 'log' ? 'primary' : 'ghost'} onClick={() => { setLogBill(null); setTab('log') }}>
+          Log
+        </button>
+        {tab !== 'log' && <button className="ghost" style={{ marginLeft: 'auto' }} onClick={load}><RefreshIcon size={15} /> Refresh</button>}
       </div>
+
+      {tab === 'log' && <FbrLog key={logBill?.id || 'all'} invoice={logBill} onClearInvoice={() => setLogBill(null)} />}
+      {tab !== 'log' && <>
 
       {sending && pending.length > 0 && (
         <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -102,7 +113,7 @@ export default function FbrInvoices() {
               )}
               <Th>Bill</Th><Th>Table</Th><Th>Total</Th><Th>Office</Th><Th>Status</Th>
               <Th>{tab === 'synced' ? 'Office number' : 'Reason / tries'}</Th>
-              {sending && <Th />}
+              {(sending || tab === 'pending') && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -127,10 +138,17 @@ export default function FbrInvoices() {
                         </div>
                       </>}
                 </Td>
-                {sending && (
-                  <Td><button className="primary btn-sm" disabled={!!busy || i.beingSent} onClick={() => sendOne(i.id)}>
-                    {busy === i.id ? 'Sending…' : 'Send now'}
-                  </button></Td>
+                {tab === 'pending' && (
+                  <Td>
+                    <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                      {sending && (
+                        <button className="primary btn-sm" disabled={!!busy || i.beingSent} onClick={() => sendOne(i.id)}>
+                          {busy === i.id ? 'Sending…' : 'Send now'}
+                        </button>
+                      )}
+                      {i.fiscalAttempts > 0 && <button className="ghost btn-sm" onClick={() => history(i)}>History</button>}
+                    </div>
+                  </Td>
                 )}
               </tr>
             ))}
@@ -145,6 +163,7 @@ export default function FbrInvoices() {
       {!canSync && tab === 'pending' && (
         <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>You can see waiting bills, but sending them needs the “sync invoice” permission.</p>
       )}
+      </>}
     </div>
   )
 }

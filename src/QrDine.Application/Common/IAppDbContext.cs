@@ -59,6 +59,7 @@ public interface IAppDbContext
     Task ReleaseInvoiceClaim(int invoiceId, CancellationToken ct = default);
     DbSet<QrDine.Domain.Ordering.ServiceRequest> ServiceRequests { get; }
     DbSet<QrDine.Domain.Billing.DayClosing> DayClosings { get; }
+    DbSet<QrDine.Domain.Billing.FiscalLogEntry> FiscalLog { get; }
     DbSet<QrDine.Domain.Sync.SyncDevice> SyncDevices { get; }
     DbSet<QrDine.Domain.Sync.SyncChange> SyncChanges { get; }
     DbSet<QrDine.Domain.Sync.SyncInboxEntry> SyncInbox { get; }

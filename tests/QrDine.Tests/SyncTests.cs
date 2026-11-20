@@ -94,7 +94,7 @@ public class SyncTests : IDisposable
         var never = types.Where(t => !SyncModel.IsSynced(t)).Select(t => t.ClrType.Name).OrderBy(x => x).ToList();
 
         Assert.Equal(new[] { "InvoiceLine", "MenuItemVariant", "ModifierGroup", "ModifierOption", "OrderItem", "OrderItemModifier", "RecipeLine", "SupplierEntryLine" }, children);
-        Assert.Equal(new[] { "Plan", "PlatformAdmin", "StoredFile", "SubscriptionPayment", "SyncChange", "SyncDevice", "SyncInboxEntry" }, never);
+        Assert.Equal(new[] { "FiscalLogEntry", "Plan", "PlatformAdmin", "StoredFile", "SubscriptionPayment", "SyncChange", "SyncDevice", "SyncInboxEntry" }, never);
         // A new restaurant table has to choose how it syncs before this passes.
         Assert.Equal(roots, SyncRules.Types.OrderBy(x => x).ToList());
         Assert.Contains("Restaurant", roots);

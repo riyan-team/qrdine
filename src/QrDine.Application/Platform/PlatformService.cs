@@ -264,6 +264,7 @@ public class PlatformService
         await _db.OrderVoids.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.ServiceRequests.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.DayClosings.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
+        await _db.FiscalLog.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.SupplierEntries.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Suppliers.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);
         await _db.Expenses.IgnoreQueryFilters().Where(x => x.RestaurantId == restaurantId).ExecuteDeleteAsync(ct);

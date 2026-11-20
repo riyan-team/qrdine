@@ -60,7 +60,7 @@ public class FiscalSyncService
                 invoice.MarkFiscalWaiting(Office(branch), EnvironmentOf(branch).ToString());
                 return;
             }
-            await Send(invoice, r, branch, operatorUsername, ct);
+            await Send(invoice, r, branch, operatorUsername, FiscalTrigger.Settle, operatorUsername, ct);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
@@ -85,7 +85,7 @@ public class FiscalSyncService
         var branch = await _db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == inv.BranchId, ct);
         RefuseOthersLocalBill(inv, branch, operatorUsername, isOwner);
 
-        var outcome = await Send(inv, r, branch, operatorUsername, ct);
+        var outcome = await Send(inv, r, branch, operatorUsername, FiscalTrigger.Manual, operatorUsername, ct);
         if (outcome == SendOutcome.Busy)
             throw new DomainException("This bill is being sent right now. Refresh in a moment.");
         return Map(inv, r.Currency);
@@ -113,7 +113,8 @@ public class FiscalSyncService
             var inv = await _db.Invoices.Include(i => i.Lines).FirstAsync(i => i.Id == id, ct);
             var branch = branches.GetValueOrDefault(inv.BranchId);
             if (!MayResend(inv, branch, operatorUsername, isOwner)) { skipped++; continue; }
-            switch (await Send(inv, r, branch, operatorUsername ?? inv.CreatedByUsername, ct))
+            switch (await Send(inv, r, branch, operatorUsername ?? inv.CreatedByUsername,
+                ids is { Count: > 0 } ? FiscalTrigger.Picked : FiscalTrigger.All, operatorUsername, ct))
             {
                 case SendOutcome.Filed: sent++; unreachableInRow = 0; break;
                 case SendOutcome.Refused: refused++; unreachableInRow = 0; break;
@@ -162,7 +163,7 @@ public class FiscalSyncService
         foreach (var id in due)
         {
             var inv = await _db.Invoices.Include(i => i.Lines).FirstAsync(i => i.Id == id, ct);
-            var outcome = await Send(inv, r, branches.GetValueOrDefault(inv.BranchId), inv.CreatedByUsername, ct);
+            var outcome = await Send(inv, r, branches.GetValueOrDefault(inv.BranchId), inv.CreatedByUsername, FiscalTrigger.Auto, null, ct);
             if (outcome == SendOutcome.Filed) filed++;
             unreachableInRow = outcome == SendOutcome.Unreachable ? unreachableInRow + 1 : 0;
             if (unreachableInRow >= 2) break;   // offline: the next round tries again
@@ -225,7 +226,7 @@ public class FiscalSyncService
 
     /// <summary>
     /// Sends a made-up Rs 100 bill to this branch's Test (or Practice) setup, to prove the POSID, token and address
-    /// work. Never to Live: a test bill there would be a real tax invoice. Nothing is saved.
+    /// work. Never to Live: a test bill there would be a real tax invoice. The bill isn't saved; the try is logged.
     /// </summary>
     public async Task<FiscalTestResult> SendTestInvoice(int branchId, string? operatorUsername, CancellationToken ct = default)
     {
@@ -244,7 +245,10 @@ public class FiscalSyncService
         StaffMember? op = string.IsNullOrWhiteSpace(operatorUsername) ? null
             : await _db.Staff.AsNoTracking().FirstOrDefaultAsync(s => s.Username == operatorUsername, ct);
         var ctx = BuildContext(r, b, op, env);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var res = await _fiscal.Register(test, ctx, ct);
+        _db.FiscalLog.Add(LogEntry(test, b.Id, null, FiscalTrigger.Test, operatorUsername, ctx, res, 1, clock));
+        await _db.SaveChangesAsync(ct);
         return new FiscalTestResult(res.Status == FiscalStatus.Registered, b.FiscalAuthority.ToString(), res.Environment ?? env.ToString(),
             res.Number, res.Error, test.Total, test.TaxAmount);
     }
@@ -253,7 +257,11 @@ public class FiscalSyncService
 
     private enum SendOutcome { Filed, Refused, Unreachable, Busy }
 
-    private async Task<SendOutcome> Send(Invoice inv, Restaurant r, Branch? branch, string? operatorUsername, CancellationToken ct)
+    /// <param name="operatorUsername">Whose POSID and token to use (the cashier's own win over the branch's).</param>
+    /// <param name="trigger">How this try started, for the log (<see cref="FiscalTrigger"/>).</param>
+    /// <param name="by">Who pressed, for the log; null for the automatic resend.</param>
+    private async Task<SendOutcome> Send(Invoice inv, Restaurant r, Branch? branch, string? operatorUsername, string trigger, string? by,
+        CancellationToken ct)
     {
         if (inv.IsFiscalised) return SendOutcome.Filed;
         // A saved bill is claimed in the database first: whoever gets the claim sends, anyone else steps back.
@@ -266,12 +274,23 @@ public class FiscalSyncService
             var env = EnvironmentOf(branch);
             var ctx = BuildContext(r, branch, op, env);
             await FillMissingPctCodes(inv, ct);
-            var res = await _fiscal.Register(inv, ctx, ct);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            FiscalResult res;
+            try { res = await _fiscal.Register(inv, ctx, ct); }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                // Something broke before an answer came: log it (the caller decides what happens to the bill).
+                var broke = new FiscalResult(Office(branch), FiscalStatus.Pending, null, null, $"Filing error: {ex.Message}", env.ToString());
+                _db.FiscalLog.Add(LogEntry(inv, inv.BranchId, inv.Id, trigger, by, ctx, broke, inv.FiscalAttempts + 1, clock, FiscalOutcome.Error));
+                try { await _db.SaveChangesAsync(CancellationToken.None); } catch (Exception) { /* the log must never hide the real error */ }
+                throw;
+            }
             inv.FiscalEnvironment = res.Environment ?? env.ToString();
             if (res.Status == FiscalStatus.Registered)
                 inv.ApplyFiscalSuccess(res.Provider, res.Number, res.QrPayload, ctx.PosId);
             else
                 inv.ApplyFiscalFailure(res.Provider, res.Status, res.Error ?? "Unknown filing error.", ctx.PosId);
+            _db.FiscalLog.Add(LogEntry(inv, inv.BranchId, inv.Id, trigger, by, ctx, res, inv.FiscalAttempts, clock));
             await _db.SaveChangesAsync(ct);
             return res.Status == FiscalStatus.Registered ? SendOutcome.Filed
                 : res.Unreachable || res.Status == FiscalStatus.Pending ? SendOutcome.Unreachable
@@ -325,6 +344,82 @@ public class FiscalSyncService
         env != FiscalEnvironment.Live, b?.FbrEndpointOverride,
         op?.FbrPosId ?? b?.FbrPosId, string.IsNullOrWhiteSpace(op?.FbrToken) ? b?.FbrToken : op!.FbrToken,
         b?.FiscalAuthority ?? FiscalAuthority.FBR, env);
+
+    private FiscalLogEntry LogEntry(Invoice inv, int branchId, int? invoiceId, string trigger, string? by, FiscalContext ctx,
+        FiscalResult res, int attempt, System.Diagnostics.Stopwatch clock, string? outcome = null)
+    {
+        var x = res.Exchange;
+        return new FiscalLogEntry
+        {
+            RestaurantId = TenantId,
+            InvoiceId = invoiceId,
+            BillNumber = invoiceId is null ? (string.IsNullOrEmpty(inv.Usin) ? "TEST" : inv.Usin) : inv.FormattedNumber,
+            BranchId = branchId,
+            At = DateTime.UtcNow,
+            Office = ctx.Authority.ToString(),
+            Environment = res.Environment ?? ctx.Environment.ToString(),
+            Trigger = trigger,
+            By = string.IsNullOrWhiteSpace(by) ? null : by,
+            PosId = ctx.PosId,
+            Outcome = outcome ?? (res.Status == FiscalStatus.Registered ? FiscalOutcome.Filed
+                : res.Unreachable || res.Status == FiscalStatus.Pending ? FiscalOutcome.Waiting
+                : FiscalOutcome.Refused),
+            FiscalNumber = res.Number,
+            Error = FiscalLogEntry.Cut(res.Error, 1990),
+            Endpoint = FiscalLogEntry.Cut(x?.Endpoint, 290),
+            HttpStatus = x?.HttpStatus,
+            DurationMs = x is { DurationMs: > 0 } ? x.DurationMs : (int)clock.ElapsedMilliseconds,
+            RequestBody = FiscalLogEntry.Cut(x?.Request, FiscalLogEntry.MaxRequestChars),
+            ResponseBody = FiscalLogEntry.Cut(x?.Response, FiscalLogEntry.MaxResponseChars),
+            Attempt = Math.Max(1, attempt),
+        };
+    }
+
+    // ───────────────────────── the log ─────────────────────────
+
+    /// <summary>
+    /// The tax office log, newest first: every try at sending a bill, with how it started and how it ended.
+    /// Filters: one bill, problems only (refused, waiting, errors), or a bill number search. Without the JSON
+    /// (<see cref="LogLine"/> gives one line in full).
+    /// </summary>
+    public async Task<FiscalLogPage> Log(int? invoiceId, bool problemsOnly, string? search, int? beforeId, int take = 100,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 200);
+        var q = _db.FiscalLog.AsNoTracking();
+        if (invoiceId is int id) q = q.Where(x => x.InvoiceId == id);
+        if (problemsOnly) q = q.Where(x => x.Outcome != FiscalOutcome.Filed);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            q = q.Where(x => x.BillNumber.Contains(term) || (x.FiscalNumber != null && x.FiscalNumber.Contains(term)));
+        }
+        if (beforeId is int before) q = q.Where(x => x.Id < before);
+        var rows = await q.OrderByDescending(x => x.Id).Take(take + 1)
+            .Select(x => new FiscalLogRow(x.Id, x.At, x.InvoiceId, x.BillNumber, x.BranchId, x.Office, x.Environment, x.Trigger, x.By,
+                x.PosId, x.Outcome, x.FiscalNumber, x.Error, x.HttpStatus, x.DurationMs, x.Attempt, x.RequestBody != null))
+            .ToListAsync(ct);
+        var more = rows.Count > take;
+        if (more) rows.RemoveAt(rows.Count - 1);
+        // Counts for the last 24 hours, so the owner sees at a glance how filing is going.
+        var since = DateTime.UtcNow.AddHours(-24);
+        var day = await _db.FiscalLog.AsNoTracking().Where(x => x.At >= since)
+            .GroupBy(x => x.Outcome).Select(g => new { g.Key, N = g.Count() }).ToListAsync(ct);
+        int N(string k) => day.FirstOrDefault(d => d.Key == k)?.N ?? 0;
+        return new FiscalLogPage(rows, more,
+            new FiscalLogDay(N(FiscalOutcome.Filed), N(FiscalOutcome.Refused), N(FiscalOutcome.Waiting), N(FiscalOutcome.Error)));
+    }
+
+    /// <summary>One log line in full: the address, the JSON sent and the answer.</summary>
+    public async Task<FiscalLogDetail> LogLine(int id, CancellationToken ct = default)
+    {
+        var x = await _db.FiscalLog.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new DomainException($"That log line isn't there any more (lines older than {FiscalLogEntry.KeepDays} days are cleared).");
+        return new FiscalLogDetail(
+            new FiscalLogRow(x.Id, x.At, x.InvoiceId, x.BillNumber, x.BranchId, x.Office, x.Environment, x.Trigger, x.By,
+                x.PosId, x.Outcome, x.FiscalNumber, x.Error, x.HttpStatus, x.DurationMs, x.Attempt, x.RequestBody != null),
+            x.Endpoint, x.RequestBody, x.ResponseBody);
+    }
 
     // ───────────────────────── lists ─────────────────────────
 
